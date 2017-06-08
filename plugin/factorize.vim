@@ -1,0 +1,5 @@
+"command! -nargs=0 Factorize             call line('.')
+"command! -nargs=1 FactorizeClass        call factorize#refactorClass(<f-args>)
+"command! -nargs=+ FactorizeStatic       call factorize#refactorStatic(<f-args>)
+"command! -nargs=+ FactorizeNonStatic    call factorize#refactorNonStatic(<f-args>)
+"command! -nargs=0 FactorizeTag          call factorize#getCurrentTag()

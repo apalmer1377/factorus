@@ -1,0 +1,7 @@
+*factorize.txt*     Refactor java files
+
+Author:             Austin Palmer
+License:            MIT License
+Homepage:           
+Version:            1.0
+
