@@ -1,7 +1,10 @@
+scriptencoding utf-8
+
 " Initialization {{{1
-"if exists(':Factorize') == 0
-"    runtime plugin/factorize.vim
-"endif
+
+if exists(':Factorize') == 0
+    runtime plugin/factorize.vim
+endif
 
 " Search Constants {{{1
 
