@@ -1,4 +1,4 @@
-*factorize.txt*     Refactor java files
+*factorize.txt*     Refactoring for the rest of us!
 
 Author:             Austin Palmer
 License:            MIT License
