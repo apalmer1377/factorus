@@ -443,3 +443,35 @@ function! factorus#refactorMethod(new_name) abort
     let a:keyword = a:is_static >= 0 ? 'static' : ''
     echom 'Re-named ' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
 endfunction
+
+function! factorus#encapsulateField() abort
+    let a:search = '\s*\(public\s\|private\s\|protected\s\)\=\s*\(static\s\)\=\s*\(final\s\)\=\s*\(' . g:factorus_java_identifier . s:collection_identifier . '\=\)\s*\(' . g:factorus_java_identifier . '\)\s*[;=].*'
+
+    let a:line = getline('.')
+    let a:is_static = substitute(a:line,a:search,'\2','')
+    let a:type = substitute(a:line,a:search,'\4','')
+    let a:var = substitute(a:line,a:search,'\6','')
+    let a:cap = substitute(a:var,'\(.\)\(.*\)','\U\1\E\2','')
+
+    let a:is_local = s:getClassTag() == s:getCurrentTag() ? 0 : 1
+    if a:is_local == 1
+        echom 'Cannot encapsulate a local variable'
+        return
+    endif
+
+    if a:is_static == 1
+        echom 'Cannot encapsulate a static variable'
+        return
+    endif
+
+    execute 's/\<public\>/private/'
+    let a:get = ["\tpublic " . a:type . " get" . a:cap . "() {" , "\t\treturn " . a:var . ";" , "\t}"]
+    let a:set = ["\tpublic void set" . a:cap . "(" . a:type . ' ' . a:var . ") {" , "\t\tthis." . a:var . " = " . a:var . ";" , "\t}"]
+    let a:access = a:get + [""] + a:set + [""]
+
+    let a:end = s:getNext('}','b')
+    call append(a:end[0] - 1,a:access)
+    silent write
+
+    echom 'Created getters and setters for ' . a:var
+endfunction
