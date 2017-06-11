@@ -9,11 +9,27 @@ Version:            1.0
 Contents                                            *factorus* *factorus-help* 
 
     1. Intro ....................................... |factorus-intro|
+    2. Commands .................................... |factorus-commands|
 
 ==============================================================================
 1. Intro                                                      *factorus-intro*
 
 Factorus is a plugin for refactoring large Git projects.
+
+==============================================================================
+2. Commands                                                *factorus-commands*
+
+:FactorusClass {new_name}                                     *:FactorusClass* 
+    Renames the class to {new_name}.
+
+:FactorusMethod {new_name}                                   *:FactorusMethod*
+    Renames the current method to {new_name}.  
+
+:FactorusField {new_name}                                     *:FactorusField*
+    Renames the current variable to {new_name}.
+
+:FactorusGetSet                                              *:FactorusGetSet*
+    Creates getter and setter methods for the current variable.
 
 ==============================================================================
 vim: tw=78 ts=8 sw=4 sts=4 et ft=help
