@@ -1,7 +1,19 @@
-*factorize.txt*     Refactoring for the rest of us!
+*factorus.txt*     Refactoring for the rest of us!
 
 Author:             Austin Palmer
 License:            MIT License
-Homepage:           
+Homepage:           https://github.com/apalmer1377/factorus.git
 Version:            1.0
 
+==============================================================================
+Contents                                            *factorus* *factorus-help* 
+
+    1. Intro ....................................... |factorus-intro|
+
+==============================================================================
+1. Intro                                                      *factorus-intro*
+
+Factorus is a plugin for refactoring large Git projects.
+
+==============================================================================
+vim: tw=78 ts=8 sw=4 sts=4 et ft=help
