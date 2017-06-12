@@ -61,7 +61,9 @@ function! s:getClosingBracket(stack)
     let a:open = [line('.'),col('.')]
     let a:close = [line('.'),col('.')]
 
-    while 1 == 1 
+    while a:mark >= a:stack
+        call cursor(a:pos[0],a:pos[1])
+
         let a:open = s:getNext('{','W')
         let a:close = s:getNext('}','W')
 
@@ -77,11 +79,6 @@ function! s:getClosingBracket(stack)
             let a:mark -= 1
         endif
 
-        if a:mark < a:stack
-            break
-        endif
-
-        call cursor(a:pos[0],a:pos[1])
     endwhile
 
     call cursor(a:orig[0],a:orig[1])
@@ -199,13 +196,9 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
     if a:next[0] == 0
         let a:next = line('$')
     endif
-    while 1 == 1
-        let a:here = line('.')
-        let a:rep = s:getNext(a:search[a:restricted],'W')
-        if a:rep[0] == a:here
-            break
-        endif
-        call cursor(a:rep[0],1)
+
+    let a:rep = s:getNext(a:search[a:restricted],'W')
+    while a:rep[0] != a:here
 
         if a:rep[0] >= a:next[0]
             call cursor(a:next[0],1)
@@ -218,10 +211,14 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
                     let a:next = [line('$'),1]
                 endif
             endif
-            continue
+        else
+            execute 's/' . a:search[a:restricted] . '/\1' . a:new_name . '/g'
+            call cursor(a:rep[0],1)
         endif
 
-        execute 's/' . a:search[a:restricted] . '/\1' . a:new_name . '/g'
+        let a:here = line('.')
+        let a:rep = s:getNext(a:search[a:restricted],'W')
+
     endwhile
     call cursor(a:prev[0],a:prev[1])
 
@@ -272,8 +269,6 @@ function! s:refactorStatic(old_name,new_name,is_method)
     call s:updateLocalFiles(a:static_name,a:new_static,a:paren)
     call s:updatePackageFiles(expand('%:t:h'),a:new_name,a:paren,a:old_name,1)
 
-    call factorus#gotoTag(1)
-
     execute '%s/\([^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/g'
     silent write
 
@@ -283,28 +278,24 @@ function! s:refactorNonStatic(old_name,new_name,is_method,is_local) abort
 
     let a:orig = line('.')
 
-    let a:class_name = expand('%:t:r')
-    let a:paren = a:is_method == 1 ? '(' : ''
-
-    let a:query = '\([^.]\)<' . a:old_name . '\>' . a:paren
-    let a:this = '\([^.]\|this\.\)\<' . a:old_name . '\>' . a:paren
-
-    let a:prev = line('.')
-
     if a:is_local == 1
+        let a:query = '\([^.]\)<' . a:old_name . '\>'
         let a:closing = s:getClosingBracket(1)
 
-        while 1 == 1
-            let a:prev = line('.')
-            let a:next = s:getNext(a:query,'W')
-            if a:next[0] == a:prev || s:isBefore(a:closing,a:next)
+        let a:next = s:getNext(a:query,'W')
+        while s:isBefore(a:next,a:closing)
+            if a:next[0] == line('.')
                 break
             endif
             call cursor(a:next[0],a:next[1])
-            execute 's/' . a:query . '/\1' . a:new_name . a:paren . '/g'
+            execute 's/' . a:query . '/\1' . a:new_name . '/g'
+            let a:next = s:getNext(a:query,'W')
         endwhile
         silent write
     else
+        let a:class_name = expand('%:t:r')
+        let a:paren = a:is_method == 1 ? '(' : ''
+
         call s:updateLocalFiles(a:class_name,a:new_name,a:paren,a:old_name)
         call s:updatePackageFiles(a:class_name . '.java',a:new_name,a:paren,a:old_name,0)
     endif
@@ -318,8 +309,8 @@ function! s:updateLocalFiles(class_name,new_name,paren,...)
 
     let a:method_name = a:0 > 0 ? a:1 : ""
     let a:temp_file = '.' . a:class_name
+
     call system('ls -p | grep -v / > ' . a:temp_file)
-    let a:filter = a:method_name == "" ? a:class_name : a:method_name
     call s:narrowTags(a:temp_file,a:class_name)
 
     if a:method_name == ""
@@ -340,16 +331,15 @@ function! s:updatePackageFiles(class_file,new_name,paren,...)
 
     let a:class_name = substitute(a:class_file,'\(.*\/\)\=\(.*\)\.java','\2','')
     let a:package_name = system('head -n 1 ' . a:class_file)
-    let a:package_name = substitute(a:package_name,'^\s*package *','','')
-    let a:package_name = substitute(a:package_name,'[;\n]','','g')
+    let a:package_name = substitute(a:package_name,'^\s*package\s*\(.*\);.*','\1','')
 
     let a:package_search = substitute(a:package_name,'\.','\\.','g')
     let a:temp_file = '.' . a:class_name
 
     let a:prev_dir = system('echo $PWD')
-    let a:git_dir = system('git rev-parse --show-toplevel')
+    let a:project_dir = g:factorus_project_dir == "" ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
 
-    execute 'cd ' . a:git_dir
+    execute 'cd ' . a:project_dir
 
     let a:import_search = a:package_search . '\.' . a:class_name
     let a:import_all_search = a:package_search . '\.\*'
@@ -384,16 +374,23 @@ endfunction
 
 function! s:updateSubClassFiles(class_file,temp_file,old_name,new_name,paren,is_static)
 
+    echom getcwd()
     let a:class_name = substitute(a:class_file,'\(.*\/\)\=\(.*\)\.java','\2','')
-    let a:search = s:sub_class . '\_s\+\<' . a:class_name . '\>'
+    let a:search = s:sub_class . '[[:space:]]\+\<' . a:class_name . '\>'
+    echom a:search
 
     call s:findTags(a:temp_file, a:search, 'no')
     let a:sub = readfile(a:temp_file)
 
     for file in a:sub
+        let a:fname = substitute(file,'.*\/\(.*\)','\1','')
+        if a:fname == 'tags' || a:fname == 'cscope.out'
+            continue
+        endif
+        echom file
         let a:sub_class = substitute(file,'\(.*\/\)\=\(.*\)\.java','\2','')
 
-        call s:updateLocalFiles(a:sub_class,a:new_name,a:paren,a:new_name,a:is_static)
+        call s:updateLocalFiles(a:sub_class,a:new_name,a:paren,a:old_name)
         call s:updatePackageFiles(file,a:new_name,a:paren,a:old_name,a:is_static)
     endfor
 
@@ -425,7 +422,7 @@ endfunction
 
 function! s:updateDeclarations(method_name,new_name)
     let a:class_name = expand('%:t:r')
-    let a:search = s:sub_class . '\_s\+\<' . a:class_name . '\>'
+    let a:search = s:sub_class . '[[:space:]]\+\<' . a:class_name . '\>'
 
     call s:updateDeclaration(a:method_name,a:new_name)
 
