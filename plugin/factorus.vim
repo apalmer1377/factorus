@@ -14,7 +14,7 @@ endfunction
 function! s:init_vars()
     let a:vars = [
         \ [ 'project_dir' , '' ],
-        \ [ 'ignore_files' , [ 'tags' , 'cscope.out' , '.*swp' ] ]
+        \ [ 'ignored_files' , [ 'tags' , 'cscope.out' , '.*swp' ] ]
     \ ]
 
     for [var,val] in a:vars
@@ -24,7 +24,7 @@ endfunction
 call s:init_vars()
 
 command! -nargs=0 FactorusCurrentTag    call factorus#gotoTag(0)
-command! -nargs=1 FactorusClass         call factorus#refactorClass(<f-args>)
-command! -nargs=1 FactorusMethod        call factorus#refactorMethod(<f-args>)
-command! -nargs=1 FactorusField         call factorus#refactorField(<f-args>) 
+command! -nargs=1 FactorusClass         call factorus#refactorThis(<f-args>,'class')
+command! -nargs=1 FactorusMethod        call factorus#refactorThis(<f-args>,'method')
+command! -nargs=1 FactorusField         call factorus#refactorThis(<f-args>,'field') 
 command! -nargs=0 FactorusGetSet        call factorus#encapsulateField()
