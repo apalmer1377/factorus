@@ -548,15 +548,19 @@ function! factorus#renameField(new_name) abort
 
     let a:is_local = s:getClassTag() == s:getAdjacentTag('b') ? 0 : 1
 
-    if a:is_static == 0 && a:is_local == 0
-        execute 's/\<' . a:var . '\>/' . a:new_name . '/'
-        call s:updateClassFile(a:type,a:var,a:new_name)
+    if a:is_local == 0
+        if a:is_static == 0
+            execute 's/\<' . a:var . '\>/' . a:new_name . '/'
+            call s:updateClassFile(a:type,a:var,a:new_name)
+        else
+            call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
+        endif
+
+        let a:packages = s:updateSubClassFiles(expand('%:t:r'),a:var,a:new_name,'',a:is_static)
+        call s:updateNonLocalFiles(a:packages,a:var,a:new_name,'',a:is_static)
     else
         call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
     endif
-
-    let a:packages = s:updateSubClassFiles(expand('%:t:r'),a:var,a:new_name,'',a:is_static)
-    call s:updateNonLocalFiles(a:packages,a:var,a:new_name,'',a:is_static)
 
     echom 'Re-named ' . a:var . ' to ' . a:new_name
 endfunction
