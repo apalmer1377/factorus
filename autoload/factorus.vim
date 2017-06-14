@@ -16,9 +16,9 @@ let s:start_chars = '\u0024\u0041-\u005a\u005f-\u005f\u0061-\u007a\u00a2-\u00a5\
 let s:collection_identifier = '\(\[\]\|<[<>,.[:space:]' . s:search_chars . ']*>\)'
 let s:access_query = '\(public\_s*\|private\_s*\|protected\_s*\)\=\(static\_s*\|abstract\_s*\)\=\(final\_s*\)\='
 let s:sub_class = '\(implements\|extends\)'
+let s:strip_dir = '\(.*\/\)\=\(.*\)'
 
 let g:factorus_java_identifier = '[' . s:start_chars . '][' . s:search_chars . ']*'
-let g:remainder_query = '\_[,<>.[:space:]' . s:search_chars . ']*'
 
 let s:struct = '\(class\|enum\|interface\)\_s\+' . g:factorus_java_identifier . '\_s\+' . s:sub_class . '\=.*{'
 let s:common = g:factorus_java_identifier . s:collection_identifier . '\=\_s\+' . g:factorus_java_identifier . '\_s*('
@@ -27,8 +27,6 @@ let s:reflect = s:collection_identifier . '\_s\+' . g:factorus_java_identifier .
 let g:factorus_tag_query = '^\s*' . s:access_query . '\(' . s:struct . '\|' . s:common . '\|' . s:reflect . '\)'
 
 let g:java_keywords = '[^' . s:search_chars . ']\+\(assert\|break\|case\|catch\|const\|continue\|default\|do\|else\|false\|finally\|float\|for\|goto\|if\|import\|instanceof\|new\|null\|package\|return\|strictfp\|super\|switch\|this\|throw\|transient\|true\|try\|volatile\|while\)[^' . s:search_chars . ']\+'
-
-let s:strip_dir = '\(.*\/\)\=\(.*\)'
 
 " Script-Defined Functions {{{1
 
@@ -52,36 +50,51 @@ function! s:getPackage(file)
     let a:head = system('head -n ' . a:i . ' ' . a:file)
     while match(a:head,'^package') < 0
         let a:i += 1
+        if a:i > 100
+            return 'NONE'
+        endif
         let a:head = system('head -n ' . a:i . ' ' . a:file . ' | tail -n 1')
     endwhile
+
+    let a:head = substitute(a:head,'^\s*package\s*\(.*\);.*','\1','')
+    let a:head = substitute(a:head,'\.','\\.','g')
     return a:head
 endfunction
 
 function! s:findTags(temp_file,search_string,append)
+    let a:ignore = ''
+    for file in g:factorus_ignored_files
+        let a:ignore .= '\! -name "' . file . '" '
+    endfor
     let a:fout = a:append == 'yes' ? '>>' : '>'
-    call system('find -name "*" \! -name ".*" -exec grep -l "' . a:search_string . '" {} + ' . a:fout . ' ' . a:temp_file . ' 2> /dev/null')
+    call system('find -name "*" \! -name ".*" ' . a:ignore . '-exec grep -l "' . a:search_string . '" {} + ' . a:fout . ' ' . a:temp_file . ' 2> /dev/null')
 endfunction
 
 function! s:narrowTags(temp_file,search_string)
-    let a:n_temp_file = a:temp_file . 'T'
+    let a:n_temp_file = a:temp_file . '.narrow'
     call system('cat ' . a:temp_file . ' | xargs grep -l "' . a:search_string . '" {} + > ' . a:n_temp_file)
     call system('mv ' . a:n_temp_file . ' ' . a:temp_file)
 endfunction
 
 function! s:getClosingBracket(stack)
 
-    let a:mark = 0
+    let a:mark = a:stack
 
     let a:orig = [line('.'),col('.')]
-    let a:pos = [line('.'),col('.')]
     let a:open = [line('.'),col('.')]
     let a:close = [line('.'),col('.')]
 
+    if a:stack == 1
+        let a:open = s:getNext('^\s*[^/*]\+.*{','We')
+        call cursor(a:open[0],a:open[1])
+    endif
+
+    let a:pos = [line('.'),col('.')]
     while a:mark >= a:stack
         call cursor(a:pos[0],a:pos[1])
 
-        let a:open = s:getNext('{','W')
-        let a:close = s:getNext('}','W')
+        let a:open = s:getNext('^\s*[^/*]\+.*{','We')
+        let a:close = s:getNext('^\s*[^/*]\+.*}','We')
 
         if a:open == a:pos || a:close == a:pos
             break
@@ -122,19 +135,7 @@ endfunction
 
 function! s:getAdjacentTag(dir)
     let [a:oline,a:ocol] = [line('.'),col('.')]
-    let [a:line,a:col] = [line('.'),col('.')]
-    if a:dir == 'b'
-        let a:is_match = match(getline(a:line),g:factorus_tag_query)
-        if a:is_match >= 0
-            if s:isValidTag(a:line) == 1
-                return a:line
-            endif
-        endif
-    endif
-
-    if a:dir == ''
-        let a:line += 1
-    endif
+    let [a:line,a:col] = [line('.') + 1,col('.')]
 
     let a:func = s:getNext(g:factorus_tag_query,'W' . a:dir)
     let a:is_valid = 0
@@ -167,19 +168,52 @@ endfunction
 
 function! s:getNextDec(class_name,...)
     let a:ident = a:0 > 0 ? a:1 : g:factorus_java_identifier
-    let a:get_variable = '^[^/*]\s*' . s:access_query . '\s*' . a:class_name . s:collection_identifier . '\=\s\+\(' . a:ident . '\)\s*[,=;]\s*'
+    let a:get_variable = '^[^/*]\s*' . s:access_query . '\s*\(' . a:class_name . '\)' . s:collection_identifier . '\=\s\+\(' . a:ident . '\)\s*[,=;]\s*'
 
     let a:line = line('.')
 
     let a:match = s:getNext(a:get_variable,'W')
 
     if a:match[0] > a:line
-        let a:var = substitute(getline(a:match[0]),a:get_variable,'\5','')
+        let a:var = substitute(getline(a:match[0]),a:get_variable,'\6','')
         return [a:var,a:match]
     endif
 
     return ['none',[0,0]]
 
+endfunction
+
+function! factorus#getFunctionDecs(class_name)
+    let a:query = '^\s*' . s:access_query . '\(' .  a:class_name . s:collection_identifier . '\=\)\_s\+\(' . g:factorus_java_identifier . '\)\_s*(.*'
+    let a:decs = []
+    try
+        execute 'silent vimgrep /' . a:query . '/j %:p'
+        let a:greps = getqflist()
+        for g in a:greps
+            let a:fname = substitute(g['text'],a:query,'\6','')
+            call add(a:decs,a:fname)
+        endfor
+        return a:decs
+    catch /.*No match.*/
+        return []
+    endtry
+endfunction
+
+function! factorus#getAllFunctions(type)
+    let a:class_name = expand('%t:r')
+    let a:hier = factorus#getHierarchy()
+
+    let a:defs = factorus#getFunctionDecs(a:type)
+    for class in a:hier
+        if class != expand('%:p')
+            execute 'silent edit ' . class
+            let a:defs += factorus#getFunctionDecs(a:type)
+            bdelete
+        endif
+    endfor
+    silent edit
+
+    return a:defs
 endfunction
 
 function! s:jumpToNearest(vars,next,paren) abort
@@ -249,184 +283,6 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
     silent write
 endfunction
 
-function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
-    let a:vars = []
-    let a:here = line('.')
-    let a:next = s:getNextDec(a:class_name)
-
-    while a:here < line('$')
-        let [a:jump,a:add] = s:jumpToNearest(a:vars,a:next,a:paren)
-        if line('.') == a:here
-            break
-        elseif a:add == 1
-            call add(a:vars,[a:next[0] . '\.' . a:method_name,s:getClosingBracket(0)])
-            let a:next = s:getNextDec(a:class_name)
-        else
-            let a:rep = substitute(a:jump,'\.' . a:method_name,'.' . a:new_name,'')
-            execute 's/\(\s\=!\=\s\=\)' . a:jump . '\s*' . a:paren . '/\1' . a:rep . a:paren . '/g'
-        endif
-        let a:here = line('.')
-    endwhile
-
-    silent write
-endfunction
-
-function! s:updateMethodFiles(file_name,class_name,method_name,new_name,paren) abort
-    let a:files = readfile(a:file_name)
-    for file in a:files
-        execute 'silent edit ' . file
-        call s:updateMethodFile(a:class_name,a:method_name,a:new_name,a:paren)
-        silent write
-        let a:name = substitute(file,s:strip_dir . '\.java','\2','')
-        if a:name != a:class_name 
-            bdelete
-        endif
-    endfor
-endfunction 
-
-function! s:refactor(old_name,new_name,is_method,is_local,is_static)
-    let a:orig = line('.')
-
-    if a:is_local == 1
-        let a:query = '\([^.]\)\<' . a:old_name . '\>'
-        let a:closing = s:getClosingBracket(1)
-
-        let a:next = s:getNext(a:query,'W')
-        while s:isBefore(a:next,a:closing)
-            if a:next[0] == line('.')
-                break
-            endif
-            call cursor(a:next[0],a:next[1])
-            execute 's/' . a:query . '/\1' . a:new_name . '/g'
-            let a:next = s:getNext(a:query,'W')
-        endwhile
-        silent write
-    else
-        let a:class_name = expand('%:t:r')
-        let a:paren = a:is_method == 1 ? '(' : ''
-
-        let a:global_name = a:is_static == 0 ? a:class_name : a:class_name . '\\.' . a:old_name
-        let a:new = a:is_static == 0 ? a:new_name : a:class_name . '.' . a:new_name
-        let a:opt_name = a:is_static == 0 ? a:old_name : ''
-
-        call s:updateLocalFiles(a:global_name,a:new,a:paren,a:opt_name)
-        call s:updatePackageFiles(expand('%:p'),a:new_name,a:paren,a:old_name,a:is_static)
-        execute 'silent %s/\([^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
-        silent write
-    endif
-
-    call cursor(a:orig,1)
-    silent edit
-
-endfunction
-
-function! s:updateLocalFiles(class_name,new_name,paren,...)
-    let a:prev_dir = getcwd()
-    cd %:p:h
-
-    let a:method_name = a:0 > 0 ? a:1 : ""
-    let a:temp_file = '.' . a:class_name
-
-    call system('ls -p | grep -v / > ' . a:temp_file)
-    call s:narrowTags(a:temp_file,a:class_name)
-
-    if a:method_name == ""
-        call system('while read p; do sed -i "s/\<' . a:class_name . '\>' . a:paren . '/' . a:new_name . a:paren . '/g" $p; done <' . a:temp_file)
-    else
-        call s:narrowTags(a:temp_file,a:method_name)
-        call s:updateMethodFiles(a:temp_file,a:class_name,a:method_name,a:new_name,a:paren)
-    endif
-
-    call system('rm -rf ' . a:temp_file)
-    execute 'cd ' . a:prev_dir
-endfunction
-
-function! s:updatePackageFiles(class_file,new_name,paren,...)
-
-    let a:class_name = substitute(a:class_file, s:strip_dir . '\.java','\2','')
-    let a:method_name = a:0 > 0 ? a:1 : ""
-    let a:is_static = a:0 > 1 ? a:2 : 1
-    let a:temp_file = '.' . a:class_name
-
-    let a:package_name = s:getPackage(a:class_file)
-    let a:package_name = substitute(a:package_name,'^\s*package\s*\(.*\);.*','\1','')
-    let a:package_search = substitute(a:package_name,'\.','\\.','g')
-    let a:import_search = a:package_search . '\.\(\*\|' . a:class_name . '\)'
-
-    call s:findTags(a:temp_file, a:import_search, 'no')
-
-    let a:filter = a:method_name == "" ? a:class_name : a:method_name
-    call s:narrowTags(a:temp_file,a:filter)
-
-    if a:is_static == 1
-        let a:old = a:class_name
-        let a:new = a:new_name
-        if a:method_name != ""
-            let a:old = a:class_name . '\\.' . a:method_name
-            let a:new = a:class_name . '.' . a:new_name
-        endif
-        call system('for line in $(cat ' . a:temp_file . '); do sed -i "s/\<' . a:old . '\>' . a:paren . '/' . a:new . a:paren . '/g" $line; done')
-    else
-        call s:updateMethodFiles(a:temp_file,a:class_name,a:method_name,a:new_name,a:paren)
-    endif
-
-    call system('rm -rf ' . a:temp_file)
-    return
-
-endfunction
-
-function! s:getSubClasses(class_name,method_name)
-
-    let a:sub_file = '.' . a:class_name
-    let a:temp_file = '.' . a:class_name . 'E'
-
-    let a:search = s:sub_class . '.*\<' . a:class_name . '\>'
-    call s:findTags(a:temp_file, a:search, 'no')
-    let a:sub = readfile(a:temp_file)
-
-    while a:sub != []
-        call system('cat ' . a:temp_file . ' >> ' . a:sub_file)
-        let a:sub_classes = '\(' . join(map(a:sub,{n,file -> substitute(file,s:strip_dir . '\.java','\2','')}),'\|') . '\)'
-        let a:search = s:sub_class . '[[:space:]]\+\<' . a:sub_classes . '\>'
-        call s:findTags(a:temp_file, a:search, 'no')
-        let a:sub = readfile(a:temp_file)
-    endwhile
-    "call s:narrowTags(a:sub_file,a:method_name)
-    let a:sub = readfile(a:sub_file)
-
-    call system('rm -rf ' . a:sub_file)
-    call system('rm -rf ' . a:temp_file)
-    return a:sub
-
-endfunction
-
-function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
-
-    let a:subs = s:getSubClasses(a:class_name,a:old_name)
-
-    let a:is_method = a:paren == '(' ? 1 : 0
-
-    let a:i = 0
-    for file in a:subs
-        let a:sub_class = substitute(substitute(file,s:strip_dir,'\2',''),'\.java','','')
-
-        if index(g:factorus_ignored_files,a:sub_class) >= 0
-            continue
-        endif
-        let a:i += 1
-        execute 'silent edit ' . file
-
-        if a:paren == '('
-            call s:updateDeclaration(a:old_name,a:new_name)
-        endif
-
-        call s:refactor(a:old_name,a:new_name,a:is_method,0,a:is_static)
-        bdelete
-    endfor
-    silent edit
-
-endfunction
-
 function! s:updateDeclaration(method_name,new_name)
     let a:orig = [line('.'),col('.')]
 
@@ -450,6 +306,186 @@ function! s:updateDeclaration(method_name,new_name)
     call cursor(a:orig[0],a:orig[1])
 endfunction
 
+function! factorus#getHierarchy()
+
+    let a:class_tag = s:getClassTag()
+    let a:class_name = expand('%:t:r')
+    let a:super_search = '.*\s' . a:class_name . '\s\+' . s:sub_class . '\s\+\<\(' . g:factorus_java_identifier . '\)\>.*{.*'
+    let a:sups = [expand('%:p')]
+
+    let a:imp = match(getline(a:class_tag),'\s' . s:sub_class . '\s')
+    if a:imp < 0
+        return a:sups
+    endif
+    let a:super = substitute(getline(a:class_tag),a:super_search,'\2','')
+
+    let a:possibles = split(system('find -name "' . a:super . '.java"'),'\n')
+    for poss in a:possibles
+        execute 'silent edit ' poss
+        let a:sups += factorus#getHierarchy()
+        bdelete
+    endfor
+
+    return a:sups
+
+endfunction
+
+function! s:getSubClasses(class_name)
+
+    let a:sub_file = '.' . a:class_name . '.Subs'
+    let a:temp_file = '.' . a:class_name . 'E'
+
+    let a:search = s:sub_class . '.*\<' . a:class_name . '\>'
+    call s:findTags(a:temp_file, a:search, 'no')
+    call system('> ' . a:sub_file)
+
+    let a:sub = readfile(a:temp_file)
+
+    while a:sub != []
+        call system('cat ' . a:temp_file . ' >> ' . a:sub_file)
+        let a:sub_classes = '\(' . join(map(a:sub,{n,file -> substitute(file,s:strip_dir . '\.java','\2','')}),'\|') . '\)'
+        let a:search = s:sub_class . '[[:space:]]\+\<' . a:sub_classes . '\>'
+        call s:findTags(a:temp_file, a:search, 'no')
+        let a:sub = readfile(a:temp_file)
+    endwhile
+    let a:sub = readfile(a:sub_file)
+
+    call system('rm -rf ' . a:sub_file)
+    call system('rm -rf ' . a:temp_file)
+    return a:sub
+
+endfunction
+
+function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
+
+    let a:subs = s:getSubClasses(a:class_name)
+    let a:is_method = a:paren == '(' ? 1 : 0
+    let a:packages = {s:getPackage(expand('%:p')) : [a:class_name]}
+
+    for file in a:subs
+        let a:sub_class = substitute(substitute(file,s:strip_dir,'\2',''),'\.java','','')
+
+        if index(g:factorus_ignored_files,a:sub_class) >= 0
+            continue
+        endif
+
+        let a:sub_package = s:getPackage(file)
+        if index(keys(a:packages), a:sub_package) < 0
+            let a:packages[a:sub_package] = [a:sub_class]
+        else
+            let a:packages[a:sub_package] = a:packages[a:sub_package] + [a:sub_class]
+        endif
+
+        execute 'silent edit ' . file
+        if a:paren == '('
+            call s:updateDeclaration(a:old_name,a:new_name)
+        else
+            call s:updateClassFile(a:sub_class,a:old_name,a:new_name)
+        endif
+        call s:updateFile(a:old_name,a:new_name,a:is_method,0,a:is_static)
+
+        bdelete
+    endfor
+    silent edit
+
+    return a:packages
+endfunction
+
+function! s:updateNonLocalFiles(packages,old_name,new_name,paren,is_static)
+    let a:temp_file = '.NonLocal'
+    
+    for package in keys(a:packages)
+        let a:classes = join(a:packages[package],'\|')
+        if a:is_static == 1
+            let a:search = '\(' . a:classes . '\)\.' . a:old_name . a:paren
+            call s:findTags(a:temp_file,a:search,'no')
+            call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/\1\.' . a:new_name . a:paren . '/g"')  
+        else
+            call s:findTags(a:temp_file,a:old_name,'no')
+            call s:updateMethodFiles(a:temp_file,a:classes,a:old_name,a:new_name,a:paren)
+        endif
+    endfor
+
+    call system('rm -rf ' . a:temp_file)
+endfunction
+
+function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
+    let a:vars = []
+    let a:here = line('.')
+    let a:next = s:getNextDec(a:class_name)
+
+    while a:here < line('$')
+        let [a:jump,a:add] = s:jumpToNearest(a:vars,a:next,a:paren)
+        if line('.') == a:here
+            break
+        elseif a:add == 1
+            call add(a:vars,[a:next[0] . '\.' . a:method_name,s:getClosingBracket(0)])
+            let a:next = s:getNextDec(a:class_name)
+        else
+            let a:rep = substitute(a:jump,'\.' . a:method_name,'.' . a:new_name,'')
+            execute 's/\(\s\=!\=\s\=\)' . a:jump . '\s*' . a:paren . '/\1' . a:rep . a:paren . '/g'
+        endif
+        let a:here = line('.')
+    endwhile
+    silent write
+
+    let a:funcs = '\(' . join(factorus#getAllFunctions(a:class_name),'\|') . '\)'
+    if a:funcs != '\(\)'
+        execute 'silent %s/\([^.]' . a:funcs . '\s*(.*)\.\)' . a:method_name . '\s*' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
+    endif
+
+    silent write
+endfunction
+
+function! s:updateMethodFiles(file_name,class_name,method_name,new_name,paren) abort
+    let a:files = readfile(a:file_name)
+    for file in a:files
+        let a:name = substitute(file,s:strip_dir . '\.java','\2','')
+        if a:name != a:class_name 
+            execute 'silent edit ' . file
+            call s:updateMethodFile(a:class_name,a:method_name,a:new_name,a:paren)
+            bdelete
+        endif
+    endfor
+    silent edit
+endfunction 
+
+function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
+    let a:orig = line('.')
+
+    if a:is_local == 1
+        let a:query = '\([^.]\)\<' . a:old_name . '\>'
+        execute 's/' . a:query . '/\1' . a:new_name . '/g'
+
+        call factorus#gotoTag(0)
+        let a:closing = s:getClosingBracket(1)
+
+        let a:next = s:getNext(a:query,'W')
+        while s:isBefore(a:next,a:closing)
+            if a:next[0] == line('.')
+                break
+            endif
+            call cursor(a:next[0],a:next[1])
+            execute 's/' . a:query . '/\1' . a:new_name . '/g'
+
+            let a:next = s:getNext(a:query,'W')
+        endwhile
+        silent write
+    else
+        let a:class_name = expand('%:t:r')
+        let a:paren = a:is_method == 1 ? '(' : ''
+
+        let a:global_name = a:is_static == 0 ? a:class_name : a:class_name . '\\.' . a:old_name
+        let a:new = a:is_static == 0 ? a:new_name : a:class_name . '.' . a:new_name
+        let a:opt_name = a:is_static == 0 ? a:old_name : ''
+
+        call system('sed -i "s/\([^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/g" ' . expand('%:p'))
+    endif
+
+    call cursor(a:orig,1)
+    silent edit
+endfunction
+
 " Global Functions {{{1
 
 function! factorus#getNextTag()
@@ -465,20 +501,32 @@ function! factorus#gotoTag(head)
     endif
 endfunction
 
-function! factorus#refactorClass(new_name) abort
+function! factorus#renameArg(new_name) abort
+    let a:var = expand('<cword>')
+    call s:updateFile(a:var,a:new_name,0,1,0)
+
+    echom 'Re-named ' . a:var . ' to ' . a:new_name
+endfunction
+
+function! factorus#renameClass(new_name) abort
     let a:class_name = expand('%:t:r')
+    let a:old_file = expand('%:p')
+    let a:package_name = s:getPackage(a:old_file)
 
-    call s:updateLocalFiles(a:class_name,a:new_name,'')
-    call s:updatePackageFiles(expand('%:p'),a:new_name,'')
+    let a:temp_file = '.' . a:class_name
+    call s:findTags(a:temp_file,a:package_name,'no')
+    call s:narrowTags(a:temp_file,a:class_name)
 
-    call system('mv ' . a:class_name . '.java ' . a:new_name . '.java')
-    execute 'silent edit ' . a:new_name . '.java'
+    let a:new_file = expand('%:p:h') . '/' . a:new_name . '.java'
+    call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:class_name . '\>/' . a:new_name . '/g"') 
+    call system('mv ' . a:old_file . ' ' . a:new_file)
+    execute 'silent edit ' . a:new_file
 
     echom 'Re-named class ' . a:class_name . ' to ' . a:new_name
 endfunction
 
-function! factorus#refactorField(new_name) abort
-    let a:search = '\s*' . s:access_query . '\(' . g:factorus_java_identifier . s:collection_identifier . '\=\)\_s*\(' . g:factorus_java_identifier . '\)\_s*[;=].*'
+function! factorus#renameField(new_name) abort
+    let a:search = '\s*' . s:access_query . '\(' . g:factorus_java_identifier . s:collection_identifier . '\=\s\)\=\s*\(' . g:factorus_java_identifier . '\)\s*[.;=].*'
 
     let a:line = getline('.')
     let a:is_static = substitute(a:line,a:search,'\2','') == 'static' ? 1 : 0
@@ -487,43 +535,48 @@ function! factorus#refactorField(new_name) abort
 
     let a:is_local = s:getClassTag() == s:getAdjacentTag('b') ? 0 : 1
 
-    if a:is_static == 0
+    if a:is_static == 0 && a:is_local == 0
         execute 's/' a:var . '/' . a:new_name . '/'
         call s:updateClassFile(a:type,a:var,a:new_name)
     endif
 
-    call s:refactor(a:var,a:new_name,0,a:is_local,a:is_static)
+    call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
 
     echom 'Re-named ' . a:var . ' to ' . a:new_name
 endfunction
 
-function! factorus#refactorMethod(new_name) abort
+function! factorus#renameMethod(new_name) abort
     call factorus#gotoTag(0)
 
     let a:method_name = matchstr(getline('.'),'\s\+' . g:factorus_java_identifier . '\s*(')
     let a:method_name = matchstr(a:method_name,'[^[:space:](]\+')
     let a:is_static = match(getline('.'),'\s\+static\s\+[^)]\+(') >= 0 ? 1 : 0
 
-    call s:refactor(a:method_name,a:new_name,1,0,a:is_static)
-    call s:updateSubClassFiles(expand('%:t:r'),a:method_name,a:new_name,'(',a:is_static)
+    call s:updateFile(a:method_name,a:new_name,1,0,a:is_static)
 
-    let a:keyword = a:is_static >= 0 ? ' static' : ''
+    let a:packages = s:updateSubClassFiles(expand('%:t:r'),a:method_name,a:new_name,'(',a:is_static)
+    call s:updateNonLocalFiles(a:packages,a:method_name,a:new_name,'(',a:is_static)
+
+    let a:keyword = a:is_static == 1 ? ' static' : ''
     echom 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
-
 endfunction
 
-function! factorus#refactorThis(new_name,type)
+function! factorus#renameSomething(new_name,type)
     let a:prev_dir = getcwd()
     let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
     execute 'cd ' a:project_dir
 
     if a:type == 'class'
-        call factorus#refactorClass(a:new_name)
+        call factorus#renameClass(a:new_name)
     else
         if a:type == 'method'
-            call factorus#refactorMethod(a:new_name)
+            call factorus#renameMethod(a:new_name)
+        elseif a:type == 'field'
+            call factorus#renameField(a:new_name)
+        elseif a:type == 'arg'
+            call factorus#renameArg(a:new_name)
         else
-            call factorus#refactorField(a:new_name)
+            echo 'Unknown option ' . a:type
         endif
     endif
 
@@ -550,10 +603,10 @@ function! factorus#encapsulateField() abort
         return
     endif
 
-    execute 's/\<public\>/private/'
+    execute 'silent s/\<public\>/private/e'
     let a:get = ["\tpublic " . a:type . " get" . a:cap . "() {" , "\t\treturn " . a:var . ";" , "\t}"]
     let a:set = ["\tpublic void set" . a:cap . "(" . a:type . ' ' . a:var . ") {" , "\t\tthis." . a:var . " = " . a:var . ";" , "\t}"]
-    let a:encap = a:get + [""] + a:set + [""]
+    let a:encap = [""] + a:get + [""] + a:set + [""]
 
     let a:end = s:getNext('}','b')
     call append(a:end[0] - 1,a:encap)
