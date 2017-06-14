@@ -20,7 +20,7 @@ let s:strip_dir = '\(.*\/\)\=\(.*\)'
 
 let g:factorus_java_identifier = '[' . s:start_chars . '][' . s:search_chars . ']*'
 
-let s:struct = '\(class\|enum\|interface\)\_s\+' . g:factorus_java_identifier . '\_s\+' . s:sub_class . '\=.*{'
+let s:struct = '\(class\|enum\|interface\)\_s\+' . g:factorus_java_identifier . '\_s\+' . s:sub_class . '\=\_.*{'
 let s:common = g:factorus_java_identifier . s:collection_identifier . '\=\_s\+' . g:factorus_java_identifier . '\_s*('
 let s:reflect = s:collection_identifier . '\_s\+' . g:factorus_java_identifier . '\_s\+' . g:factorus_java_identifier . '\_s*('
 
@@ -167,15 +167,19 @@ function! s:getClassTag()
 endfunction
 
 function! s:getNextDec(class_name,...)
-    let a:ident = a:0 > 0 ? a:1 : g:factorus_java_identifier
-    let a:get_variable = '^[^/*]\s*' . s:access_query . '\s*\(' . a:class_name . '\)' . s:collection_identifier . '\=\s\+\(' . a:ident . '\)\s*[,=;]\s*'
+    let a:get_variable = '^[^/*]\s*' . s:access_query . '\s*\(' . a:class_name . '\)' . s:collection_identifier . '\=\s\+\(' . g:factorus_java_identifier . '\)\s*[,=;)]\s*'
+    let a:index = '\6'
+    if a:0 > 0
+        let a:get_variable = '^[^/*].*(.*\(\<' . a:class_name . '\>\)' . s:collection_identifier . '\=\s\+\(\<' . a:1 . '\).*).*'
+        let a:index = '\3'
+    endif
 
     let a:line = line('.')
 
     let a:match = s:getNext(a:get_variable,'W')
 
     if a:match[0] > a:line
-        let a:var = substitute(getline(a:match[0]),a:get_variable,'\6','')
+        let a:var = substitute(getline(a:match[0]),a:get_variable,a:index,'')
         return [a:var,a:match]
     endif
 
@@ -270,8 +274,8 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
                 endif
             endif
         else
-            execute 's/' . a:search[a:restricted] . '/\1' . a:new_name . '/g'
             call cursor(a:rep[0],1)
+            execute 's/' . a:search[a:restricted] . '/\1' . a:new_name . '/g'
         endif
 
         let a:here = line('.')
@@ -335,7 +339,7 @@ function! s:getSubClasses(class_name)
     let a:sub_file = '.' . a:class_name . '.Subs'
     let a:temp_file = '.' . a:class_name . 'E'
 
-    let a:search = s:sub_class . '.*\<' . a:class_name . '\>'
+    let a:search = s:sub_class . '.*[^<]\<' . a:class_name . '\>[^>]'
     call s:findTags(a:temp_file, a:search, 'no')
     call system('> ' . a:sub_file)
 
@@ -377,12 +381,14 @@ function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
         endif
 
         execute 'silent edit ' . file
-        if a:paren == '('
-            call s:updateDeclaration(a:old_name,a:new_name)
+        if a:is_static == 1 || a:paren == '('
+            call s:updateFile(a:old_name,a:new_name,a:is_method,0,a:is_static)
+            if a:paren == '('
+                call s:updateDeclaration(a:old_name,a:new_name)
+            endif
         else
             call s:updateClassFile(a:sub_class,a:old_name,a:new_name)
         endif
-        call s:updateFile(a:old_name,a:new_name,a:is_method,0,a:is_static)
 
         bdelete
     endfor
@@ -397,7 +403,7 @@ function! s:updateNonLocalFiles(packages,old_name,new_name,paren,is_static)
     for package in keys(a:packages)
         let a:classes = join(a:packages[package],'\|')
         if a:is_static == 1
-            let a:search = '\(' . a:classes . '\)\.' . a:old_name . a:paren
+            let a:search = '\<\(' . a:classes . '\)\>\.\<' . a:old_name . '\>' . a:paren
             call s:findTags(a:temp_file,a:search,'no')
             call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/\1\.' . a:new_name . a:paren . '/g"')  
         else
@@ -526,21 +532,26 @@ function! factorus#renameClass(new_name) abort
 endfunction
 
 function! factorus#renameField(new_name) abort
-    let a:search = '\s*' . s:access_query . '\(' . g:factorus_java_identifier . s:collection_identifier . '\=\s\)\=\s*\(' . g:factorus_java_identifier . '\)\s*[.;=].*'
+    let a:search = '^\s*' . s:access_query . '\(' . g:factorus_java_identifier . s:collection_identifier . '\=\)\=\s*\(' . g:factorus_java_identifier . '\)\s*[;=].*'
 
     let a:line = getline('.')
-    let a:is_static = substitute(a:line,a:search,'\2','') == 'static' ? 1 : 0
+    let a:stat = substitute(substitute(a:line,a:search,'\2',''),'\s','','g')
+    let a:is_static = a:stat == 'static' ? 1 : 0
     let a:type = substitute(a:line,a:search,'\4','')
     let a:var = substitute(a:line,a:search,'\6','')
 
     let a:is_local = s:getClassTag() == s:getAdjacentTag('b') ? 0 : 1
 
     if a:is_static == 0 && a:is_local == 0
-        execute 's/' a:var . '/' . a:new_name . '/'
+        execute 's/\<' . a:var . '\>/' . a:new_name . '/'
         call s:updateClassFile(a:type,a:var,a:new_name)
+    else
+        call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
     endif
 
-    call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
+    let a:packages = s:updateSubClassFiles(expand('%:t:r'),a:var,a:new_name,'',a:is_static)
+    "echom string(a:packages)
+    "call s:updateNonLocalFiles(a:packages,a:var,a:new_name,'',a:is_static)
 
     echom 'Re-named ' . a:var . ' to ' . a:new_name
 endfunction
