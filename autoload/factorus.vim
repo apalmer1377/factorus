@@ -170,7 +170,7 @@ function! s:getNextDec(class_name,...)
     let a:get_variable = '^[^/*]\s*' . s:access_query . '\s*\(' . a:class_name . '\)' . s:collection_identifier . '\=\s\+\(' . g:factorus_java_identifier . '\)\s*[,=;)]\s*'
     let a:index = '\6'
     if a:0 > 0
-        let a:get_variable = '^[^/*].*(.*\(\<' . a:class_name . '\>\)' . s:collection_identifier . '\=\s\+\(\<' . a:1 . '\).*).*'
+        let a:get_variable = '^[^/*].*(.*\<\(' . a:class_name . '\)\>' . s:collection_identifier . '\=\s\+\(\<' . a:1 . '\).*).*'
         let a:index = '\3'
     endif
 
@@ -187,7 +187,7 @@ function! s:getNextDec(class_name,...)
 
 endfunction
 
-function! factorus#getFunctionDecs(class_name)
+function! s:getFunctionDecs(class_name)
     let a:query = '^\s*' . s:access_query . '\(' .  a:class_name . s:collection_identifier . '\=\)\_s\+\(' . g:factorus_java_identifier . '\)\_s*(.*'
     let a:decs = []
     try
@@ -203,15 +203,15 @@ function! factorus#getFunctionDecs(class_name)
     endtry
 endfunction
 
-function! factorus#getAllFunctions(type)
+function! s:getAllFunctions(type)
     let a:class_name = expand('%t:r')
-    let a:hier = factorus#getHierarchy()
+    let a:hier = s:getSuperClasses()
 
-    let a:defs = factorus#getFunctionDecs(a:type)
+    let a:defs = s:getFunctionDecs(a:type)
     for class in a:hier
         if class != expand('%:p')
             execute 'silent edit ' . class
-            let a:defs += factorus#getFunctionDecs(a:type)
+            let a:defs += s:getFunctionDecs(a:type)
             bdelete
         endif
     endfor
@@ -252,7 +252,7 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
     let a:restricted = 0
     let a:here = line('.')
 
-    let a:search = ['\(\s\+\|\s\+this\.\)\(' . a:old_name . '\)' , '\(\s\+this\.\)\(' . a:old_name . '\)']
+    let a:search = ['\([^.]\|\<this\>\.\)\<\(' . a:old_name . '\)\>' , '\(\<this\>\.\)\<\(' . a:old_name . '\)\>']
 
     let [a:dec,a:next] = s:getNextDec(a:class_name,a:old_name)
     if a:next[0] == 0
@@ -280,6 +280,10 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
 
         let a:here = line('.')
         let a:rep = s:getNext(a:search[a:restricted],'W')
+        if a:rep[0] == a:here
+            call cursor(a:next[0],1)
+            let a:rep = s:getNext(a:search[1-a:restricted],'W')
+        endif
 
     endwhile
     call cursor(a:prev[0],a:prev[1])
@@ -310,7 +314,7 @@ function! s:updateDeclaration(method_name,new_name)
     call cursor(a:orig[0],a:orig[1])
 endfunction
 
-function! factorus#getHierarchy()
+function! s:getSuperClasses()
 
     let a:class_tag = s:getClassTag()
     let a:class_name = expand('%:t:r')
@@ -326,7 +330,7 @@ function! factorus#getHierarchy()
     let a:possibles = split(system('find -name "' . a:super . '.java"'),'\n')
     for poss in a:possibles
         execute 'silent edit ' poss
-        let a:sups += factorus#getHierarchy()
+        let a:sups += s:getSuperClasses()
         bdelete
     endfor
 
@@ -435,7 +439,7 @@ function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
     endwhile
     silent write
 
-    let a:funcs = '\(' . join(factorus#getAllFunctions(a:class_name),'\|') . '\)'
+    let a:funcs = '\(' . join(s:getAllFunctions(a:class_name),'\|') . '\)'
     if a:funcs != '\(\)'
         execute 'silent %s/\([^.]' . a:funcs . '\s*(.*)\.\)' . a:method_name . '\s*' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
     endif
@@ -447,7 +451,7 @@ function! s:updateMethodFiles(file_name,class_name,method_name,new_name,paren) a
     let a:files = readfile(a:file_name)
     for file in a:files
         let a:name = substitute(file,s:strip_dir . '\.java','\2','')
-        if a:name != a:class_name 
+        if a:name != expand('%:t:r')
             execute 'silent edit ' . file
             call s:updateMethodFile(a:class_name,a:method_name,a:new_name,a:paren)
             bdelete
@@ -535,10 +539,12 @@ function! factorus#renameField(new_name) abort
     let a:search = '^\s*' . s:access_query . '\(' . g:factorus_java_identifier . s:collection_identifier . '\=\)\=\s*\(' . g:factorus_java_identifier . '\)\s*[;=].*'
 
     let a:line = getline('.')
-    let a:stat = substitute(substitute(a:line,a:search,'\2',''),'\s','','g')
-    let a:is_static = a:stat == 'static' ? 1 : 0
+    let a:is_static = substitute(substitute(a:line,a:search,'\2',''),'\s','','g') == 'static' ? 1 : 0
     let a:type = substitute(a:line,a:search,'\4','')
     let a:var = substitute(a:line,a:search,'\6','')
+    if a:var == '' || a:type == '' || match(a:var,'[^' . s:search_chars . ']') >= 0
+        throw 'INVALID'
+    endif
 
     let a:is_local = s:getClassTag() == s:getAdjacentTag('b') ? 0 : 1
 
@@ -550,8 +556,7 @@ function! factorus#renameField(new_name) abort
     endif
 
     let a:packages = s:updateSubClassFiles(expand('%:t:r'),a:var,a:new_name,'',a:is_static)
-    "echom string(a:packages)
-    "call s:updateNonLocalFiles(a:packages,a:var,a:new_name,'',a:is_static)
+    call s:updateNonLocalFiles(a:packages,a:var,a:new_name,'',a:is_static)
 
     echom 'Re-named ' . a:var . ' to ' . a:new_name
 endfunction
@@ -577,21 +582,25 @@ function! factorus#renameSomething(new_name,type)
     let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
     execute 'cd ' a:project_dir
 
-    if a:type == 'class'
-        call factorus#renameClass(a:new_name)
-    else
-        if a:type == 'method'
-            call factorus#renameMethod(a:new_name)
-        elseif a:type == 'field'
-            call factorus#renameField(a:new_name)
-        elseif a:type == 'arg'
-            call factorus#renameArg(a:new_name)
+    try
+        if a:type == 'class'
+            call factorus#renameClass(a:new_name)
         else
-            echo 'Unknown option ' . a:type
+            if a:type == 'method'
+                call factorus#renameMethod(a:new_name)
+            elseif a:type == 'field'
+                call factorus#renameField(a:new_name)
+            elseif a:type == 'arg'
+                call factorus#renameArg(a:new_name)
+            else
+                echo 'Unknown option ' . a:type
+            endif
         endif
-    endif
-
-    execute 'cd ' a:prev_dir
+    catch /.*INVALID.*/
+        echom 'Factorus: Invalid expression under cursor'
+    finally
+        execute 'cd ' a:prev_dir
+    endtry
 endfunction
 
 function! factorus#encapsulateField() abort
@@ -605,12 +614,12 @@ function! factorus#encapsulateField() abort
 
     let a:is_local = s:getClassTag() == s:getAdjacentTag('b') ? 0 : 1
     if a:is_local == 1
-        echom 'Cannot encapsulate a local variable'
+        echom 'Factorus: Cannot encapsulate a local variable'
         return
     endif
 
     if a:is_static == 1
-        echom 'Cannot encapsulate a static variable'
+        echom 'Factorus: Cannot encapsulate a static variable'
         return
     endif
 
