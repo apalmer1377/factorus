@@ -81,7 +81,7 @@ function! s:getAdjacentTag(dir)
 
     let a:func = searchpos(g:factorus_tag_query,'Wn' . a:dir)
     let a:is_valid = 0
-    while a:func[0] != a:line
+    while a:func != [0,0]
         let a:is_valid = s:isValidTag(a:func[0])
         if a:is_valid == 1
             break
@@ -137,7 +137,7 @@ function! s:getClosingBracket(stack)
         let a:open = searchpos('^\s*[^/*]\+.*{','Wen')
         let a:close = searchpos('^\s*[^/*]\+.*}','Wen')
 
-        if a:open == a:pos || a:close == a:pos
+        if a:open == [0,0] || a:close == [0,0]
             break
         endif
 
@@ -245,7 +245,7 @@ function! s:jumpToNearest(vars,next,paren) abort
         let a:match = searchpos(a:search,'Wn') 
         if s:isBefore(a:var[1],a:match) == 1
             call remove(a:vars,a:count)
-        elseif a:match[0] > line('.') && s:isBefore(a:match,a:min)
+        elseif a:match != [0,0] && s:isBefore(a:match,a:min)
             let a:add = 0
             let a:min = copy(a:match)
             let a:jump = a:var[0]
@@ -325,7 +325,7 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
     endif
 
     let a:rep = searchpos(a:search[a:restricted],'Wn')
-    while a:rep[0] != a:here
+    while a:rep != [0,0]
 
         if a:rep[0] >= a:next[0]
             call cursor(a:next[0],1)
@@ -345,7 +345,7 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
 
         let a:here = line('.')
         let a:rep = searchpos(a:search[a:restricted],'Wn')
-        if a:rep[0] == a:here
+        if a:rep == [0,0]
             call cursor(a:next[0],1)
             let a:rep = searchpos(a:search[1-a:restricted],'Wn')
         endif
@@ -488,7 +488,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
 
         let a:next = searchpos(a:query,'Wn')
         while s:isBefore(a:next,a:closing)
-            if a:next[0] == line('.')
+            if a:next[0] == [0,0]
                 break
             endif
             call cursor(a:next[0],a:next[1])
@@ -729,7 +729,7 @@ function! factorus#getNextReference(var,type)
     if a:type == 'right'
         let a:prev = [line('.'),col('.')]
         while s:isValidTag(a:line[0]) == 0
-            if a:line[0] == line('.')
+            if a:line == [0,0]
                 break
             endif
             call cursor(a:line[0],a:line[1])
@@ -777,7 +777,14 @@ function! factorus#addBlockLines(lines,line,start)
     while match(getline(a:open[0]),'\<\(if\|while\|for\)\>') < 0
         let a:open[0] -= 1
     endwhile
+
+    call cursor(a:close[0],a:close[1])
+    while searchpos('}\_s*else\_s*\(if\)\=\_s*{','Wcn') == [line('.'),col('.')]
+        let a:close = searchpos('}','Wn') 
+        call cursor(a:close[0],a:close[1])
+    endwhile
     
+    call cursor(a:orig[0],a:orig[1])
     let a:range = [a:open[0],a:close[0]]
     if index(a:lines,[line('.'),a:range]) < 0
         call add(a:lines,[line('.'),a:range])
