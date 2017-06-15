@@ -30,13 +30,7 @@ let g:java_keywords = '[^' . s:search_chars . ']\+\(assert\|break\|case\|catch\|
 
 " Script-Defined Functions {{{1
 
-function! s:getNext(word,flags)
-    let [a:line,a:col] = [line('.'),col('.')]
-    call search(a:word,a:flags)
-    let [a:s_line,a:s_col] = [line('.'),col('.')]
-    call cursor(a:line,a:col)
-    return [a:s_line,a:s_col]
-endfunction
+" General-Purpose Functions {{{2
 
 function! s:isBefore(x,y)
     if a:x[0] < a:y[0] || (a:x[0] == a:y[0] && a:x[1] < a:y[1])
@@ -45,21 +39,7 @@ function! s:isBefore(x,y)
     return 0
 endfunction
 
-function! s:getPackage(file)
-    let a:i = 1
-    let a:head = system('head -n ' . a:i . ' ' . a:file)
-    while match(a:head,'^package') < 0
-        let a:i += 1
-        if a:i > 100
-            return 'NONE'
-        endif
-        let a:head = system('head -n ' . a:i . ' ' . a:file . ' | tail -n 1')
-    endwhile
-
-    let a:head = substitute(a:head,'^\s*package\s*\(.*\);.*','\1','')
-    let a:head = substitute(a:head,'\.','\\.','g')
-    return a:head
-endfunction
+" Tag-Related Functions {{{2
 
 function! s:findTags(temp_file,search_string,append)
     let a:ignore = ''
@@ -74,45 +54,6 @@ function! s:narrowTags(temp_file,search_string)
     let a:n_temp_file = a:temp_file . '.narrow'
     call system('cat ' . a:temp_file . ' | xargs grep -l "' . a:search_string . '" {} + > ' . a:n_temp_file)
     call system('mv ' . a:n_temp_file . ' ' . a:temp_file)
-endfunction
-
-function! s:getClosingBracket(stack)
-
-    let a:mark = a:stack
-
-    let a:orig = [line('.'),col('.')]
-    let a:open = [line('.'),col('.')]
-    let a:close = [line('.'),col('.')]
-
-    if a:stack == 1
-        let a:open = s:getNext('^\s*[^/*]\+.*{','We')
-        call cursor(a:open[0],a:open[1])
-    endif
-
-    let a:pos = [line('.'),col('.')]
-    while a:mark >= a:stack
-        call cursor(a:pos[0],a:pos[1])
-
-        let a:open = s:getNext('^\s*[^/*]\+.*{','We')
-        let a:close = s:getNext('^\s*[^/*]\+.*}','We')
-
-        if a:open == a:pos || a:close == a:pos
-            break
-        endif
-
-        if s:isBefore(a:open,a:close) == 1
-            let a:pos = copy(a:open)
-            let a:mark += 1
-        else
-            let a:pos = copy(a:close)
-            let a:mark -= 1
-        endif
-
-    endwhile
-
-    call cursor(a:orig[0],a:orig[1])
-    return a:pos
-
 endfunction
 
 function! s:isValidTag(line)
@@ -136,8 +77,9 @@ endfunction
 function! s:getAdjacentTag(dir)
     let [a:oline,a:ocol] = [line('.'),col('.')]
     let [a:line,a:col] = [line('.') + 1,col('.')]
+    call cursor(a:line,a:col)
 
-    let a:func = s:getNext(g:factorus_tag_query,'W' . a:dir)
+    let a:func = searchpos(g:factorus_tag_query,'Wn' . a:dir)
     let a:is_valid = 0
     while a:func[0] != a:line
         let a:is_valid = s:isValidTag(a:func[0])
@@ -147,7 +89,7 @@ function! s:getAdjacentTag(dir)
 
         call cursor(a:func[0],a:func[1])
         let [a:line,a:col] = [line('.'),col('.')]
-        let a:func = s:getNext(g:factorus_tag_query,'W' . a:dir)
+        let a:func = searchpos(g:factorus_tag_query,'Wn' . a:dir)
 
     endwhile
     call cursor(a:oline,a:ocol)
@@ -161,24 +103,95 @@ endfunction
 function! s:getClassTag()
     let [a:line,a:col] = [line('.'),col('.')]
     call cursor(1,1)
-    let a:class_tag = s:getNext(g:factorus_tag_query,'')
+    let a:class_tag = searchpos(g:factorus_tag_query,'n')
     call cursor(a:line,a:col)
     return a:class_tag[0]
 endfunction
 
-function! s:getNextDec(class_name,...)
-    let a:get_variable = '^[^/*]\s*' . s:access_query . '\s*\(' . a:class_name . '\)' . s:collection_identifier . '\=\s\+\(' . g:factorus_java_identifier . '\)\s*[,=;)]\s*'
-    let a:index = '\6'
-    if a:0 > 0
-        let a:get_variable = '^[^/*].*(.*\<\(' . a:class_name . '\)\>' . s:collection_identifier . '\=\s\+\(\<' . a:1 . '\).*).*'
+function! s:gotoTag(head)
+    let a:tag = a:head == 1 ? s:getClassTag() : s:getAdjacentTag('b') 
+    if a:tag <= line('.')
+        call cursor(a:tag,1)
+    else
+        echo 'No tag found'
+    endif
+endfunction
+
+function! s:getClosingBracket(stack)
+
+    let a:mark = a:stack
+
+    let a:orig = [line('.'),col('.')]
+    let a:open = [line('.'),col('.')]
+    let a:close = [line('.'),col('.')]
+
+    if a:stack == 1
+        let a:open = searchpos('^\s*[^/*]\+.*{','Wen')
+        call cursor(a:open[0],a:open[1])
+    endif
+
+    let a:pos = [line('.'),col('.')]
+    while a:mark >= a:stack
+        call cursor(a:pos[0],a:pos[1])
+
+        let a:open = searchpos('^\s*[^/*]\+.*{','Wen')
+        let a:close = searchpos('^\s*[^/*]\+.*}','Wen')
+
+        if a:open == a:pos || a:close == a:pos
+            break
+        endif
+
+        if s:isBefore(a:open,a:close) == 1
+            let a:pos = copy(a:open)
+            let a:mark += 1
+        else
+            let a:pos = copy(a:close)
+            let a:mark -= 1
+        endif
+
+    endwhile
+
+    call cursor(a:orig[0],a:orig[1])
+    return a:pos
+
+endfunction
+
+" Class-Related Functions {{{2
+
+function! s:getPackage(file)
+    let a:i = 1
+    let a:head = system('head -n ' . a:i . ' ' . a:file)
+    while match(a:head,'^package') < 0
+        let a:i += 1
+        if a:i > 100
+            return 'NONE'
+        endif
+        let a:head = system('head -n ' . a:i . ' ' . a:file . ' | tail -n 1')
+    endwhile
+
+    let a:head = substitute(a:head,'^\s*package\s*\(.*\);.*','\1','')
+    let a:head = substitute(a:head,'\.','\\.','g')
+    return a:head
+endfunction
+
+function! s:getNextDec(...)
+    if a:0 == 0
+        let a:get_variable = '^[^/*]\s*' . s:access_query . '\s*\(' . g:factorus_java_identifier . '\)' . s:collection_identifier . '\=\s\+\(' . g:factorus_java_identifier . '\)\s*[,=;)].*' 
+        let a:index = '\6'
+    elseif a:0 == 1
+        let a:get_variable = '^[^/*]\s*' . s:access_query . '\s*\(' . a:1 . '\)' . s:collection_identifier . '\=\s\+\(' . g:factorus_java_identifier . '\)\s*[,=;)].*'
+        let a:index = '\6'
+    else
+        let a:get_variable = '^[^/*].*(.*\<\(' . a:1 . '\)\>' . s:collection_identifier . '\=\s\+\(\<' . a:2 . '\).*).*'
         let a:index = '\3'
     endif
 
     let a:line = line('.')
+    let a:col = col('.')
 
-    let a:match = s:getNext(a:get_variable,'W')
+    let a:match = searchpos(a:get_variable,'Wn')
 
-    if a:match[0] > a:line
+    if s:isBefore([a:line,a:col],a:match)
         let a:var = substitute(getline(a:match[0]),a:get_variable,a:index,'')
         return [a:var,a:match]
     endif
@@ -229,7 +242,7 @@ function! s:jumpToNearest(vars,next,paren) abort
     while a:count >= 0
         let a:var = a:vars[a:count]
         let a:search = '^\s*[^/*]*' . a:var[0] . a:paren
-        let a:match = s:getNext(a:search,'W') 
+        let a:match = searchpos(a:search,'Wn') 
         if s:isBefore(a:var[1],a:match) == 1
             call remove(a:vars,a:count)
         elseif a:match[0] > line('.') && s:isBefore(a:match,a:min)
@@ -244,74 +257,6 @@ function! s:jumpToNearest(vars,next,paren) abort
 
     return [a:jump,a:add]
 
-endfunction
-
-function! s:updateClassFile(class_name,old_name,new_name) abort
-    let a:prev = [line('.'),col('.')]
-    call cursor(1,1)
-    let a:restricted = 0
-    let a:here = line('.')
-
-    let a:search = ['\([^.]\|\<this\>\.\)\<\(' . a:old_name . '\)\>' , '\(\<this\>\.\)\<\(' . a:old_name . '\)\>']
-
-    let [a:dec,a:next] = s:getNextDec(a:class_name,a:old_name)
-    if a:next[0] == 0
-        let a:next = line('$')
-    endif
-
-    let a:rep = s:getNext(a:search[a:restricted],'W')
-    while a:rep[0] != a:here
-
-        if a:rep[0] >= a:next[0]
-            call cursor(a:next[0],1)
-            let a:restricted = 1 - a:restricted
-            if a:restricted == 1
-                let a:next = factorus#getNextTag()
-            else
-                let [a:dec,a:next] = s:getNextDec(a:class_name,a:old_name)
-                if a:next[0] == 0
-                    let a:next = [line('$'),1]
-                endif
-            endif
-        else
-            call cursor(a:rep[0],1)
-            execute 's/' . a:search[a:restricted] . '/\1' . a:new_name . '/g'
-        endif
-
-        let a:here = line('.')
-        let a:rep = s:getNext(a:search[a:restricted],'W')
-        if a:rep[0] == a:here
-            call cursor(a:next[0],1)
-            let a:rep = s:getNext(a:search[1-a:restricted],'W')
-        endif
-
-    endwhile
-    call cursor(a:prev[0],a:prev[1])
-
-    silent write
-endfunction
-
-function! s:updateDeclaration(method_name,new_name)
-    let a:orig = [line('.'),col('.')]
-
-    call cursor(1,1)
-
-    let a:prev = [line('.'),col('.')]
-    let a:next = factorus#getNextTag()
-
-    while a:next[0] != a:prev[0]
-        call cursor(a:next[0],a:next[1])
-        let a:prev = [line('.'),col('.')]
-        let a:next = factorus#getNextTag()
-        let a:match = match(getline('.'),'\<' . a:method_name . '\>')
-        if a:match < 0
-            continue
-        endif
-        execute 's/\<' . a:method_name . '\>/' . a:new_name . '/'
-    endwhile
-    silent write
-
-    call cursor(a:orig[0],a:orig[1])
 endfunction
 
 function! s:getSuperClasses()
@@ -363,6 +308,77 @@ function! s:getSubClasses(class_name)
     return a:sub
 
 endfunction
+
+" File-Updating Functions {{{2
+
+function! s:updateClassFile(class_name,old_name,new_name) abort
+    let a:prev = [line('.'),col('.')]
+    call cursor(1,1)
+    let a:restricted = 0
+    let a:here = line('.')
+
+    let a:search = ['\([^.]\|\<this\>\.\)\<\(' . a:old_name . '\)\>' , '\(\<this\>\.\)\<\(' . a:old_name . '\)\>']
+
+    let [a:dec,a:next] = s:getNextDec(a:class_name,a:old_name)
+    if a:next[0] == 0
+        let a:next = line('$')
+    endif
+
+    let a:rep = searchpos(a:search[a:restricted],'Wn')
+    while a:rep[0] != a:here
+
+        if a:rep[0] >= a:next[0]
+            call cursor(a:next[0],1)
+            let a:restricted = 1 - a:restricted
+            if a:restricted == 1
+                let a:next = s:getNextTag()
+            else
+                let [a:dec,a:next] = s:getNextDec(a:class_name,a:old_name)
+                if a:next[0] == 0
+                    let a:next = [line('$'),1]
+                endif
+            endif
+        else
+            call cursor(a:rep[0],1)
+            execute 's/' . a:search[a:restricted] . '/\1' . a:new_name . '/g'
+        endif
+
+        let a:here = line('.')
+        let a:rep = searchpos(a:search[a:restricted],'Wn')
+        if a:rep[0] == a:here
+            call cursor(a:next[0],1)
+            let a:rep = searchpos(a:search[1-a:restricted],'Wn')
+        endif
+
+    endwhile
+    call cursor(a:prev[0],a:prev[1])
+
+    silent write
+endfunction
+
+function! s:updateDeclaration(method_name,new_name)
+    let a:orig = [line('.'),col('.')]
+
+    call cursor(1,1)
+
+    let a:prev = [line('.'),col('.')]
+    let a:next = s:getNextTag()
+
+    while a:next[0] != a:prev[0]
+        call cursor(a:next[0],a:next[1])
+        let a:prev = [line('.'),col('.')]
+        let a:next = s:getNextTag()
+        let a:match = match(getline('.'),'\<' . a:method_name . '\>')
+        if a:match < 0
+            continue
+        endif
+        execute 's/\<' . a:method_name . '\>/' . a:new_name . '/'
+    endwhile
+    silent write
+
+    call cursor(a:orig[0],a:orig[1])
+endfunction
+
 
 function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
 
@@ -467,10 +483,10 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
         let a:query = '\([^.]\)\<' . a:old_name . '\>'
         execute 's/' . a:query . '/\1' . a:new_name . '/g'
 
-        call factorus#gotoTag(0)
+        call s:gotoTag(0)
         let a:closing = s:getClosingBracket(1)
 
-        let a:next = s:getNext(a:query,'W')
+        let a:next = searchpos(a:query,'Wn')
         while s:isBefore(a:next,a:closing)
             if a:next[0] == line('.')
                 break
@@ -478,7 +494,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
             call cursor(a:next[0],a:next[1])
             execute 's/' . a:query . '/\1' . a:new_name . '/g'
 
-            let a:next = s:getNext(a:query,'W')
+            let a:next = searchpos(a:query,'Wn')
         endwhile
         silent write
     else
@@ -496,20 +512,62 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
     silent edit
 endfunction
 
-" Global Functions {{{1
-
-function! factorus#getNextTag()
+function! s:getNextTag()
     return [s:getAdjacentTag(''),1]
 endfunction
 
-function! factorus#gotoTag(head)
-    let a:tag = a:head == 1 ? s:getClassTag() : s:getAdjacentTag('b') 
-    if a:tag <= line('.')
-        call cursor(a:tag,1)
-    else
-        echo 'No tag found'
+
+" Insertion Functions {{{1
+
+function! factorus#encapsulateField() abort
+    let a:search = '\s*' . s:access_query . '\(' . g:factorus_java_identifier . s:collection_identifier . '\=\)\_s*\(' . g:factorus_java_identifier . '\)\_s*[;=]'
+
+    let a:line = getline('.')
+    let a:is_static = substitute(a:line,a:search,'\2','')
+    let a:type = substitute(a:line,a:search,'\4','')
+    let a:var = substitute(a:line,a:search,'\6','')
+    let a:cap = substitute(a:var,'\(.\)\(.*\)','\U\1\E\2','')
+
+    let a:is_local = s:getClassTag() == s:getAdjacentTag('b') ? 0 : 1
+    if a:is_local == 1
+        echom 'Factorus: Cannot encapsulate a local variable'
+        return
     endif
+
+    if a:is_static == 1
+        echom 'Factorus: Cannot encapsulate a static variable'
+        return
+    endif
+
+    execute 'silent s/\<public\>/private/e'
+    let a:get = ["\tpublic " . a:type . " get" . a:cap . "() {" , "\t\treturn " . a:var . ";" , "\t}"]
+    let a:set = ["\tpublic void set" . a:cap . "(" . a:type . ' ' . a:var . ") {" , "\t\tthis." . a:var . " = " . a:var . ";" , "\t}"]
+    let a:encap = [""] + a:get + [""] + a:set + [""]
+
+    let a:end = searchpos('}','bn')
+    call append(a:end[0] - 1,a:encap)
+    silent write
+
+    echom 'Created getters and setters for ' . a:var
 endfunction
+
+function! factorus#addParam(param_type,param_name) abort
+    let a:orig = [line('.'),col('.')]
+    call s:gotoTag(0)
+
+    let a:next = searchpos(')','Wn')
+    let a:line = substitute(getline(a:next[0]), ')', ', ' . a:param_type . ' ' . a:param_name . ')', '')
+    execute a:next[0] . 'd'
+    call append(a:next[0] - 1,a:line)
+
+    silent write
+    silent edit
+    call cursor(a:orig[0],a:orig[1])
+
+    echom 'Added parameter ' . a:param_name . ' to method'
+endfunction
+
+" Renaming Functions {{{1
 
 function! factorus#renameArg(new_name) abort
     let a:var = expand('<cword>')
@@ -566,7 +624,7 @@ function! factorus#renameField(new_name) abort
 endfunction
 
 function! factorus#renameMethod(new_name) abort
-    call factorus#gotoTag(0)
+    call s:gotoTag(0)
 
     let a:method_name = matchstr(getline('.'),'\s\+' . g:factorus_java_identifier . '\s*(')
     let a:method_name = matchstr(a:method_name,'[^[:space:](]\+')
@@ -607,34 +665,190 @@ function! factorus#renameSomething(new_name,type)
     endtry
 endfunction
 
-function! factorus#encapsulateField() abort
-    let a:search = '\s*' . s:access_query . '\(' . g:factorus_java_identifier . s:collection_identifier . '\=\)\_s*\(' . g:factorus_java_identifier . '\)\_s*[;=]'
+" Extraction Functions {{{1
 
-    let a:line = getline('.')
-    let a:is_static = substitute(a:line,a:search,'\2','')
-    let a:type = substitute(a:line,a:search,'\4','')
-    let a:var = substitute(a:line,a:search,'\6','')
-    let a:cap = substitute(a:var,'\(.\)\(.*\)','\U\1\E\2','')
+function! s:getArgs() abort
+    let a:prev = [line('.'),col('.')]
+    call s:gotoTag(0)
+    let a:oparen = search('(','Wn')
+    let a:cparen = search(')','Wn')
+    
+    let a:dec = join(getline(a:oparen,a:cparen))
+    let a:dec = substitute(a:dec,'.*(\(.*\)).*','\1','')
+    let a:args = map(split(a:dec,','), {n, arg -> [split(arg)[1],line('.')] })
 
-    let a:is_local = s:getClassTag() == s:getAdjacentTag('b') ? 0 : 1
-    if a:is_local == 1
-        echom 'Factorus: Cannot encapsulate a local variable'
-        return
+    call cursor(a:prev[0],a:prev[1])
+    return a:args
+endfunction
+
+function! factorus#getNextDec(...)
+    if a:0 == 0
+        return s:getNextDec()
+    elseif a:0 == 1
+        return s:getNextDec(a:1)
+    else
+        return s:getNextDec(a:1,a:2)
+    endif
+endfunction
+
+function! factorus#getLocalDecs(close)
+    let a:orig = [line('.'),col('.')]
+    let a:here = [line('.'),col('.')]
+    let a:next = s:getNextDec()
+
+    let a:vars = s:getArgs()
+    while s:isBefore(a:next[1],a:close)
+        if a:next[1] == [0,0]
+            break
+        endif
+        
+        call add(a:vars,[a:next[0],a:next[1][0]])
+
+        call cursor(a:next[1][0],a:next[1][1])
+        let a:next = s:getNextDec()
+    endwhile
+    call cursor(a:orig[0],a:orig[1])
+
+    return a:vars
+endfunction
+
+function! factorus#getNextReference(var,type)
+    if a:type == 'right'
+        let a:search = '^[^/*]\s*' . s:access_query . '\s*\(' . g:factorus_java_identifier . s:collection_identifier . '\=\s\)\=\s*\(' . g:factorus_java_identifier . '\)\s*[(.=].*\(\<' . a:var . '\>\).*'
+        let a:index = '\6'
+    elseif a:type == 'left'
+        let a:search = '^[^/*]\s*\(\<' . a:var . '\>\)\s*[.=][^=].*'
+        let a:index = '\1'
+    else
+        let a:search = '^[^/*]\s*\(for\|while\|if\|else\s*if\)\s*(.*\(\<' . a:var . '\>\)\_.*).*'
+        let a:index = '\2'
     endif
 
-    if a:is_static == 1
-        echom 'Factorus: Cannot encapsulate a static variable'
-        return
+    let a:line = searchpos(a:search,'Wn')
+
+    if a:type == 'right'
+        let a:prev = [line('.'),col('.')]
+        while s:isValidTag(a:line[0]) == 0
+            if a:line[0] == line('.')
+                break
+            endif
+            call cursor(a:line[0],a:line[1])
+            let a:line = searchpos(a:search,'Wn')
+        endwhile
+        call cursor(a:prev[0],a:prev[1])
     endif
 
-    execute 'silent s/\<public\>/private/e'
-    let a:get = ["\tpublic " . a:type . " get" . a:cap . "() {" , "\t\treturn " . a:var . ";" , "\t}"]
-    let a:set = ["\tpublic void set" . a:cap . "(" . a:type . ' ' . a:var . ") {" , "\t\tthis." . a:var . " = " . a:var . ";" , "\t}"]
-    let a:encap = [""] + a:get + [""] + a:set + [""]
+    if a:line[0] > line('.')
+        let a:loc = substitute(getline(a:line[0]),a:search,a:index,'')
+        return [a:loc,a:line]
+    endif
+        
+    return ['none',[0,0]]
+endfunction
 
-    let a:end = s:getNext('}','b')
-    call append(a:end[0] - 1,a:encap)
-    silent write
+function! factorus#getNextUse(var)
+    let a:right = factorus#getNextReference(a:var,'right')
+    let a:left = factorus#getNextReference(a:var,'left')
+    let a:cond = factorus#getNextReference(a:var,'cond')
 
-    echom 'Created getters and setters for ' . a:var
+    let a:min = [a:right[0],copy(a:right[1]),'right']
+    if a:left[1] != [0,0] && (s:isBefore(a:left[1],a:min[1]) == 1 || a:min[1] == [0,0])
+        let a:min = [a:left[0],copy(a:left[1]),'left']
+    endif
+
+    if a:cond[1] != [0,0] && (s:isBefore(a:cond[1],a:min[1]) == 1 || a:min[1] == [0,0])
+        let a:min = [a:cond[0],copy(a:cond[1]),'cond']
+    endif
+
+    return a:min
+endfunction
+
+function! factorus#addBlockLines(lines,line,start)
+    let a:orig = [line('.'),col('.')]
+
+    if a:start == 0
+        let a:close = s:getClosingBracket(0)
+        let a:open = searchpairpos('{','','}','Wbn')
+    else
+        let a:open = [line('.'),col('.')]
+        let a:close = s:getClosingBracket(1)
+    endif
+
+    while match(getline(a:open[0]),'\<\(if\|while\|for\)\>') < 0
+        let a:open[0] -= 1
+    endwhile
+    
+    let a:range = [a:open[0],a:close[0]]
+    if index(a:lines,[line('.'),a:range]) < 0
+        call add(a:lines,[line('.'),a:range])
+    endif
+endfunction
+
+function! factorus#getIsolatedLines(var,vars,close)
+    let a:orig = [line('.'),col('.')]
+    let [a:name,a:line] = a:var
+    let a:names = map(deepcopy(a:vars), {n, var -> var[0]})
+    let a:lines = []
+    let a:loops = []
+
+    call cursor(a:line,1)
+    let a:local_close = s:getClosingBracket(0)
+    let a:next = factorus#getNextUse(a:name)
+    while s:isBefore(a:next[1],a:local_close) == 1
+        if a:next[1] == [0,0]
+            break
+        endif
+
+        if a:next[2] == 'left' || (a:next[2] == 'right' && index(a:names,a:next[0]) < 0)
+            let a:block_close = s:getClosingBracket(0)
+            if s:isBefore(a:block_close,a:local_close) == 1
+                call factorus#addBlockLines(a:loops,a:next[1][0],0)
+            endif
+            call add(a:lines,a:next[1][0])
+        elseif a:next[2] == 'cond'
+            "call factorus#addBlockLines(a:lines,a:next[1][0],1)
+        endif
+
+        call cursor(a:next[1][0],a:next[1][1])
+        let a:next = factorus#getNextUse(a:name)
+    endwhile
+    echom 'loops'
+    echom string(a:loops)
+
+    call cursor(a:orig[0],a:orig[1])
+    return a:lines
+endfunction
+
+function! factorus#extractMethod()
+    call s:gotoTag(0)
+    let a:close = s:getClosingBracket(1)
+    call searchpos('{','W')
+
+    " First, we'll go through the function looking for variable 
+    " declarations, ones that are mostly self-contained (not used
+    " in other declarations, not used in other functions, not used
+    " in conditionals, etc).  Then, we go through again(?) to see
+    " if that variable relies on a lot of other non-contained
+    " variables.  If it doesn't (meaning it's a relatively isolated
+    " unit), then we can extract all the lines that reference it,
+    " and put them in a separate method.  Finally, we replace the
+    " original declaration of the variable with the call to the new
+    " method.  The method will have a dummy name (something like
+    " 'NewFactorusMethod'), and I'm thinking we can open a split
+    " window with the changes for review. (Maybe this can be 
+    " configured.)
+    "
+    " Similarly, if a lot of variables get used in a connected or
+    " isolated fashion, we can place all of those methods into a 
+    " new void method.
+    
+    let a:next = s:getNextDec()
+    let a:vars = factorus#getLocalDecs(a:close)
+
+    let a:usable = []
+    for var in a:vars
+
+    endwhile
+    return a:vars
+
 endfunction

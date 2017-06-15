@@ -23,8 +23,12 @@ function! s:init_vars()
 endfunction
 call s:init_vars()
 
-command! -nargs=1 FRenameArg         call factorus#renameSomething(<f-args>,'arg')
-command! -nargs=1 FRenameClass       call factorus#renameSomething(<f-args>,'class')
-command! -nargs=1 FRenameMethod      call factorus#renameSomething(<f-args>,'method')
-command! -nargs=1 FRenameField       call factorus#renameSomething(<f-args>,'field') 
-command! -nargs=0 FEncapsulate       call factorus#encapsulateField()
+command! -nargs=0 FExtractMethod    call factorus#extractMethod()
+
+command! -nargs=1 FRenameArg        call factorus#renameSomething(<f-args>,'arg')
+command! -nargs=1 FRenameClass      call factorus#renameSomething(<f-args>,'class')
+command! -nargs=1 FRenameMethod     call factorus#renameSomething(<f-args>,'method')
+command! -nargs=1 FRenameField      call factorus#renameSomething(<f-args>,'field') 
+
+command! -nargs=0 FEncapsulate      call factorus#encapsulateField()
+command! -nargs=+ FAddParam         call factorus#addParam(<f-args>)  
