@@ -13,13 +13,18 @@ endfunction
 
 function! s:init_vars()
     let a:vars = [
-        \ [ 'project_dir' , '' ],
-        \ [ 'ignored_files' , [ 'tags' , 'cscope.out' ] ]
+        \ [ 'project_dir' , '' ]
     \ ]
 
     for [var,val] in a:vars
         call s:init(var,val)
     endfor
+
+    if !exists('g:factorus_ignored_files')
+        let g:factorus_ignored_files = ['tags', 'cscope.out']
+    else
+        let g:factorus_ignored_files += ['tags', 'cscope.out']
+    endif
 endfunction
 call s:init_vars()
 
