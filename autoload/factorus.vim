@@ -1052,13 +1052,11 @@ function! factorus#extractMethod()
     let a:best_var = ['','',0]
     let a:best_lines = []
     for var in a:vars
-        if var[0] == 'numBookings'
-            let a:relevant = factorus#getRelevantLines(var,a:vars,a:close)
-            let a:iso = factorus#getIsolatedLines(var,a:relevant,a:names,a:decs,a:blocks,a:close)
-            if len(a:iso) > len(a:best_lines)
-                let a:best_var = var
-                let a:best_lines = copy(a:iso)
-            endif
+        let a:relevant = factorus#getRelevantLines(var,a:vars,a:close)
+        let a:iso = factorus#getIsolatedLines(var,a:relevant,a:names,a:decs,a:blocks,a:close)
+        if len(a:iso) > len(a:best_lines)
+            let a:best_var = var
+            let a:best_lines = copy(a:iso)
         endif
     endfor
 
