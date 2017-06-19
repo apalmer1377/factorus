@@ -18,7 +18,7 @@ Contents                                            *factorus* *factorus-help*
 ==============================================================================
 1. Intro                                                      *factorus-intro*
 
-Factorus is a lightweight Vim plugin for refactoring Git projects.  It's 
+Factorus is a lightweight Vim plugin for automated refactoring.  It's 
 written entirely in Vimscript, so there is no need for any external packages.
 
 ==============================================================================
