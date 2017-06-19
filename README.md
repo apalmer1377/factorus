@@ -8,14 +8,13 @@ IntelliJ, without sacrificing the lightness of Vim.
 
 Currently, Factorus supports automated versions of the following
 refactoring tools for Java:
-
-    * Add Parameter
-    * Encapsulate Variable
-    * Extract Method
-    * Rename Argument
-    * Rename Class
-    * Rename Method
-    * Rename Variable
+* Add Parameter
+* Encapsulate Variable
+* Extract Method
+* Rename Argument
+* Rename Class
+* Rename Method
+* Rename Variable
 
 ## Installation
 
