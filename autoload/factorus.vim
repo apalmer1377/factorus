@@ -889,53 +889,71 @@ function! factorus#getAllBlocks(close)
     return sort(a:blocks,'s:compare')
 endfunction
 
-function! factorus#getSmallestContainingBlock(range,ranges)
-    let a:small = [1,line('$')]
-    for range in a:ranges
-        if range[0] > a:range[0]
-            break
-        endif
-        if range[1] >= a:range[1] && (range[1] - range[0]) < (a:small[1] - a:small[0])
-            let a:small = copy(range)
-        endif
-    endfor
-    return a:small
-endfunction
-
-function! factorus#isIsolatedBlock(block,var,names)
+function! factorus#isIsolatedBlock(block,var,names,decs,close)
     let a:orig = [line('.'),col('.')]
+    call cursor(a:block[0],1)
     let a:search = join(a:names,'\|')
     let a:ref = factorus#getNextReference(a:search,'left') 
 
-    while a:ref[1] != [0,0] && a:ref[1][0] >= a:block[0] && a:ref[1][0] <= a:block[1]
-        if match(getline(a:ref[1][0]),'(.*\<' . a:var[0] . '\>.*)') >= 0
-            return 0
-        endif
-        call cursor(a:ref[1][0],a:ref[1][1])
-        let a:ref = factorus#getNextReference(a:search,'left')
-    endwhile
+    let a:res = 1
+    if a:ref[1] != [0,0] && a:ref[1][0] >= a:block[0] && a:ref[1][0] <= a:block[1]
+        let a:res = 0
+    else
+        let a:i = 0
+        while a:i < len(a:decs)
+            if a:decs[a:i] >= a:block[0] && a:decs[a:i] <= a:block[1]
+                let a:use = factorus#getNextUse(a:names[a:i])
+                while a:use[1] != [0,0] && s:isBefore(a:use[1],a:close) == 1
+                    echom 'use ' . string(a:use[1])
+                    if a:use[1][0] > a:block[1]
+                        let a:res = 0
+                        break
+                    endif
+                    call cursor(a:use[1][0],a:use[1][1])
+                    let a:use = factorus#getNextUse(a:names[a:i])
+                endwhile
+                if a:res == 0
+                    break
+                endif
+                call cursor(a:block[0],1)
+            endif
+            let a:i += 1
+        endwhile
+    endif
+
     call cursor(a:orig[0],a:orig[1])
-    return 1
+    return a:res
 endfunction
 
-function! factorus#getLargestContainingBlock(line,ranges,exclude)
-    let a:large = [a:line,a:line]
+function! factorus#getContainingBlock(line,ranges,exclude,dir)
+    let a:block = a:dir == 'min' ? [1,line('$')] : [a:line,a:line]
     for range in a:ranges
         if range[0] > a:line
             break
         endif
-        if range[1] >= a:line && (range[1] - range[0]) > (a:large[1] - a:large[0]) && range != a:exclude
-            let a:large = copy(range)
+        if range[1] >= a:line && range != a:exclude
+            if (range[1] - range[0]) > (a:block[1] - a:block[0])
+                if a:dir == 'max' "&& range[0] > a:block[0] && range[1] < a:block[1]
+                    let a:block = copy(range)
+                endif
+            else
+                if a:dir == 'min'
+                    let a:block = copy(range)
+                endif
+            endif
         endif
     endfor
-    return a:large
-
+    return a:block
 endfunction
 
-function! factorus#getIsolatedLines(var,refs,names,blocks,close)
+function! factorus#getIsolatedLines(var,refs,names,decs,blocks,close)
+    if a:refs == []
+        return []
+    endif
     let a:orig = [line('.'),col('.')]
     let [a:name,a:type,a:dec] = a:var
-    let a:wrap = factorus#getLargestContainingBlock(a:refs[0],a:blocks,[1,line('$')])
+    let a:wrap = factorus#getContainingBlock(a:refs[0],a:blocks,[1,line('$')],'max')
+    echom 'wrap ' . string(a:wrap)
     let a:usable = []
     let a:next_use = factorus#getNextReference(a:var[0],'right')
     let a:done = 0
@@ -950,13 +968,13 @@ function! factorus#getIsolatedLines(var,refs,names,blocks,close)
             let a:next_use = factorus#getNextReference(a:var[0],'right')
         endif
 
-        let a:block = factorus#getLargestContainingBlock(line,a:blocks,a:wrap)
+        let a:block = factorus#getContainingBlock(line,a:blocks,a:wrap,'max')
+        echom 'block ' . string(a:block)
         if a:block[0] < a:wrap[0] || a:block[1] > a:wrap[1]
             break
         endif
 
-        "if a:block != [line,line]
-        if factorus#isIsolatedBlock(a:block,a:var,a:names) == 0 
+        if factorus#isIsolatedBlock(a:block,a:var,a:names,a:decs,a:close) == 0 
             break
         endif
         let a:i = a:block[0]
@@ -966,13 +984,6 @@ function! factorus#getIsolatedLines(var,refs,names,blocks,close)
             endif
             let a:i += 1
         endwhile
-        continue
-        "endif
-
-
-        if index(a:usable,line) < 0
-            call add(a:usable,line)
-        endif
     endfor
 
     call cursor(a:orig[0],a:orig[1])
@@ -988,7 +999,7 @@ function! factorus#getNewArgs(lines,vars,var)
         let a:new = substitute(a:this,'.*\<' . a:search . '\>.*','\1','')
         while a:new != a:this
             let a:next_var = a:vars[index(a:names,a:new)]
-            if index(a:args,a:next_var) < 0 && a:next_var[0] != a:var[0]
+            if index(a:args,a:next_var) < 0 && a:next_var[0] != a:var[0] && index(a:lines,a:next_var[2]) < 0
                 call add(a:args,a:next_var)
             endif
             let a:this = substitute(a:this,'\<' . a:new . '\>','','g')
@@ -1015,31 +1026,38 @@ function! factorus#extractMethod()
     let a:close = s:getClosingBracket(1)
     call searchpos('{','W')
 
-    " The following process is rough, and 99% of the time creates an invalid
-    " method and breaks the code.  Needs to be fixed
-    
     let a:vars = factorus#getLocalDecs(a:close)
     let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
     let a:blocks = factorus#getAllBlocks(a:close)
-    echom string(a:blocks)
+    let a:decs = map(deepcopy(a:vars),{n,var -> var[2]})
+    echom 'blocks ' . string(a:blocks)
+    echom 'decs ' . string(a:decs)
 
     let a:best_var = ['','',0]
     let a:best_lines = []
     for var in a:vars
-        let a:relevant = factorus#getRelevantLines(var,a:vars,a:close)
-        echom 'relevant ' . string(a:relevant)
-        let a:iso = factorus#getIsolatedLines(var,a:relevant,a:names,a:blocks,a:close)
-        echom 'iso ' . string(a:iso)
-        if len(a:iso) > len(a:best_lines)
-            let a:best_var = var
-            let a:best_lines = copy(a:iso)
+        if var[0] == 'numBookings'
+            echom var[0]
+            let a:relevant = factorus#getRelevantLines(var,a:vars,a:close)
+            echom 'relevant ' . string(a:relevant)
+            let a:iso = factorus#getIsolatedLines(var,a:relevant,a:names,a:decs,a:blocks,a:close)
+            echom 'iso ' . string(a:iso)
+            if len(a:iso) > len(a:best_lines)
+                let a:best_var = var
+                let a:best_lines = copy(a:iso)
+            endif
         endif
     endfor
 
+    if index(a:best_lines,a:best_var[2]) < 0
+        let a:best_lines = [a:best_var[2]] + a:best_lines
+    endif
+
     let a:new_args = factorus#getNewArgs(a:best_lines,a:vars,a:best_var)
     let a:build = factorus#buildArgs(a:new_args,0)
+
     let a:def = ['public ' . a:best_var[1] . ' newFactorusMethod(' . a:build . ') {']
-    let a:body = [getline(a:best_var[2])] + map(copy(a:best_lines),{n,line -> getline(line)})
+    let a:body = map(copy(a:best_lines),{n,line -> getline(line)})
     let a:return = ['return ' . a:best_var[0] . ';','}']
 
     let a:final = a:def + a:body + a:return + ['']
@@ -1054,11 +1072,10 @@ function! factorus#extractMethod()
         d 
         let a:i -= 1
     endwhile
-    call cursor(a:best_var[2],1)
-    d
 
     call cursor(a:close[0] + 2,1)
     silent write
+    silent edit
 
     echom 'Extracted new method from ' . a:method_name
 endfunction
