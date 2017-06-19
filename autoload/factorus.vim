@@ -904,7 +904,6 @@ function! factorus#isIsolatedBlock(block,var,names,decs,close)
             if a:decs[a:i] >= a:block[0] && a:decs[a:i] <= a:block[1]
                 let a:use = factorus#getNextUse(a:names[a:i])
                 while a:use[1] != [0,0] && s:isBefore(a:use[1],a:close) == 1
-                    echom 'use ' . string(a:use[1])
                     if a:use[1][0] > a:block[1]
                         let a:res = 0
                         break
@@ -953,7 +952,6 @@ function! factorus#getIsolatedLines(var,refs,names,decs,blocks,close)
     let a:orig = [line('.'),col('.')]
     let [a:name,a:type,a:dec] = a:var
     let a:wrap = factorus#getContainingBlock(a:refs[0],a:blocks,[1,line('$')],'max')
-    echom 'wrap ' . string(a:wrap)
     let a:usable = []
     let a:next_use = factorus#getNextReference(a:var[0],'right')
     let a:done = 0
@@ -969,7 +967,6 @@ function! factorus#getIsolatedLines(var,refs,names,decs,blocks,close)
         endif
 
         let a:block = factorus#getContainingBlock(line,a:blocks,a:wrap,'max')
-        echom 'block ' . string(a:block)
         if a:block[0] < a:wrap[0] || a:block[1] > a:wrap[1]
             break
         endif
@@ -1018,8 +1015,29 @@ function! factorus#buildArgs(args,is_call)
     return join(a:defs,', ')
 endfunction
 
+function! factorus#formatMethod(method,spaces)
+    call map(a:method,{n,line -> substitute(line,'\s*\(.*\)','\1','')})
+
+    let a:dspaces = a:spaces
+    let a:i = 0
+    let a:block = 0
+    while a:i < len(a:method)
+        if match(a:method[a:i],'}') >= 0
+            let a:dspaces = strpart(a:dspaces,len(a:spaces))
+        endif
+        let a:method[a:i] = a:dspaces . a:method[a:i]
+
+        if match(a:method[a:i],'{') >= 0
+            let a:dspaces .= a:spaces
+        endif
+
+        let a:i += 1
+    endwhile
+endfunction
+
 function! factorus#extractMethod()
     call s:gotoTag(0)
+    let a:tab = substitute(getline('.'),'\(\s*\).*','\1','')
     let a:method_name = matchstr(getline('.'),'\s\+' . g:factorus_java_identifier . '\s*(')
     let a:method_name = matchstr(a:method_name,'[^[:space:](]\+')
 
@@ -1030,18 +1048,13 @@ function! factorus#extractMethod()
     let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
     let a:blocks = factorus#getAllBlocks(a:close)
     let a:decs = map(deepcopy(a:vars),{n,var -> var[2]})
-    echom 'blocks ' . string(a:blocks)
-    echom 'decs ' . string(a:decs)
 
     let a:best_var = ['','',0]
     let a:best_lines = []
     for var in a:vars
         if var[0] == 'numBookings'
-            echom var[0]
             let a:relevant = factorus#getRelevantLines(var,a:vars,a:close)
-            echom 'relevant ' . string(a:relevant)
             let a:iso = factorus#getIsolatedLines(var,a:relevant,a:names,a:decs,a:blocks,a:close)
-            echom 'iso ' . string(a:iso)
             if len(a:iso) > len(a:best_lines)
                 let a:best_var = var
                 let a:best_lines = copy(a:iso)
@@ -1054,15 +1067,29 @@ function! factorus#extractMethod()
     endif
 
     let a:new_args = factorus#getNewArgs(a:best_lines,a:vars,a:best_var)
-    let a:build = factorus#buildArgs(a:new_args,0)
-
-    let a:def = ['public ' . a:best_var[1] . ' newFactorusMethod(' . a:build . ') {']
     let a:body = map(copy(a:best_lines),{n,line -> getline(line)})
-    let a:return = ['return ' . a:best_var[0] . ';','}']
 
+    let a:type = a:best_var[1]
+    let a:return = ['return ' . a:best_var[0] . ';','}']
+    let a:call = a:best_var[1] . ' ' . a:best_var[0] . ' = '
+
+    call cursor(a:best_lines[-1]+1,1)
+    let a:outside = factorus#getNextUse(a:best_var[0])
+    if a:outside[1] == [0,0] || s:isBefore(a:close,a:outside[1]) == 1
+        let a:type = 'void'
+        let a:return = ['}'] 
+        let a:call = ''
+    endif
+
+    let a:build = factorus#buildArgs(a:new_args,0)
+    let a:def = ['public ' . a:type . ' newFactorusMethod(' . a:build . ') {']
     let a:final = a:def + a:body + a:return + ['']
+    call factorus#formatMethod(a:final,a:tab)
+
     let a:arg_string = factorus#buildArgs(a:new_args,1)
-    let a:rep = [a:best_var[1] . ' ' . a:best_var[0] . ' = newFactorusMethod(' . a:arg_string . ');']
+    let a:call_space = substitute(getline(a:best_lines[-1]),'\(\s*\).*','\1','')
+    let a:rep = [a:call_space . a:call . 'newFactorusMethod(' . a:arg_string . ');']
+
     call append(a:close[0] + 1,a:final)
     call append(a:best_lines[-1],a:rep)
 
@@ -1073,7 +1100,7 @@ function! factorus#extractMethod()
         let a:i -= 1
     endwhile
 
-    call cursor(a:close[0] + 2,1)
+    call search(a:type . ' newFactorusMethod(')
     silent write
     silent edit
 
