@@ -162,7 +162,7 @@ function! s:gotoTag(head)
     endif
 endfunction
 
-function! s:getClosingBracket(stack)
+function! factorus#getClosingBracket(stack)
 
     let a:mark = a:stack
 
@@ -179,14 +179,17 @@ function! s:getClosingBracket(stack)
     while a:mark >= a:stack
         call cursor(a:pos[0],a:pos[1])
 
-        let a:open = searchpos('^\s*[^/*]\+.*{','Wen')
-        let a:close = searchpos('^\s*[^/*]\+.*}','Wen')
+        let a:open = searchpos('^\s*\({\|[^/*]\+.*{\)','Wen')
+        let a:close = searchpos('^\s*\(}\|[^/*]\+.*}\)','Wen')
 
-        if a:open == [0,0] || a:close == [0,0]
-            break
-        endif
-
-        if s:isBefore(a:open,a:close) == 1
+        if a:open == [0,0] 
+            if a:close == [0,0]
+                break
+            else
+                let a:pos = copy(a:close)
+                let a:mark -= 1
+            endif
+        elseif s:isBefore(a:open,a:close) == 1
             let a:pos = copy(a:open)
             let a:mark += 1
         else
@@ -392,7 +395,8 @@ endfunction
 
 function! s:getNextReference(var,type)
     if a:type == 'right'
-        let a:search = s:no_comment . s:access_query . '\s*\(' . g:factorus_java_identifier . s:collection_identifier . '\=\s\)\=\s*\(' . g:factorus_java_identifier . '\)\s*[(.=][^;]*\(\<' . a:var . '\>\).*'
+        let a:search = s:no_comment . s:access_query . '\s*\(' . g:factorus_java_identifier . s:collection_identifier . 
+                    \ '\=\s\)\=\s*\(' . g:factorus_java_identifier . '\)\s*[(.=][^;]*\(\<' . a:var . '\>\).*'
         let a:index = '\6'
     elseif a:type == 'left'
         let a:search = s:no_comment . '\<\(' . a:var . '\)\>\s*[.=][^=].*'
@@ -400,7 +404,7 @@ function! s:getNextReference(var,type)
     elseif a:type == 'cond'
         let a:search = '^[^/*]\s*\(for\|while\|if\|else\s*if\)\_s*(\_[^{]*\(\<' . a:var . '\>\)\_[^{]*).*'
         let a:index = '\1'
-    else
+    elseif a:type == 'return'
         let a:search = s:no_comment . '\s*\<return\>\_[^;]*\(\<' . a:var . '\>\).*'
         let a:index = '\1'
     endif
@@ -409,10 +413,15 @@ function! s:getNextReference(var,type)
 
     if a:type == 'right'
         let a:prev = [line('.'),col('.')]
-        while s:isValidTag(a:line[0]) == 0
+        while s:isValidTag(a:line[0]) == 0 || match(getline(a:line[0]),'"[^"]*' . a:var . '[^"]"') >= 0
             if a:line == [0,0]
                 break
             endif
+
+            if match(getline(a:line[0]),'\<new\>') >= 0 && match(getline(a:line[0]),'"[^"]*' . a:var . '[^"]*"') < 0
+                break
+            endif
+
             call cursor(a:line[0],a:line[1])
             let a:line = searchpos(a:search,'Wn')
         endwhile
@@ -482,7 +491,7 @@ function! s:getAllBlocks(close)
             if s:isBefore(a:ret,a:semi) == 1
                 call cursor(a:ret[0],a:ret[1])
                 call searchpair('{','','}','W')
-                let a:next = searchpos('}\_s*\(else\_s*\(\<if\>\_.*)\)\=\|catch\)\_s*{','Wnc')
+                let a:next = searchpos('}\_s*\(else\_s*\(\<if\>\_.*)\)\=\|catch[^{]*\)\_s*{','Wnc')
                 while a:next == [line('.'),col('.')]
                     if a:next == [0,0]
                         let a:next = a:ret
@@ -662,7 +671,7 @@ function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
         if line('.') == a:here
             break
         elseif a:add == 1
-            call add(a:vars,[a:next[0] . '\.' . a:method_name,s:getClosingBracket(0)])
+            call add(a:vars,[a:next[0] . '\.' . a:method_name,factorus#getClosingBracket(0)])
             let a:next = s:getNextDec(a:class_name)
         else
             let a:rep = substitute(a:jump,'\.' . a:method_name,'.' . a:new_name,'')
@@ -701,7 +710,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
         execute 's/' . a:query . '/\1' . a:new_name . '/g'
 
         call s:gotoTag(0)
-        let a:closing = s:getClosingBracket(1)
+        let a:closing = factorus#getClosingBracket(1)
 
         let a:next = searchpos(a:query,'Wn')
         while s:isBefore(a:next,a:closing)
@@ -840,8 +849,8 @@ function! s:buildNewMethod(var,lines,args,tab,close)
     endif
 
     let a:build = s:buildArgs(a:args,0)
-    let a:def = ['public ' . a:type . g:factorus_default_method . '(' . a:build . ') {']
-    let a:final = a:def + a:body + a:return + ['']
+    let a:def = ['public ' . a:type . ' ' .  g:factorus_default_method . '(' . a:build . ') {']
+    let a:final = [''] + a:def + a:body + a:return + ['']
     call s:formatMethod(a:final,a:tab)
 
     let a:arg_string = s:buildArgs(a:args,1)
@@ -859,7 +868,7 @@ function! s:getRelevantLines(var,close)
 
     let a:lines = []
     call cursor(a:line,1)
-    let a:local_close = s:getClosingBracket(0)
+    let a:local_close = factorus#getClosingBracket(0)
     let a:next = s:getNextUse(a:name)
 
     while s:isBefore(a:next[1],a:local_close) == 1
@@ -1121,7 +1130,7 @@ function! factorus#extractMethod()
     let a:tab = substitute(getline('.'),'\(\s*\).*','\1','')
     let a:method_name = substitute(getline('.'),'.*\s\+\(' . g:factorus_java_identifier . '\)\s*(.*','\1','')
 
-    let [a:open,a:close] = [line('.'),s:getClosingBracket(1)]
+    let [a:open,a:close] = [line('.'),factorus#getClosingBracket(1)]
     call searchpos('{','W')
 
     let a:vars = s:getLocalDecs(a:close)
@@ -1164,7 +1173,7 @@ function! factorus#extractMethod()
     let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:best_var)
     let [a:final,a:rep] = s:buildNewMethod(a:best_var,a:best_lines,a:new_args,a:tab,a:close)
 
-    call append(a:close[0] + 1,a:final)
+    call append(a:close[0],a:final)
     call append(a:best_lines[-1],a:rep)
 
     let a:i = len(a:best_lines) - 1
@@ -1174,7 +1183,7 @@ function! factorus#extractMethod()
         let a:i -= 1
     endwhile
 
-    call search('public.*newFactorusMethod(')
+    call search('public.*' . g:factorus_default_method . '(')
     silent write
     redraw
 
