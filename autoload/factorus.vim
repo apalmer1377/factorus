@@ -721,8 +721,11 @@ function! s:getNextReference(var,type)
     elseif a:type == 'left'
         let a:search = s:no_comment . '\<\(' . a:var . '\)\>\s*[.=][^=].*'
         let a:index = '\1'
-    else
+    elseif a:type == 'cond'
         let a:search = '^[^/*]\s*\(for\|while\|if\|else\s*if\)\_s*(\_[^{]*\(\<' . a:var . '\>\)\_[^{]*).*'
+        let a:index = '\1'
+    else
+        let a:search = s:no_comment . '\s*\<return\>\_[^;]*\(\<' . a:var . '\>\).*'
         let a:index = '\1'
     endif
 
@@ -752,6 +755,7 @@ function! s:getNextUse(var)
     let a:right = s:getNextReference(a:var,'right')
     let a:left = s:getNextReference(a:var,'left')
     let a:cond = s:getNextReference(a:var,'cond')
+    let a:return = s:getNextReference(a:var,'return')
 
     let a:min = [a:right[0],copy(a:right[1]),'right']
     if a:left[1] != [0,0] && (s:isBefore(a:left[1],a:min[1]) == 1 || a:min[1] == [0,0])
@@ -760,6 +764,10 @@ function! s:getNextUse(var)
 
     if a:cond[1] != [0,0] && (s:isBefore(a:cond[1],a:min[1]) == 1 || a:min[1] == [0,0])
         let a:min = [a:cond[0],copy(a:cond[1]),'cond']
+    endif
+
+    if a:return[1] != [0,0] && (s:isBefore(a:return[1],a:min[1]) == 1 || a:min[1] == [0,0])
+        let a:min = [a:return[0],copy(a:return[1]),'return']
     endif
 
     return a:min
@@ -835,8 +843,8 @@ function! factorus#getAllBlocks(close)
     let a:search = '\(' . a:if . '\|' . a:for . '\|' . a:while . '\|' . a:try . '\)'
 
     let a:orig = [line('.'),col('.')]
-    let a:blocks = []
     call s:gotoTag(0)
+    let a:blocks = [[line('.'),a:close[0]]]
 
     let a:open = searchpos('{','Wn')
     let a:next = searchpos(a:search,'Wn')
@@ -894,9 +902,12 @@ function! factorus#isIsolatedBlock(block,var,names,decs,close)
     call cursor(a:block[0],1)
     let a:search = join(a:names,'\|')
     let a:ref = s:getNextReference(a:search,'left') 
+    let a:return = search('\<return\>','Wn')
 
     let a:res = 1
-    if a:ref[1] != [0,0] && a:ref[1][0] >= a:block[0] && a:ref[1][0] <= a:block[1] && a:ref[0] != a:var[0]
+    if a:return >= a:block[0] && a:return <= a:block[1]
+        let a:res = 0
+    elseif a:ref[1] != [0,0] && a:ref[1][0] >= a:block[0] && a:ref[1][0] <= a:block[1] && a:ref[0] != a:var[0]
         let a:res = 0
     else
         let a:i = 0
@@ -932,7 +943,7 @@ function! factorus#getContainingBlock(line,ranges,exclude,dir)
         endif
         if range[1] >= a:line && range != a:exclude
             if (range[1] - range[0]) > (a:block[1] - a:block[0])
-                if a:dir == 'max' "&& range[0] > a:block[0] && range[1] < a:block[1]
+                if a:dir == 'max' && (range[1] - range[0]) < (a:exclude[1] - a:exclude[0]) "&& range[0] > a:block[0] && range[1] < a:block[1]
                     let a:block = copy(range)
                 endif
             else
@@ -951,36 +962,43 @@ function! factorus#getIsolatedLines(var,refs,names,decs,blocks,close)
     endif
     let a:orig = [line('.'),col('.')]
     let [a:name,a:type,a:dec] = a:var
-    let a:wrap = factorus#getContainingBlock(a:refs[0],a:blocks,[1,line('$')],'max')
+    let a:wrap = factorus#getContainingBlock(a:var[2],a:blocks,[1,line('$')],'max')
+    let a:alt_wrap = factorus#getContainingBlock(a:refs[0],a:blocks,a:blocks[0],'max')
     let a:usable = []
     let a:next_use = s:getNextReference(a:var[0],'right')
     let a:done = 0
     call cursor(a:next_use[1][0],a:next_use[1][1])
 
-    for line in a:refs
-        if line == a:next_use[1][0]
-            if index(a:names,a:next_use[0]) >= 0
+    for twrap in [a:wrap,a:alt_wrap]
+        let a:temp = []
+        for line in a:refs
+            if line == a:next_use[1][0]
+                if index(a:names,a:next_use[0]) >= 0
+                    break
+                endif
+                call cursor(a:next_use[1][0],a:next_use[1][1])
+                let a:next_use = s:getNextReference(a:var[0],'right')
+            endif
+
+            let a:block = factorus#getContainingBlock(line,a:blocks,twrap,'max')
+            if a:block[0] < twrap[0] || a:block[1] > twrap[1]
                 break
             endif
-            call cursor(a:next_use[1][0],a:next_use[1][1])
-            let a:next_use = s:getNextReference(a:var[0],'right')
-        endif
 
-        let a:block = factorus#getContainingBlock(line,a:blocks,a:wrap,'max')
-        if a:block[0] < a:wrap[0] || a:block[1] > a:wrap[1]
-            break
-        endif
-
-        if factorus#isIsolatedBlock(a:block,a:var,a:names,a:decs,a:close) == 0 
-            break
-        endif
-        let a:i = a:block[0]
-        while a:i <= a:block[1]
-            if index(a:usable,a:i) < 0
-                call add(a:usable,a:i)
+            if factorus#isIsolatedBlock(a:block,a:var,a:names,a:decs,a:close) == 0 
+                break
             endif
-            let a:i += 1
-        endwhile
+            let a:i = a:block[0]
+            while a:i <= a:block[1]
+                if index(a:temp,a:i) < 0
+                    call add(a:temp,a:i)
+                endif
+                let a:i += 1
+            endwhile
+        endfor
+        if len(a:temp) > len(a:usable)
+            let a:usable = copy(a:temp)
+        endif
     endfor
 
     call cursor(a:orig[0],a:orig[1])
@@ -1063,10 +1081,14 @@ function! factorus#merge(a,b)
 endfunction
 
 function! factorus#wrapDecs(var,lines,vars,names,decs,blocks,args,close)
+    let a:head = s:getAdjacentTag('b')
     let a:orig = [line('.'),col('.')]
     let a:fin = copy(a:lines)
     let a:fin_args = deepcopy(a:args)
     for arg in a:args
+        if arg[2] == a:head
+            continue
+        endif
         let a:wrap = 1
         let a:name = arg[0]
         let a:next = s:getNextUse(a:name)
@@ -1080,7 +1102,6 @@ function! factorus#wrapDecs(var,lines,vars,names,decs,blocks,args,close)
         endwhile
 
         if a:wrap == 1
-            echom string(arg)
             let a:relevant = factorus#getRelevantLines(arg,a:close)
             let a:iso = [arg[2]] + factorus#getIsolatedLines(arg,a:relevant,a:names,a:decs,a:blocks,a:close)
             let a:next_args = factorus#getNewArgs(a:iso,a:vars,arg)
@@ -1102,6 +1123,7 @@ endfunction
 
 function! factorus#extractMethod()
     call s:gotoTag(0)
+    let a:open = line('.')
     let a:tab = substitute(getline('.'),'\(\s*\).*','\1','')
     let a:method_name = matchstr(getline('.'),'\s\+' . g:factorus_java_identifier . '\s*(')
     let a:method_name = matchstr(a:method_name,'[^[:space:](]\+')
@@ -1117,28 +1139,29 @@ function! factorus#extractMethod()
     let a:best_var = ['','',0]
     let a:best_lines = []
     for var in a:vars
-        if var[0] == 'selectedRoomTypeIds'
             let a:relevant = factorus#getRelevantLines(var,a:close)
             let a:iso = factorus#getIsolatedLines(var,a:relevant,a:names,a:decs,a:blocks,a:close)
             if len(a:iso) > len(a:best_lines)
                 let a:best_var = var
                 let a:best_lines = copy(a:iso)
             endif
-        endif
     endfor
 
-    if index(a:best_lines,a:best_var[2]) < 0
+    if index(a:best_lines,a:best_var[2]) < 0 && a:best_var[2] != a:open
         let a:best_lines = [a:best_var[2]] + a:best_lines
     endif
 
     let a:new_args = factorus#getNewArgs(a:best_lines,a:vars,a:best_var)
-    echom string(a:best_var)
-    "let [a:wrapped,a:wrapped_args] = factorus#wrapDecs(a:best_var,a:best_lines,a:vars,a:names,a:decs,a:blocks,a:new_args,a:close)
-    "while a:wrapped != a:best_lines
-    "    let [a:best_lines,a:new_args] = [a:wrapped,a:wrapped_args]
-    "    let [a:wrapped,a:wrapped_args] = factorus#wrapDecs(a:best_var,a:best_lines,a:vars,a:names,a:decs,a:blocks,a:new_args,a:close)
-    "endwhile
+    let [a:wrapped,a:wrapped_args] = factorus#wrapDecs(a:best_var,a:best_lines,a:vars,a:names,a:decs,a:blocks,a:new_args,a:close)
+    while a:wrapped != a:best_lines
+        let [a:best_lines,a:new_args] = [a:wrapped,a:wrapped_args]
+        let [a:wrapped,a:wrapped_args] = factorus#wrapDecs(a:best_var,a:best_lines,a:vars,a:names,a:decs,a:blocks,a:new_args,a:close)
+    endwhile
+    if a:best_var[2] == a:open && index(a:new_args,a:best_var) < 0
+        call add(a:new_args,a:best_var)
+    endif
 
+    let a:new_args = factorus#getNewArgs(a:best_lines,a:vars,a:best_var)
     let a:body = map(copy(a:best_lines),{n,line -> getline(line)})
 
     let a:type = a:best_var[1]
