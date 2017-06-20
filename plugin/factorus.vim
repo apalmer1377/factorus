@@ -13,7 +13,9 @@ endfunction
 
 function! s:init_vars()
     let a:vars = [
-        \ [ 'project_dir' , '' ]
+        \ [ 'project_dir' , '' ],
+        \ [ 'min_extracted_lines' , 2 ],
+        \ [ 'default_method' , 'newFactorusMethod' ]
     \ ]
 
     for [var,val] in a:vars

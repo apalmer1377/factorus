@@ -33,13 +33,13 @@ and modification.
 
 :FExtractMethod                                              *:FExtractMethod*
     Extracts a section of relatively isolated statements into a new method.
-    The name of the method defaults to "newFactorusMethod," and so should 
-    probably be changed afterwards.
+    The name of the method defaults to "newFactorusMethod", but this can be
+    changed if desired (see |g:factorus_default_method|).
 
     NOTE: Though the function tries to be conservative in how it extracts 
-    the new method, it still performs no checks to make sure the resulting 
-    code runs in the same way; therefore, I highly suggest you review the 
-    changes made.
+    the new method, it performs no checks to make sure the resulting 
+    code runs in the same way; therefore, it is hightly suggested that you 
+    review the changes made before committing them.
 
 ------------------------------------------------------------------------------
 2.2 Insertion                                                *factorus-insert*
@@ -74,6 +74,7 @@ and modification.
 ==============================================================================
 3. Configuration                                          *factorus-configure*
 
+
                                                       *g:factorus_project_dir*
 g:factorus_project_dir~
 Default: empty
@@ -85,6 +86,30 @@ helpful when you have multiple projects that reference each other.
 Example:
 >
         let g:factorus_project_dir = '/home/factorus/workspace' 
+<
+
+                                              *g:factorus_min_extracted_lines*
+g:factorus_min_extracted_lines~
+Default: 2
+
+The minimum number of lines required for a method to be extracted by
+|:FExtractMethod|.  If the number of lines found is less than this number,
+nothing is done.
+
+Example:
+>
+        let g:factorus_min_extracted_lines = 5
+<
+
+                                                   *g:factorus_default_method*
+g:factorus_default_method~
+Default: 'newFactorusMethod'
+
+The default name for a new method created by |:FExtractMethod|.
+
+Example:
+>
+        let g:factorus_min_extracted_lines = 'genericJavaFunction'
 <
 
                                                     *g:factorus_ignored_files*

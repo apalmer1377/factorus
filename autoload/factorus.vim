@@ -50,6 +50,40 @@ function! s:compare(x,y)
     endif
 endfunction
 
+function! s:merge(a,b)
+    let a:i = 0
+    let a:j = 0
+    let a:c = []
+
+    while a:i < len(a:a) || a:j < len(a:b)
+        if a:j >= len(a:b)
+            call add(a:c,a:a[a:i])
+            let a:i += 1
+        elseif a:i >= len(a:a)
+            call add(a:c,a:b[a:j])
+            let a:j += 1
+        elseif a:j >= len(a:b) || a:a[a:i] < a:b[a:j]
+            call add(a:c,a:a[a:i])
+            let a:i += 1
+        elseif a:i >= len(a:a) || a:b[a:j] < a:a[a:i]
+            call add(a:c,a:b[a:j])
+            let a:j += 1
+        else
+            call add(a:c,a:a[a:i])
+            let a:i += 1
+            let a:j += 1
+        endif
+    endwhile
+    return a:c
+endfunction
+
+function! s:isSmallerRange(x,y)
+    if (a:x[1] - a:x[0]) < (a:y[1] - a:y[0])
+        return 1
+    endif
+    return 0
+endfunction
+
 " Tag-Related Functions {{{2
 
 function! s:findTags(temp_file,search_string,append)
@@ -320,6 +354,178 @@ function! s:getSubClasses(class_name)
 
 endfunction
 
+function! s:getArgs() abort
+    let a:prev = [line('.'),col('.')]
+    call s:gotoTag(0)
+    let a:oparen = search('(','Wn')
+    let a:cparen = search(')','Wn')
+    
+    let a:dec = join(getline(a:oparen,a:cparen))
+    let a:dec = substitute(a:dec,'.*(\(.*\)).*','\1','')
+    let a:args = map(split(a:dec,','), {n, arg -> [split(arg)[1],split(arg)[0],line('.')] })
+
+    call cursor(a:prev[0],a:prev[1])
+    return a:args
+endfunction
+
+function! s:getLocalDecs(close)
+    let a:orig = [line('.'),col('.')]
+    let a:here = [line('.'),col('.')]
+    let a:next = s:getNextDec()
+
+    let a:vars = s:getArgs()
+    while s:isBefore(a:next[1],a:close)
+        if a:next[1] == [0,0]
+            break
+        endif
+        
+        let [a:type,a:name] = split(a:next[0],'|')
+        call add(a:vars,[a:name,a:type,a:next[1][0]])
+
+        call cursor(a:next[1][0],a:next[1][1])
+        let a:next = s:getNextDec()
+    endwhile
+    call cursor(a:orig[0],a:orig[1])
+
+    return a:vars
+endfunction
+
+function! s:getNextReference(var,type)
+    if a:type == 'right'
+        let a:search = s:no_comment . s:access_query . '\s*\(' . g:factorus_java_identifier . s:collection_identifier . '\=\s\)\=\s*\(' . g:factorus_java_identifier . '\)\s*[(.=][^;]*\(\<' . a:var . '\>\).*'
+        let a:index = '\6'
+    elseif a:type == 'left'
+        let a:search = s:no_comment . '\<\(' . a:var . '\)\>\s*[.=][^=].*'
+        let a:index = '\1'
+    elseif a:type == 'cond'
+        let a:search = '^[^/*]\s*\(for\|while\|if\|else\s*if\)\_s*(\_[^{]*\(\<' . a:var . '\>\)\_[^{]*).*'
+        let a:index = '\1'
+    else
+        let a:search = s:no_comment . '\s*\<return\>\_[^;]*\(\<' . a:var . '\>\).*'
+        let a:index = '\1'
+    endif
+
+    let a:line = searchpos(a:search,'Wn')
+
+    if a:type == 'right'
+        let a:prev = [line('.'),col('.')]
+        while s:isValidTag(a:line[0]) == 0
+            if a:line == [0,0]
+                break
+            endif
+            call cursor(a:line[0],a:line[1])
+            let a:line = searchpos(a:search,'Wn')
+        endwhile
+        call cursor(a:prev[0],a:prev[1])
+    endif
+
+    if a:line[0] > line('.')
+        let a:loc = substitute(getline(a:line[0]),a:search,a:index,'')
+        return [a:loc,a:line]
+    endif
+        
+    return ['none',[0,0]]
+endfunction
+
+function! s:getNextUse(var)
+    let a:right = s:getNextReference(a:var,'right')
+    let a:left = s:getNextReference(a:var,'left')
+    let a:cond = s:getNextReference(a:var,'cond')
+    let a:return = s:getNextReference(a:var,'return')
+
+    let a:min = [a:right[0],copy(a:right[1]),'right']
+
+    if a:left[1] != [0,0] && (s:isBefore(a:left[1],a:min[1]) == 1 || a:min[1] == [0,0])
+        let a:min = [a:left[0],copy(a:left[1]),'left']
+    endif
+
+    if a:cond[1] != [0,0] && (s:isBefore(a:cond[1],a:min[1]) == 1 || a:min[1] == [0,0])
+        let a:min = [a:cond[0],copy(a:cond[1]),'cond']
+    endif
+
+    if a:return[1] != [0,0] && (s:isBefore(a:return[1],a:min[1]) == 1 || a:min[1] == [0,0])
+        let a:min = [a:return[0],copy(a:return[1]),'return']
+    endif
+
+    return a:min
+endfunction
+
+function! s:getAllBlocks(close)
+    let a:if = '\<if\>\_s*(\_[^{;]*)\_s*{\='
+    let a:for = '\<for\>\_s*(\(\_[^{;]*;\_[^{;]*;\_[^{;]*\|\_[^{;]*:\_[^{;]*\))\_s*{\='
+    let a:while = '\<while\>\_s*(\_[^{;]*)'
+    let a:try = '\<try\>\_s*{'
+    let a:search = '\(' . a:if . '\|' . a:for . '\|' . a:while . '\|' . a:try . '\)'
+
+    let a:orig = [line('.'),col('.')]
+    call s:gotoTag(0)
+    let a:blocks = [[line('.'),a:close[0]]]
+
+    let a:open = searchpos('{','Wn')
+    let a:next = searchpos(a:search,'Wn')
+    while a:next[0] <= a:close[0]
+        if a:next == [0,0]
+            break
+        endif
+        call cursor(a:next[0],a:next[1])
+
+        if match(getline('.'),'\<else\>') >= 0
+            let a:next = searchpos(a:search,'Wn')
+            continue
+        endif
+
+        if match(getline('.'),'\<\(if\|try\)\>') >= 0
+            let a:open = [line('.'),col('.')]
+            let a:ret =  searchpos('{','Wn')
+            let a:semi = searchpos(';','Wn')
+
+            if s:isBefore(a:ret,a:semi) == 1
+                call cursor(a:ret[0],a:ret[1])
+                call searchpair('{','','}','W')
+                let a:next = searchpos('}\_s*\(else\_s*\(\<if\>\_.*)\)\=\|catch\)\_s*{','Wnc')
+                while a:next == [line('.'),col('.')]
+                    if a:next == [0,0]
+                        let a:next = a:ret
+                        break
+                    endif
+                    call search('{','W')
+                    call searchpair('{','','}','W')
+
+                    let a:next = searchpos('}\_s*else\_s*\(\<if\>\_.*)\)\=\_s*{','Wnc')
+                endwhile
+            else
+                call cursor(a:semi[0],a:semi[1])
+            endif
+
+            call add(a:blocks,[a:open[0],line('.')])
+            call cursor(a:open[0],a:open[1])
+        else
+            call search('{','W')
+            call add(a:blocks,[a:next[0],searchpairpos('{','','}','Wn')[0]])
+        endif
+
+        let a:next = searchpos(a:search,'Wn')
+    endwhile
+
+    call cursor(a:orig[0],a:orig[1])
+    return sort(a:blocks,'s:compare')
+endfunction
+
+function! s:getContainingBlock(line,ranges,exclude)
+    let a:block = [a:line,a:line]
+    for range in a:ranges
+        if range[0] > a:line
+            break
+        endif
+        if range[1] >= a:line
+            if s:isSmallerRange(a:block,range) == 1 && s:isSmallerRange(range,a:exclude) == 1
+                let a:block = copy(range)
+            endif
+        endif
+    endfor
+    return a:block
+endfunction
+
 " File-Updating Functions {{{2
 
 function! s:updateClassFile(class_name,old_name,new_name) abort
@@ -527,6 +733,237 @@ function! s:getNextTag()
     return [s:getAdjacentTag(''),1]
 endfunction
 
+" Method-Building Functions {{{2
+
+function! s:getNewArgs(lines,vars,var)
+    let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
+    let a:search = '\(' . join(a:names,'\|') . '\)'
+    let a:args = []
+    for line in a:lines
+        let a:this = getline(line)
+        let a:new = substitute(a:this,'.*\<' . a:search . '\>.*','\1','')
+        while a:new != a:this
+            let a:next_var = a:vars[index(a:names,a:new)]
+            if index(a:args,a:next_var) < 0 && a:next_var[0] != a:var[0] && index(a:lines,a:next_var[2]) < 0
+                call add(a:args,a:next_var)
+            endif
+            let a:this = substitute(a:this,'\<' . a:new . '\>','','g')
+            let a:new = substitute(a:this,'.*\<' . a:search . '\>.*','\1','')
+        endwhile
+    endfor
+    return a:args
+endfunction
+
+function! s:buildArgs(args,is_call)
+    if a:is_call == 0
+        let a:defs = map(deepcopy(a:args),{n,arg -> arg[1] . ' ' . arg[0]})
+    else
+        let a:defs = map(deepcopy(a:args),{n,arg -> arg[0]})
+    endif
+    return join(a:defs,', ')
+endfunction
+
+function! s:formatMethod(method,spaces)
+    call map(a:method,{n,line -> substitute(line,'\s*\(.*\)','\1','')})
+
+    let a:dspaces = a:spaces
+    let a:i = 0
+    let a:block = 0
+    while a:i < len(a:method)
+        if match(a:method[a:i],'}') >= 0
+            let a:dspaces = strpart(a:dspaces,len(a:spaces))
+        endif
+        let a:method[a:i] = a:dspaces . a:method[a:i]
+
+        if match(a:method[a:i],'{') >= 0
+            let a:dspaces .= a:spaces
+        endif
+
+        let a:i += 1
+    endwhile
+endfunction
+
+function! s:wrapDecs(var,lines,vars,names,decs,blocks,args,close)
+    let a:head = s:getAdjacentTag('b')
+    let a:orig = [line('.'),col('.')]
+    let a:fin = copy(a:lines)
+    let a:fin_args = deepcopy(a:args)
+    for arg in a:args
+        if arg[2] == a:head
+            continue
+        endif
+        let a:wrap = 1
+        let a:name = arg[0]
+        let a:next = s:getNextUse(a:name)
+        while a:next[1] != [0,0] && s:isBefore(a:next[1],a:close) == 1
+            if a:next[2] != 'left' && index(a:lines,a:next[1][0]) < 0
+                let a:wrap = 0    
+                break
+            endif
+            call cursor(a:next[1][0],a:next[1][1])
+            let a:next = s:getNextUse(a:name)
+        endwhile
+
+        if a:wrap == 1
+            let a:relevant = s:getRelevantLines(arg,a:close)
+            let a:iso = [arg[2]] + s:getIsolatedLines(arg,a:relevant,a:names,a:decs,a:blocks,a:close)
+            let a:next_args = s:getNewArgs(a:iso,a:vars,arg)
+            let a:fin = s:merge(a:fin,a:iso)
+
+            call remove(a:fin_args,index(a:fin_args,arg))
+            for narg in a:next_args
+                if index(a:fin_args,narg) < 0 && narg[0] != a:var[0]
+                    call add(a:fin_args,narg)
+                endif
+            endfor
+        endif
+        call cursor(a:orig[0],a:orig[1])
+    endfor
+
+    call cursor(a:orig[0],a:orig[1])
+    return [a:fin,a:fin_args]
+endfunction
+
+function! s:buildNewMethod(var,lines,args,tab,close)
+    let a:body = map(copy(a:lines),{n,line -> getline(line)})
+
+    let a:type = a:var[1]
+    let a:return = ['return ' . a:var[0] . ';','}']
+    let a:call = a:var[1] . ' ' . a:var[0] . ' = '
+
+    call cursor(a:lines[-1]+1,1)
+    let a:outside = s:getNextUse(a:var[0])
+    if a:outside[1] == [0,0] || s:isBefore(a:close,a:outside[1]) == 1
+        let a:type = 'void'
+        let a:return = ['}'] 
+        let a:call = ''
+    endif
+
+    let a:build = s:buildArgs(a:args,0)
+    let a:def = ['public ' . a:type . g:factorus_default_method . '(' . a:build . ') {']
+    let a:final = a:def + a:body + a:return + ['']
+    call s:formatMethod(a:final,a:tab)
+
+    let a:arg_string = s:buildArgs(a:args,1)
+    let a:call_space = substitute(getline(a:lines[-1]),'\(\s*\).*','\1','')
+    let a:rep = [a:call_space . a:call . g:factorus_default_method . '(' . a:arg_string . ');']
+
+    return [a:final,a:rep]
+endfunction
+
+" Extraction Heuristics {{{2
+
+function! s:getRelevantLines(var,close)
+    let a:orig = [line('.'),col('.')]
+    let [a:name,a:type,a:line] = a:var
+
+    let a:lines = []
+    call cursor(a:line,1)
+    let a:local_close = s:getClosingBracket(0)
+    let a:next = s:getNextUse(a:name)
+
+    while s:isBefore(a:next[1],a:local_close) == 1
+        if a:next[1] == [0,0]
+            break
+        endif
+
+        call cursor(a:next[1][0],a:next[1][1])
+        call add(a:lines,a:next[1][0])
+        let a:next = s:getNextUse(a:name)
+    endwhile
+
+    call cursor(a:orig[0],a:orig[1])
+    return a:lines
+endfunction
+
+function! s:isIsolatedBlock(block,var,names,decs,close)
+    let a:orig = [line('.'),col('.')]
+    call cursor(a:block[0],1)
+    let a:search = join(a:names,'\|')
+    let a:ref = s:getNextReference(a:search,'left') 
+    let a:return = search('\<return\>','Wn')
+
+    let a:res = 1
+    if a:return >= a:block[0] && a:return <= a:block[1]
+        let a:res = 0
+    elseif a:ref[1] != [0,0] && a:ref[1][0] >= a:block[0] && a:ref[1][0] <= a:block[1] && a:ref[0] != a:var[0]
+        let a:res = 0
+    else
+        let a:i = 0
+        while a:i < len(a:decs)
+            if a:decs[a:i] >= a:block[0] && a:decs[a:i] <= a:block[1]
+                let a:use = s:getNextUse(a:names[a:i])
+                while a:use[1] != [0,0] && s:isBefore(a:use[1],a:close) == 1
+                    if a:use[1][0] > a:block[1]
+                        let a:res = 0
+                        break
+                    endif
+                    call cursor(a:use[1][0],a:use[1][1])
+                    let a:use = s:getNextUse(a:names[a:i])
+                endwhile
+                if a:res == 0
+                    break
+                endif
+                call cursor(a:block[0],1)
+            endif
+            let a:i += 1
+        endwhile
+    endif
+
+    call cursor(a:orig[0],a:orig[1])
+    return a:res
+endfunction
+
+function! s:getIsolatedLines(var,refs,names,decs,blocks,close)
+    if a:refs == []
+        return []
+    endif
+    let a:orig = [line('.'),col('.')]
+    let [a:name,a:type,a:dec] = a:var
+    let a:wrap = s:getContainingBlock(a:var[2],a:blocks,[1,line('$')])
+    let a:alt_wrap = s:getContainingBlock(a:refs[0],a:blocks,a:blocks[0])
+
+    let a:usable = []
+    for twrap in [a:wrap,a:alt_wrap]
+        let a:temp = []
+        let a:next_use = s:getNextReference(a:var[0],'right')
+        call cursor(a:next_use[1][0],a:next_use[1][1])
+
+        for line in a:refs
+            if line == a:next_use[1][0]
+                if index(a:names,a:next_use[0]) >= 0
+                    break
+                endif
+                call cursor(a:next_use[1][0],a:next_use[1][1])
+                let a:next_use = s:getNextReference(a:var[0],'right')
+            endif
+
+            let a:block = s:getContainingBlock(line,a:blocks,twrap)
+            if a:block[0] < twrap[0] || a:block[1] > twrap[1]
+                break
+            endif
+
+            if s:isIsolatedBlock(a:block,a:var,a:names,a:decs,a:close) == 0 
+                break
+            endif
+            let a:i = a:block[0]
+            while a:i <= a:block[1]
+                if index(a:temp,a:i) < 0
+                    call add(a:temp,a:i)
+                endif
+                let a:i += 1
+            endwhile
+        endfor
+
+        if len(a:temp) > len(a:usable)
+            let a:usable = copy(a:temp)
+        endif
+
+        call cursor(a:orig[0],a:orig[1])
+    endfor
+
+    return a:usable
+endfunction
 
 " Insertion Functions {{{1
 
@@ -678,512 +1115,54 @@ endfunction
 
 " Extraction Functions {{{1
 
-function! s:getArgs() abort
-    let a:prev = [line('.'),col('.')]
-    call s:gotoTag(0)
-    let a:oparen = search('(','Wn')
-    let a:cparen = search(')','Wn')
-    
-    let a:dec = join(getline(a:oparen,a:cparen))
-    let a:dec = substitute(a:dec,'.*(\(.*\)).*','\1','')
-    let a:args = map(split(a:dec,','), {n, arg -> [split(arg)[1],split(arg)[0],line('.')] })
-
-    call cursor(a:prev[0],a:prev[1])
-    return a:args
-endfunction
-
-function! factorus#getLocalDecs(close)
-    let a:orig = [line('.'),col('.')]
-    let a:here = [line('.'),col('.')]
-    let a:next = s:getNextDec()
-
-    let a:vars = s:getArgs()
-    while s:isBefore(a:next[1],a:close)
-        if a:next[1] == [0,0]
-            break
-        endif
-        
-        let [a:type,a:name] = split(a:next[0],'|')
-        call add(a:vars,[a:name,a:type,a:next[1][0]])
-
-        call cursor(a:next[1][0],a:next[1][1])
-        let a:next = s:getNextDec()
-    endwhile
-    call cursor(a:orig[0],a:orig[1])
-
-    return a:vars
-endfunction
-
-function! s:getNextReference(var,type)
-    if a:type == 'right'
-        let a:search = s:no_comment . s:access_query . '\s*\(' . g:factorus_java_identifier . s:collection_identifier . '\=\s\)\=\s*\(' . g:factorus_java_identifier . '\)\s*[(.=][^;]*\(\<' . a:var . '\>\).*'
-        let a:index = '\6'
-    elseif a:type == 'left'
-        let a:search = s:no_comment . '\<\(' . a:var . '\)\>\s*[.=][^=].*'
-        let a:index = '\1'
-    elseif a:type == 'cond'
-        let a:search = '^[^/*]\s*\(for\|while\|if\|else\s*if\)\_s*(\_[^{]*\(\<' . a:var . '\>\)\_[^{]*).*'
-        let a:index = '\1'
-    else
-        let a:search = s:no_comment . '\s*\<return\>\_[^;]*\(\<' . a:var . '\>\).*'
-        let a:index = '\1'
-    endif
-
-    let a:line = searchpos(a:search,'Wn')
-
-    if a:type == 'right'
-        let a:prev = [line('.'),col('.')]
-        while s:isValidTag(a:line[0]) == 0
-            if a:line == [0,0]
-                break
-            endif
-            call cursor(a:line[0],a:line[1])
-            let a:line = searchpos(a:search,'Wn')
-        endwhile
-        call cursor(a:prev[0],a:prev[1])
-    endif
-
-    if a:line[0] > line('.')
-        let a:loc = substitute(getline(a:line[0]),a:search,a:index,'')
-        return [a:loc,a:line]
-    endif
-        
-    return ['none',[0,0]]
-endfunction
-
-function! s:getNextUse(var)
-    let a:right = s:getNextReference(a:var,'right')
-    let a:left = s:getNextReference(a:var,'left')
-    let a:cond = s:getNextReference(a:var,'cond')
-    let a:return = s:getNextReference(a:var,'return')
-
-    let a:min = [a:right[0],copy(a:right[1]),'right']
-    if a:left[1] != [0,0] && (s:isBefore(a:left[1],a:min[1]) == 1 || a:min[1] == [0,0])
-        let a:min = [a:left[0],copy(a:left[1]),'left']
-    endif
-
-    if a:cond[1] != [0,0] && (s:isBefore(a:cond[1],a:min[1]) == 1 || a:min[1] == [0,0])
-        let a:min = [a:cond[0],copy(a:cond[1]),'cond']
-    endif
-
-    if a:return[1] != [0,0] && (s:isBefore(a:return[1],a:min[1]) == 1 || a:min[1] == [0,0])
-        let a:min = [a:return[0],copy(a:return[1]),'return']
-    endif
-
-    return a:min
-endfunction
-
-function! factorus#addBlockLines(lines,line,start)
-    let a:orig = [line('.'),col('.')]
-
-    if a:start == 0
-        let a:close = s:getClosingBracket(0)
-        let a:open = searchpairpos('{','','}','Wbn')
-
-        while match(getline(a:open[0]),'\<\(if\|else\|while\|for\|try\)\>') < 0
-            let a:open[0] -= 1
-        endwhile
-
-        while searchpos('}\_s*else\_s*\(if\)\=\_s*{','bWcn') == [line('.'),col('.')] || searchpos('|\_s*catch\_[^{]*{','bWcn') == [line('.'),col('.')]
-            call searchpos('}','Wb')
-            let a:open = searchpairpos('{','','}','Wbn')
-            call cursor(a:open[0],a:open[1])
-        endwhile
-    else
-        let a:open = [line('.'),col('.')]
-        let a:close = s:getClosingBracket(1)
-
-        while match(getline(a:open[0]),'\<\(if\|else\|while\|for\|try\)\>') < 0
-            let a:open[0] -= 1
-        endwhile
-
-        call cursor(a:close[0],a:close[1])
-        while searchpos('}\_s*else\_s*\(if\)\=\_s*{','Wcn') == [line('.'),col('.')] || searchpos('|\_s*catch\_[^{]*{','Wcn') == [line('.'),col('.')]
-            call searchpos('{','W')
-            let a:close = searchpairpos('{','','}','Wn') 
-            call cursor(a:close[0],a:close[1])
-        endwhile
-    endif
-    
-    call cursor(a:orig[0],a:orig[1])
-    let a:range = [a:open[0],a:close[0]]
-    if index(a:lines,a:range) < 0
-        call add(a:lines,a:range)
-    endif
-endfunction
-
-function! factorus#getRelevantLines(var,close)
-    let a:orig = [line('.'),col('.')]
-    let [a:name,a:type,a:line] = a:var
-
-    let a:lines = []
-    call cursor(a:line,1)
-    let a:local_close = s:getClosingBracket(0)
-    let a:next = s:getNextUse(a:name)
-
-    while s:isBefore(a:next[1],a:local_close) == 1
-        if a:next[1] == [0,0]
-            break
-        endif
-
-        call cursor(a:next[1][0],a:next[1][1])
-        call add(a:lines,a:next[1][0])
-        let a:next = s:getNextUse(a:name)
-    endwhile
-
-    call cursor(a:orig[0],a:orig[1])
-    return a:lines
-endfunction
-
-function! factorus#getAllBlocks(close)
-    let a:if = '\<if\>\_s*(\_[^{;]*)\_s*{\='
-    let a:for = '\<if\>\_s*(\(\_[^{;]*;\_[^{;]*;\_[^{;]*\|\_[^{;]*:\_[^{;]*\))\_s*{\='
-    let a:while = '\<while\>\_s*(\_[^{;]*)'
-    let a:try = '\<try\>\_s*{'
-    let a:search = '\(' . a:if . '\|' . a:for . '\|' . a:while . '\|' . a:try . '\)'
-
-    let a:orig = [line('.'),col('.')]
-    call s:gotoTag(0)
-    let a:blocks = [[line('.'),a:close[0]]]
-
-    let a:open = searchpos('{','Wn')
-    let a:next = searchpos(a:search,'Wn')
-    while a:next[0] <= a:close[0]
-        if a:next == [0,0]
-            break
-        endif
-        call cursor(a:next[0],a:next[1])
-
-        if match(getline('.'),'\<else\>') >= 0
-            let a:next = searchpos(a:search,'Wn')
-            continue
-        endif
-
-        if match(getline('.'),'\<\(if\|try\)\>') >= 0
-            let a:open = [line('.'),col('.')]
-            let a:ret =  searchpos('{','Wn')
-            let a:semi = searchpos(';','Wn')
-
-            if s:isBefore(a:ret,a:semi) == 1
-                call cursor(a:ret[0],a:ret[1])
-                call searchpair('{','','}','W')
-                let a:next = searchpos('}\_s*\(else\_s*\(\<if\>\_.*)\)\=\|try\)\_s*{','Wnc')
-                "let a:one_line = searchpos(';')
-                while a:next == [line('.'),col('.')]
-                    if a:next == [0,0]
-                        let a:next = a:ret
-                        break
-                    endif
-                    call search('{','W')
-                    call searchpair('{','','}','W')
-
-                    let a:next = searchpos('}\_s*else\_s*\(\<if\>\_.*)\)\=\_s*{','Wnc')
-                endwhile
-            else
-                call cursor(a:semi[0],a:semi[1])
-            endif
-
-            call add(a:blocks,[a:open[0],line('.')])
-            call cursor(a:open[0],a:open[1])
-        else
-            call search('{','W')
-            call add(a:blocks,[a:next[0],searchpairpos('{','','}','Wn')[0]])
-        endif
-
-        let a:next = searchpos(a:search,'Wn')
-    endwhile
-
-    call cursor(a:orig[0],a:orig[1])
-    return sort(a:blocks,'s:compare')
-endfunction
-
-function! factorus#isIsolatedBlock(block,var,names,decs,close)
-    let a:orig = [line('.'),col('.')]
-    call cursor(a:block[0],1)
-    let a:search = join(a:names,'\|')
-    let a:ref = s:getNextReference(a:search,'left') 
-    let a:return = search('\<return\>','Wn')
-
-    let a:res = 1
-    if a:return >= a:block[0] && a:return <= a:block[1]
-        let a:res = 0
-    elseif a:ref[1] != [0,0] && a:ref[1][0] >= a:block[0] && a:ref[1][0] <= a:block[1] && a:ref[0] != a:var[0]
-        let a:res = 0
-    else
-        let a:i = 0
-        while a:i < len(a:decs)
-            if a:decs[a:i] >= a:block[0] && a:decs[a:i] <= a:block[1]
-                let a:use = s:getNextUse(a:names[a:i])
-                while a:use[1] != [0,0] && s:isBefore(a:use[1],a:close) == 1
-                    if a:use[1][0] > a:block[1]
-                        let a:res = 0
-                        break
-                    endif
-                    call cursor(a:use[1][0],a:use[1][1])
-                    let a:use = s:getNextUse(a:names[a:i])
-                endwhile
-                if a:res == 0
-                    break
-                endif
-                call cursor(a:block[0],1)
-            endif
-            let a:i += 1
-        endwhile
-    endif
-
-    call cursor(a:orig[0],a:orig[1])
-    return a:res
-endfunction
-
-function! factorus#getContainingBlock(line,ranges,exclude,dir)
-    let a:block = a:dir == 'min' ? [1,line('$')] : [a:line,a:line]
-    for range in a:ranges
-        if range[0] > a:line
-            break
-        endif
-        if range[1] >= a:line && range != a:exclude
-            if (range[1] - range[0]) > (a:block[1] - a:block[0])
-                if a:dir == 'max' && (range[1] - range[0]) < (a:exclude[1] - a:exclude[0]) "&& range[0] > a:block[0] && range[1] < a:block[1]
-                    let a:block = copy(range)
-                endif
-            else
-                if a:dir == 'min'
-                    let a:block = copy(range)
-                endif
-            endif
-        endif
-    endfor
-    return a:block
-endfunction
-
-function! factorus#getIsolatedLines(var,refs,names,decs,blocks,close)
-    if a:refs == []
-        return []
-    endif
-    let a:orig = [line('.'),col('.')]
-    let [a:name,a:type,a:dec] = a:var
-    let a:wrap = factorus#getContainingBlock(a:var[2],a:blocks,[1,line('$')],'max')
-    let a:alt_wrap = factorus#getContainingBlock(a:refs[0],a:blocks,a:blocks[0],'max')
-    let a:usable = []
-    let a:next_use = s:getNextReference(a:var[0],'right')
-    let a:done = 0
-    call cursor(a:next_use[1][0],a:next_use[1][1])
-
-    for twrap in [a:wrap,a:alt_wrap]
-        let a:temp = []
-        for line in a:refs
-            if line == a:next_use[1][0]
-                if index(a:names,a:next_use[0]) >= 0
-                    break
-                endif
-                call cursor(a:next_use[1][0],a:next_use[1][1])
-                let a:next_use = s:getNextReference(a:var[0],'right')
-            endif
-
-            let a:block = factorus#getContainingBlock(line,a:blocks,twrap,'max')
-            if a:block[0] < twrap[0] || a:block[1] > twrap[1]
-                break
-            endif
-
-            if factorus#isIsolatedBlock(a:block,a:var,a:names,a:decs,a:close) == 0 
-                break
-            endif
-            let a:i = a:block[0]
-            while a:i <= a:block[1]
-                if index(a:temp,a:i) < 0
-                    call add(a:temp,a:i)
-                endif
-                let a:i += 1
-            endwhile
-        endfor
-        if len(a:temp) > len(a:usable)
-            let a:usable = copy(a:temp)
-        endif
-    endfor
-
-    call cursor(a:orig[0],a:orig[1])
-    return a:usable
-endfunction
-
-function! factorus#getNewArgs(lines,vars,var)
-    let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
-    let a:search = '\(' . join(a:names,'\|') . '\)'
-    let a:args = []
-    for line in a:lines
-        let a:this = getline(line)
-        let a:new = substitute(a:this,'.*\<' . a:search . '\>.*','\1','')
-        while a:new != a:this
-            let a:next_var = a:vars[index(a:names,a:new)]
-            if index(a:args,a:next_var) < 0 && a:next_var[0] != a:var[0] && index(a:lines,a:next_var[2]) < 0
-                call add(a:args,a:next_var)
-            endif
-            let a:this = substitute(a:this,'\<' . a:new . '\>','','g')
-            let a:new = substitute(a:this,'.*\<' . a:search . '\>.*','\1','')
-        endwhile
-    endfor
-    return a:args
-endfunction
-
-function! factorus#buildArgs(args,is_call)
-    if a:is_call == 0
-        let a:defs = map(deepcopy(a:args),{n,arg -> arg[1] . ' ' . arg[0]})
-    else
-        let a:defs = map(deepcopy(a:args),{n,arg -> arg[0]})
-    endif
-    return join(a:defs,', ')
-endfunction
-
-function! factorus#formatMethod(method,spaces)
-    call map(a:method,{n,line -> substitute(line,'\s*\(.*\)','\1','')})
-
-    let a:dspaces = a:spaces
-    let a:i = 0
-    let a:block = 0
-    while a:i < len(a:method)
-        if match(a:method[a:i],'}') >= 0
-            let a:dspaces = strpart(a:dspaces,len(a:spaces))
-        endif
-        let a:method[a:i] = a:dspaces . a:method[a:i]
-
-        if match(a:method[a:i],'{') >= 0
-            let a:dspaces .= a:spaces
-        endif
-
-        let a:i += 1
-    endwhile
-endfunction
-
-function! factorus#merge(a,b)
-    let a:i = 0
-    let a:j = 0
-    let a:c = []
-
-    while a:i < len(a:a) || a:j < len(a:b)
-        if a:j >= len(a:b)
-            call add(a:c,a:a[a:i])
-            let a:i += 1
-        elseif a:i >= len(a:a)
-            call add(a:c,a:b[a:j])
-            let a:j += 1
-        elseif a:j >= len(a:b) || a:a[a:i] < a:b[a:j]
-            call add(a:c,a:a[a:i])
-            let a:i += 1
-        elseif a:i >= len(a:a) || a:b[a:j] < a:a[a:i]
-            call add(a:c,a:b[a:j])
-            let a:j += 1
-        else
-            call add(a:c,a:a[a:i])
-            let a:i += 1
-            let a:j += 1
-        endif
-    endwhile
-    return a:c
-endfunction
-
-function! factorus#wrapDecs(var,lines,vars,names,decs,blocks,args,close)
-    let a:head = s:getAdjacentTag('b')
-    let a:orig = [line('.'),col('.')]
-    let a:fin = copy(a:lines)
-    let a:fin_args = deepcopy(a:args)
-    for arg in a:args
-        if arg[2] == a:head
-            continue
-        endif
-        let a:wrap = 1
-        let a:name = arg[0]
-        let a:next = s:getNextUse(a:name)
-        while a:next[1] != [0,0] && s:isBefore(a:next[1],a:close) == 1
-            if a:next[2] != 'left' && index(a:lines,a:next[1][0]) < 0
-                let a:wrap = 0    
-                break
-            endif
-            call cursor(a:next[1][0],a:next[1][1])
-            let a:next = s:getNextUse(a:name)
-        endwhile
-
-        if a:wrap == 1
-            let a:relevant = factorus#getRelevantLines(arg,a:close)
-            let a:iso = [arg[2]] + factorus#getIsolatedLines(arg,a:relevant,a:names,a:decs,a:blocks,a:close)
-            let a:next_args = factorus#getNewArgs(a:iso,a:vars,arg)
-            let a:fin = factorus#merge(a:fin,a:iso)
-
-            call remove(a:fin_args,index(a:fin_args,arg))
-            for narg in a:next_args
-                if index(a:fin_args,narg) < 0 && narg[0] != a:var[0]
-                    call add(a:fin_args,narg)
-                endif
-            endfor
-        endif
-        call cursor(a:orig[0],a:orig[1])
-    endfor
-
-    call cursor(a:orig[0],a:orig[1])
-    return [a:fin,a:fin_args]
-endfunction
-
 function! factorus#extractMethod()
+    echom 'Extracting new method...'
     call s:gotoTag(0)
-    let a:open = line('.')
     let a:tab = substitute(getline('.'),'\(\s*\).*','\1','')
-    let a:method_name = matchstr(getline('.'),'\s\+' . g:factorus_java_identifier . '\s*(')
-    let a:method_name = matchstr(a:method_name,'[^[:space:](]\+')
+    let a:method_name = substitute(getline('.'),'.*\s\+\(' . g:factorus_java_identifier . '\)\s*(.*','\1','')
 
-    let a:close = s:getClosingBracket(1)
+    let [a:open,a:close] = [line('.'),s:getClosingBracket(1)]
     call searchpos('{','W')
 
-    let a:vars = factorus#getLocalDecs(a:close)
+    let a:vars = s:getLocalDecs(a:close)
     let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
-    let a:blocks = factorus#getAllBlocks(a:close)
     let a:decs = map(deepcopy(a:vars),{n,var -> var[2]})
+    let a:blocks = s:getAllBlocks(a:close)
 
     let a:best_var = ['','',0]
     let a:best_lines = []
     for var in a:vars
-            let a:relevant = factorus#getRelevantLines(var,a:close)
-            let a:iso = factorus#getIsolatedLines(var,a:relevant,a:names,a:decs,a:blocks,a:close)
-            if len(a:iso) > len(a:best_lines)
-                let a:best_var = var
-                let a:best_lines = copy(a:iso)
-            endif
+        let a:relevant = s:getRelevantLines(var,a:close)
+        let a:iso = s:getIsolatedLines(var,a:relevant,a:names,a:decs,a:blocks,a:close)
+        if len(a:iso) > len(a:best_lines)
+            let a:best_var = var
+            let a:best_lines = copy(a:iso)
+        endif
     endfor
+
+    if len(a:best_lines) < g:factorus_min_extracted_lines
+        redraw
+        echom 'Nothing to extract'
+        return
+    endif
 
     if index(a:best_lines,a:best_var[2]) < 0 && a:best_var[2] != a:open
         let a:best_lines = [a:best_var[2]] + a:best_lines
     endif
 
-    let a:new_args = factorus#getNewArgs(a:best_lines,a:vars,a:best_var)
-    let [a:wrapped,a:wrapped_args] = factorus#wrapDecs(a:best_var,a:best_lines,a:vars,a:names,a:decs,a:blocks,a:new_args,a:close)
+    let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:best_var)
+    let [a:wrapped,a:wrapped_args] = s:wrapDecs(a:best_var,a:best_lines,a:vars,a:names,a:decs,a:blocks,a:new_args,a:close)
     while a:wrapped != a:best_lines
         let [a:best_lines,a:new_args] = [a:wrapped,a:wrapped_args]
-        let [a:wrapped,a:wrapped_args] = factorus#wrapDecs(a:best_var,a:best_lines,a:vars,a:names,a:decs,a:blocks,a:new_args,a:close)
+        let [a:wrapped,a:wrapped_args] = s:wrapDecs(a:best_var,a:best_lines,a:vars,a:names,a:decs,a:blocks,a:new_args,a:close)
     endwhile
+
     if a:best_var[2] == a:open && index(a:new_args,a:best_var) < 0
         call add(a:new_args,a:best_var)
     endif
 
-    let a:new_args = factorus#getNewArgs(a:best_lines,a:vars,a:best_var)
-    let a:body = map(copy(a:best_lines),{n,line -> getline(line)})
-
-    let a:type = a:best_var[1]
-    let a:return = ['return ' . a:best_var[0] . ';','}']
-    let a:call = a:best_var[1] . ' ' . a:best_var[0] . ' = '
-
-    call cursor(a:best_lines[-1]+1,1)
-    let a:outside = s:getNextUse(a:best_var[0])
-    if a:outside[1] == [0,0] || s:isBefore(a:close,a:outside[1]) == 1
-        let a:type = 'void'
-        let a:return = ['}'] 
-        let a:call = ''
-    endif
-
-    let a:build = factorus#buildArgs(a:new_args,0)
-    let a:def = ['public ' . a:type . ' newFactorusMethod(' . a:build . ') {']
-    let a:final = a:def + a:body + a:return + ['']
-    call factorus#formatMethod(a:final,a:tab)
-
-    let a:arg_string = factorus#buildArgs(a:new_args,1)
-    let a:call_space = substitute(getline(a:best_lines[-1]),'\(\s*\).*','\1','')
-    let a:rep = [a:call_space . a:call . 'newFactorusMethod(' . a:arg_string . ');']
+    let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:best_var)
+    let [a:final,a:rep] = s:buildNewMethod(a:best_var,a:best_lines,a:new_args,a:tab,a:close)
 
     call append(a:close[0] + 1,a:final)
     call append(a:best_lines[-1],a:rep)
@@ -1195,9 +1174,9 @@ function! factorus#extractMethod()
         let a:i -= 1
     endwhile
 
-    call search(a:type . ' newFactorusMethod(')
+    call search('public.*newFactorusMethod(')
     silent write
-    silent edit
+    redraw
 
-    echom 'Extracted new method from ' . a:method_name
+    echom 'Extracted ' . len(a:best_lines) . ' lines from ' . a:method_name
 endfunction
