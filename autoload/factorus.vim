@@ -910,11 +910,22 @@ function! s:isIsolatedBlock(block,var,names,decs,close)
                     call cursor(a:use[1][0],a:use[1][1])
                     let a:use = s:getNextUse(a:names[a:i])
                 endwhile
-                if a:res == 0
-                    break
-                endif
-                call cursor(a:block[0],1)
+            elseif a:decs[a:i] < a:block[0]
+                let a:left = s:getNextReference(a:names[a:i],'left')
+                while a:left[1] != [0,0] && s:isBefore(a:left[1],a:close) == 1
+                    let a:eq = a:left[0] . '\s*=[^=]'
+                    if match(getline(a:left[1][0]),a:eq) >= 0 && a:left[1][0] >= a:block[0] && a:left[1][0] <= a:block[1] && a:left[0] != a:var[0]
+                        let a:res = 0
+                        break
+                    endif
+                    call cursor(a:left[1][0],a:left[1][1])
+                    let a:left = s:getNextReference(a:names[a:i],'left')
+                endwhile
             endif
+            if a:res == 0
+                break
+            endif
+            call cursor(a:block[0],1)
             let a:i += 1
         endwhile
     endif
@@ -935,6 +946,16 @@ function! s:getIsolatedLines(var,refs,names,decs,blocks,close)
     let a:usable = []
     for twrap in [a:wrap,a:alt_wrap]
         let a:temp = []
+        if s:isIsolatedBlock(twrap,a:var,a:names,a:decs,a:close) == 1
+            let a:i = twrap[0]
+            while a:i <= twrap[1]
+                if index(a:temp,a:i) < 0
+                    call add(a:temp,a:i)
+                endif
+                let a:i += 1
+            endwhile
+        endif
+
         let a:next_use = s:getNextReference(a:var[0],'right')
         call cursor(a:next_use[1][0],a:next_use[1][1])
 
@@ -974,7 +995,9 @@ function! s:getIsolatedLines(var,refs,names,decs,blocks,close)
     return a:usable
 endfunction
 
-" Insertion Functions {{{1
+" Global Functions {{{1
+
+" Insertion Functions {{{2
 
 function! factorus#encapsulateField() abort
     let a:search = '\s*' . s:access_query . '\(' . g:factorus_java_identifier . s:collection_identifier . '\=\)\_s*\(' . g:factorus_java_identifier . '\)\_s*[;=]'
@@ -1024,7 +1047,7 @@ function! factorus#addParam(param_type,param_name) abort
     echom 'Added parameter ' . a:param_name . ' to method'
 endfunction
 
-" Renaming Functions {{{1
+" Renaming Functions {{{2
 
 function! factorus#renameArg(new_name) abort
     let a:var = expand('<cword>')
@@ -1122,7 +1145,7 @@ function! factorus#renameSomething(new_name,type)
     endtry
 endfunction
 
-" Extraction Functions {{{1
+" Extraction Functions {{{2
 
 function! factorus#extractMethod()
     echom 'Extracting new method...'
