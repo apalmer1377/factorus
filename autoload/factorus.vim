@@ -815,7 +815,13 @@ function! s:wrapDecs(var,lines,vars,names,decs,blocks,args,close)
 
         if a:wrap == 1
             let a:relevant = s:getRelevantLines(arg,a:close)
-            let a:iso = [arg[2]] + s:getIsolatedLines(arg,a:relevant,a:names,a:decs,a:blocks,a:close)
+            let a:stop = arg[2]
+            let a:dec = [a:stop]
+            while match(getline(a:stop),';') < 0
+                let a:stop += 1
+                call add(a:dec,a:stop)
+            endwhile
+            let a:iso = a:dec + s:getIsolatedLines(arg,a:relevant,a:names,a:decs,a:blocks,a:close)
             let a:next_args = s:getNewArgs(a:iso,a:vars,arg)
             let a:fin = s:merge(a:fin,a:iso)
 
@@ -975,6 +981,13 @@ function! s:getIsolatedLines(var,refs,names,decs,blocks,close)
 
             if s:isIsolatedBlock(a:block,a:var,a:names,a:decs,a:close) == 0 
                 break
+            endif
+            if a:block[1] - a:block[0] == 0
+                let a:stop = a:block[0]
+                while match(getline(a:stop),';') < 0
+                    let a:stop += 1
+                endwhile
+                let a:block[1] = a:stop
             endif
             let a:i = a:block[0]
             while a:i <= a:block[1]
@@ -1179,7 +1192,14 @@ function! factorus#extractMethod()
     endif
 
     if index(a:best_lines,a:best_var[2]) < 0 && a:best_var[2] != a:open
-        let a:best_lines = [a:best_var[2]] + a:best_lines
+        let a:stop = a:best_var[2]
+        let a:dec_lines = [a:stop]
+        while match(getline(a:stop),';') < 0
+            let a:stop += 1
+            call add(a:dec_lines,a:stop)
+        endwhile
+
+        let a:best_lines = a:dec_lines + a:best_lines
     endif
 
     let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:best_var)
