@@ -800,7 +800,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
 
         let a:next = searchpos(a:query,'Wn')
         while s:isBefore(a:next,a:closing)
-            if a:next[0] == [0,0]
+            if a:next == [0,0]
                 break
             endif
             call cursor(a:next[0],a:next[1])
@@ -845,6 +845,9 @@ function! s:getNewArgs(lines,vars,rels,var)
         let a:new = substitute(a:this,a:search,'\1','')
         while a:new != a:this
             let a:spot = str2nr(s:getLatestDec(a:rels,a:new,[line,1]))
+            if a:spot == 0
+                break
+            endif
             let a:next_var = s:findVar(a:vars,a:names,a:new,a:spot)
             if index(a:args,a:next_var) < 0 && a:next_var[0] != a:var[0] && index(a:lines,a:spot) < 0
                 call add(a:args,a:next_var)
@@ -1428,7 +1431,6 @@ function! factorus#extractMethod()
         let [a:best_lines,a:new_args] = [a:wrapped,a:wrapped_args]
         let [a:wrapped,a:wrapped_args] = s:wrapDecs(a:best_var,a:best_lines,a:vars,a:compact,a:blocks,a:all,a:new_args,a:close)
     endwhile
-
 
     if a:best_var[2] == a:open && index(a:new_args,a:best_var) < 0
         call add(a:new_args,a:best_var)
