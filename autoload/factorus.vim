@@ -370,7 +370,6 @@ function! s:getSuperClasses()
     let a:super = substitute(getline(a:class_tag),a:super_search,'\2','')
 
     let a:possibles = split(system('find -name "' . a:super . '.java"'),'\n')
-    echom 'possis ' . string(a:possibles)
     for poss in a:possibles
         execute 'silent tabedit ' poss
         let a:sups += s:getSuperClasses()
