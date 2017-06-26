@@ -281,6 +281,13 @@ function! s:getNextDec(...)
     let a:col = col('.')
 
     let a:match = searchpos(a:get_variable,'Wn')
+    if a:0 == 0
+        while a:match != [0,0] && match(getline(a:match[0]),'\<return\>') >= 0
+            call cursor(a:match[0],a:match[1])
+            let a:match = searchpos(a:get_variable,'Wn')
+        endwhile
+        call cursor(a:line,a:col)
+    endif
 
     if s:isBefore([a:line,a:col],a:match)
         let a:var = substitute(getline(a:match[0]),a:get_variable,a:index,'')
@@ -608,6 +615,7 @@ function! s:getContainingBlock(line,ranges,exclude)
             return range
         endif
     endfor
+    return [a:line,a:line]
 endfunction
 
 " File-Updating Functions {{{2
@@ -819,16 +827,21 @@ endfunction
 
 " Method-Building Functions {{{2
 
-function! s:getNewArgs(lines,vars,decs,var)
+function! s:getNewArgs(lines,vars,rels,var)
+
     let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
     let a:search = '\(' . join(a:names,'\|') . '\)'
     let a:search = s:no_comment . '.*\<' . a:search . '\>.*'
     let a:args = []
+
     for line in a:lines
         let a:this = getline(line)
+        if match(a:this,'^\s*\(\/\/\|*\)') >= 0
+            continue
+        endif
         let a:new = substitute(a:this,a:search,'\1','')
         while a:new != a:this
-            let a:spot = str2nr(s:getLatestDec(a:decs,a:new,[line,1]))
+            let a:spot = str2nr(s:getLatestDec(a:rels,a:new,[line,1]))
             let a:next_var = s:findVar(a:vars,a:names,a:new,a:spot)
             if index(a:args,a:next_var) < 0 && a:next_var[0] != a:var[0] && index(a:lines,a:spot) < 0
                 call add(a:args,a:next_var)
@@ -869,7 +882,7 @@ function! s:formatMethod(method,spaces)
     endwhile
 endfunction
 
-function! s:wrapDecs(var,lines,vars,names,decs,blocks,rels,args,close)
+function! s:wrapDecs(var,lines,vars,compact,blocks,rels,args,close)
     let a:head = s:getAdjacentTag('b')
     let a:orig = [line('.'),col('.')]
     let a:fin = copy(a:lines)
@@ -894,7 +907,6 @@ function! s:wrapDecs(var,lines,vars,names,decs,blocks,rels,args,close)
         endwhile
 
         if a:wrap == 1
-            "let a:relevant = s:getRelevantLines(arg,a:close)
             let a:relevant = a:rels[arg[0]][arg[2]]
             let a:stop = arg[2]
             let a:dec = [a:stop]
@@ -902,7 +914,7 @@ function! s:wrapDecs(var,lines,vars,names,decs,blocks,rels,args,close)
                 let a:stop += 1
                 call add(a:dec,a:stop)
             endwhile
-            let a:iso = a:dec + s:getIsolatedLines(arg,a:relevant,a:names,a:decs,a:blocks,a:close)
+            let a:iso = a:dec + s:getIsolatedLines(arg,a:compact,a:rels,a:blocks,a:close)
 
             let a:con = 1
             for rel in a:relevant
@@ -932,7 +944,7 @@ function! s:wrapDecs(var,lines,vars,names,decs,blocks,rels,args,close)
     return [a:fin,a:fin_args]
 endfunction
 
-function! s:buildNewMethod(var,lines,args,vars,tab,close)
+function! s:buildNewMethod(var,lines,args,ranges,vars,tab,close)
     let a:body = map(copy(a:lines),{n,line -> getline(line)})
 
     call cursor(a:lines[-1],1)
@@ -940,26 +952,30 @@ function! s:buildNewMethod(var,lines,args,vars,tab,close)
     let a:return = ['}'] 
     let a:call = ''
 
+    let a:outer = s:getContainingBlock(a:lines[0],a:ranges,a:ranges[0])
     for var in a:vars
         if index(a:lines,var[2]) >= 0
             let a:outside = s:getNextUse(var[0])    
             if a:outside[1] != [0,0] && s:isBefore(a:outside[1],a:close) == 1
-                let a:type = var[1]
-                let a:return = ['return ' . var[0] . ';','}']
-                let a:call = var[1] . ' ' . var[0] . ' = '
-                break
+                let a:contain = s:getContainingBlock(var[2],a:ranges,a:ranges[0])
+                if a:contain[0] <= a:outer[0] || a:contain[1] >= a:outer[1]
+                    let a:type = var[1]
+                    let a:return = ['return ' . var[0] . ';','}']
+                    let a:call = var[1] . ' ' . var[0] . ' = '
+                    break
+                endif
             endif
         endif
     endfor
 
     let a:build = s:buildArgs(a:args,0)
-    let a:def = ['public ' . a:type . ' ' .  g:factorus_default_method . '(' . a:build . ') {']
+    let a:def = ['public ' . a:type . ' ' .  g:factorus_method_name . '(' . a:build . ') {']
     let a:final = [''] + a:def + a:body + a:return + ['']
     call s:formatMethod(a:final,a:tab)
 
     let a:arg_string = s:buildArgs(a:args,1)
     let a:call_space = substitute(getline(a:lines[-1]),'\(\s*\).*','\1','')
-    let a:rep = [a:call_space . a:call . g:factorus_default_method . '(' . a:arg_string . ');']
+    let a:rep = [a:call_space . a:call . g:factorus_method_name . '(' . a:arg_string . ');']
 
     return [a:final,a:rep]
 endfunction
@@ -970,9 +986,9 @@ function! s:decFromString(str)
     return split(a:str,'-')
 endfunction
 
-function! s:getLatestDec(decs,name,loc)
+function! s:getLatestDec(rels,name,loc)
     let a:min = 0
-    for dec in keys(a:decs[a:name])
+    for dec in keys(a:rels[a:name])
         if a:min <= dec && dec <= a:loc[0]
             let a:min = dec
         endif
@@ -986,7 +1002,6 @@ function! s:getAllRelevantLines(vars,names,close)
     let a:lines = {}
     let a:closes = {}
     for var in a:vars
-        let a:key = var[0] . '-' . var[2][0] . '-' . var[2][1]
         call cursor(var[2],1)
         let a:local_close = factorus#getClosingBracket(0)
         let a:closes[var[0]] = copy(a:local_close)
@@ -1069,11 +1084,11 @@ function! s:getRelevantLines(var,close)
     return a:lines
 endfunction
 
-function! s:isIsolatedBlock(block,var,names,decs,close)
+function! s:isIsolatedBlock(block,var,rels,close)
     let a:orig = [line('.'),col('.')]
     call cursor(a:block[0],1)
 
-    let a:search = join(a:names,'\|')
+    let a:search = join(keys(a:rels),'\|')
     let a:search = substitute(a:search,'\\|\<' . a:var[0] . '\>','','')
     let a:search = substitute(a:search,'\<' . a:var[0] . '\>\\|','','')
     let a:ref = s:getNextReference(a:search,'left',1)
@@ -1084,8 +1099,8 @@ function! s:isIsolatedBlock(block,var,names,decs,close)
         let a:res = 0
     else
         while a:ref[1] != [0,0] && s:isBefore(a:ref[1],[a:block[1]+1,1]) == 1
-            let a:i = index(a:names,a:ref[2])
-            if s:contains(a:block,a:decs[a:i]) == 0
+            let a:i = s:getLatestDec(a:rels,a:ref[2],a:ref[1])
+            if s:contains(a:block,a:i) == 0
                 let a:res = 0
                 break
             endif
@@ -1098,36 +1113,34 @@ function! s:isIsolatedBlock(block,var,names,decs,close)
     return a:res
 endfunction
 
-function! s:getIsolatedLines(var,refs,names,decs,blocks,close)
+function! s:getIsolatedLines(var,compact,rels,blocks,close)
+    let a:refs = a:rels[a:var[0]][a:var[2]]
+    let [a:names,a:decs] = a:compact
+
     if len(a:refs) == 1
         return []
     endif
 
     let a:orig = [line('.'),col('.')]
     let [a:name,a:type,a:dec] = a:var
-    let a:wraps = [copy(a:blocks[0])]
 
+    let a:wraps = []
     if match(getline(a:var[2]),'\<for\>') >= 0
         let a:for = s:getContainingBlock(a:var[2],a:blocks,a:blocks[0])
-        if s:isIsolatedBlock(a:for,a:var,a:names,a:decs,a:close) == 0
+        if s:isIsolatedBlock(a:for,a:var,a:rels,a:close) == 0
             return []
         endif
+    endif
+    let a:dec_block = s:getContainingBlock(a:var[2],a:blocks,a:blocks[0])
+    if a:dec_block[1] - a:dec_block[0] == 0
+        call add(a:wraps,copy(a:blocks[0]))
     endif
     call add(a:wraps,s:getContainingBlock(a:refs[1],a:blocks,a:blocks[0]))
 
     let a:usable = []
-    for i in range(2)
+    for i in range(len(a:wraps))
         let twrap = a:wraps[i]
         let a:temp = []
-        "if s:isIsolatedBlock(twrap,a:var,a:names,a:decs,a:close) == 1
-        "    let a:i = twrap[0]
-        "    while a:i <= twrap[1]
-        "        if index(a:temp,a:i) < 0
-        "            call add(a:temp,a:i)
-        "        endif
-        "        let a:i += 1
-        "    endwhile
-        "endif
 
         let a:next_use = s:getNextReference(a:var[0],'right')
         call cursor(a:next_use[1][0],a:next_use[1][1])
@@ -1153,7 +1166,7 @@ function! s:getIsolatedLines(var,refs,names,decs,blocks,close)
                 break
             endif
 
-            if s:isIsolatedBlock(a:block,a:var,a:names,a:decs,a:close) == 0 
+            if s:isIsolatedBlock(a:block,a:var,a:rels,a:close) == 0 
                 break
             endif
 
@@ -1183,9 +1196,9 @@ function! s:getIsolatedLines(var,refs,names,decs,blocks,close)
     return a:usable
 endfunction
 
-" Global Functions {{{1
+"" Global Functions {{{1
 
-" Insertion Functions {{{2
+"" Insertion Functions {{{2
 
 function! factorus#encapsulateField() abort
     let a:search = '\s*' . s:access_query . '\(' . g:factorus_java_identifier . s:collection_identifier . '\=\)\_s*\(' . g:factorus_java_identifier . '\)\_s*[;=]'
@@ -1344,20 +1357,34 @@ function! factorus#extractMethod()
     let [a:open,a:close] = [line('.'),factorus#getClosingBracket(1)]
     call searchpos('{','W')
 
+    let a:method_length = (a:close[0] - (line('.') + 1)) * 1.0
     let a:vars = s:getLocalDecs(a:close)
     let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
     let a:decs = map(deepcopy(a:vars),{n,var -> var[2]})
+    let a:compact = [a:names,a:decs]
     let a:blocks = s:getAllBlocks(a:close)
 
     let a:best_var = ['','',0]
     let a:best_lines = []
 
     let a:all = s:getAllRelevantLines(a:vars,a:names,a:close)
+    redraw
+    echom 'Finding best lines...'
+
     for var in a:vars
-        let a:iso = s:getIsolatedLines(var,a:all[var[0]][var[2]],a:names,a:decs,a:blocks,a:close)
-        if len(a:iso) > len(a:best_lines) && index(a:iso,a:open) < 0
-            let a:best_var = var
-            let a:best_lines = copy(a:iso)
+        let a:iso = s:getIsolatedLines(var,a:compact,a:all,a:blocks,a:close)
+        let a:ratio = (len(a:iso) / a:method_length)
+
+        if g:factorus_extract_heuristic == 'longest'
+            if len(a:iso) > len(a:best_lines) && index(a:iso,a:open) < 0 && a:ratio < g:factorus_method_threshold
+                let a:best_var = var
+                let a:best_lines = copy(a:iso)
+            endif 
+        elseif g:factorus_extract_heuristic == 'greedy'
+            if len(a:iso) >= g:factorus_min_extracted_lines && a:ratio < g:factorus_method_threshold
+                let a:best_var = var
+                let a:best_lines = copy(a:iso)
+            endif
         endif
     endfor
 
@@ -1367,6 +1394,8 @@ function! factorus#extractMethod()
         return
     endif
 
+    redraw
+    echom 'Almost done...'
     if index(a:best_lines,a:best_var[2]) < 0 && a:best_var[2] != a:open
         let a:stop = a:best_var[2]
         let a:dec_lines = [a:stop]
@@ -1379,10 +1408,10 @@ function! factorus#extractMethod()
     endif
 
     let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:all,a:best_var)
-    let [a:wrapped,a:wrapped_args] = s:wrapDecs(a:best_var,a:best_lines,a:vars,a:names,a:decs,a:blocks,a:all,a:new_args,a:close)
+    let [a:wrapped,a:wrapped_args] = s:wrapDecs(a:best_var,a:best_lines,a:vars,a:compact,a:blocks,a:all,a:new_args,a:close)
     while a:wrapped != a:best_lines
         let [a:best_lines,a:new_args] = [a:wrapped,a:wrapped_args]
-        let [a:wrapped,a:wrapped_args] = s:wrapDecs(a:best_var,a:best_lines,a:vars,a:names,a:decs,a:blocks,a:all,a:new_args,a:close)
+        let [a:wrapped,a:wrapped_args] = s:wrapDecs(a:best_var,a:best_lines,a:vars,a:compact,a:blocks,a:all,a:new_args,a:close)
     endwhile
 
 
@@ -1391,7 +1420,7 @@ function! factorus#extractMethod()
     endif
 
     let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:all,a:best_var)
-    let [a:final,a:rep] = s:buildNewMethod(a:best_var,a:best_lines,a:new_args,a:vars,a:tab,a:close)
+    let [a:final,a:rep] = s:buildNewMethod(a:best_var,a:best_lines,a:new_args,a:blocks,a:vars,a:tab,a:close)
 
     call append(a:close[0],a:final)
     call append(a:best_lines[-1],a:rep)
@@ -1403,9 +1432,8 @@ function! factorus#extractMethod()
         let a:i -= 1
     endwhile
 
-    call search('public.*' . g:factorus_default_method . '(')
+    call search('public.*' . g:factorus_method_name . '(')
     silent write
     redraw
-
     echom 'Extracted ' . len(a:best_lines) . ' lines from ' . a:method_name
 endfunction

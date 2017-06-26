@@ -101,15 +101,15 @@ Example:
         let g:factorus_min_extracted_lines = 5
 <
 
-                                                   *g:factorus_default_method*
-g:factorus_default_method~
+                                                   *g:factorus_method_name*
+g:factorus_method_name~
 Default: 'newFactorusMethod'
 
 The default name for a new method created by |:FExtractMethod|.
 
 Example:
 >
-        let g:factorus_min_extracted_lines = 'genericJavaFunction'
+        let g:factorus_method_name = 'genericJavaFunction'
 <
 
                                                     *g:factorus_ignored_files*
@@ -124,6 +124,34 @@ set it to ['.*.swp'] in your vimrc file, the ignored files will be
 Example:
 >
         let g:factorus_ignored_files = ['*.xml','*.jsp'] 
+<
+
+                                                 *g:factorus_method_threshold*
+g:factorus_method_threshold~
+Default: 0.9
+
+The maximum allowable ratio of the number of lines of an extracted method to
+the number of the lines of the old method when using |:FExtractMethod|. This 
+is to prevent over-extraction (for instance, if the algorithm selects all but
+the return statement).
+
+Example:
+>
+        let g:factorus_method_threshold = 0.8
+<
+
+                                                *g:factorus_extract_heuristic*
+g:factorus_extract_heuristic~
+Default: 'longest'
+
+This determines how |:FExtractMethod| decides what to extract from a method.
+If this is set to 'longest', the function uses the largest block of independent
+statements.  If this is set to 'greedy', the function uses the first block of
+independent statements.
+
+Example:
+>
+        let g:factorus_extract_heuristic = 'greedy'
 <
 
 ==============================================================================

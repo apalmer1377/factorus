@@ -15,7 +15,9 @@ function! s:init_vars()
     let a:vars = [
         \ [ 'project_dir' , '' ],
         \ [ 'min_extracted_lines' , 2 ],
-        \ [ 'default_method' , 'newFactorusMethod' ]
+        \ [ 'method_name' , 'newFactorusMethod' ],
+        \ [ 'method_threshold' , 0.9 ],
+        \ [ 'extract_heuristic' , 'longest' ]
     \ ]
 
     for [var,val] in a:vars
