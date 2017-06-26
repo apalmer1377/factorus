@@ -17,7 +17,7 @@ let s:collection_identifier = '\(\[\]\|<[<>,.[:space:]' . s:search_chars . ']*>\
 let s:access_query = '\(public\_s*\|private\_s*\|protected\_s*\)\=\(static\_s*\|abstract\_s*\)\=\(final\_s*\)\='
 let s:sub_class = '\(implements\|extends\)'
 let s:strip_dir = '\(.*\/\)\=\(.*\)'
-let s:no_comment = '^[^/*]\s*'
+let s:no_comment = '^\s*[^/*]\s*'
 
 let g:factorus_java_identifier = '[' . s:start_chars . '][' . s:search_chars . ']*'
 
@@ -822,10 +822,11 @@ endfunction
 function! s:getNewArgs(lines,vars,decs,var)
     let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
     let a:search = '\(' . join(a:names,'\|') . '\)'
+    let a:search = s:no_comment . '.*\<' . a:search . '\>.*'
     let a:args = []
     for line in a:lines
         let a:this = getline(line)
-        let a:new = substitute(a:this,'.*\<' . a:search . '\>.*','\1','')
+        let a:new = substitute(a:this,a:search,'\1','')
         while a:new != a:this
             let a:spot = str2nr(s:getLatestDec(a:decs,a:new,[line,1]))
             let a:next_var = s:findVar(a:vars,a:names,a:new,a:spot)
@@ -833,7 +834,7 @@ function! s:getNewArgs(lines,vars,decs,var)
                 call add(a:args,a:next_var)
             endif
             let a:this = substitute(a:this,'\<' . a:new . '\>','','g')
-            let a:new = substitute(a:this,'.*\<' . a:search . '\>.*','\1','')
+            let a:new = substitute(a:this,a:search,'\1','')
         endwhile
     endfor
     return a:args
@@ -874,6 +875,7 @@ function! s:wrapDecs(var,lines,vars,names,decs,blocks,rels,args,close)
     let a:fin = copy(a:lines)
     let a:fin_args = deepcopy(a:args)
     for arg in a:args
+
         if arg[2] == a:head
             continue
         endif
@@ -881,6 +883,7 @@ function! s:wrapDecs(var,lines,vars,names,decs,blocks,rels,args,close)
         let a:wrap = 1
         let a:name = arg[0]
         let a:next = s:getNextUse(a:name)
+
         while a:next[1] != [0,0] && s:isBefore(a:next[1],a:close) == 1
             if a:next[2] != 'left' && index(a:lines,a:next[1][0]) < 0
                 let a:wrap = 0    
@@ -913,7 +916,7 @@ function! s:wrapDecs(var,lines,vars,names,decs,blocks,rels,args,close)
             endif
 
             let a:next_args = s:getNewArgs(a:iso,a:vars,a:rels,arg)
-            let a:fin = s:merge(a:fin,a:iso)
+            let a:fin = uniq(s:merge(a:fin,a:iso))
 
             call remove(a:fin_args,index(a:fin_args,arg))
             for narg in a:next_args
@@ -1069,69 +1072,26 @@ endfunction
 function! s:isIsolatedBlock(block,var,names,decs,close)
     let a:orig = [line('.'),col('.')]
     call cursor(a:block[0],1)
+
     let a:search = join(a:names,'\|')
-    let a:ref = s:getNextReference(a:search,'left') 
+    let a:search = substitute(a:search,'\\|\<' . a:var[0] . '\>','','')
+    let a:search = substitute(a:search,'\<' . a:var[0] . '\>\\|','','')
+    let a:ref = s:getNextReference(a:search,'left',1)
     let a:return = search('\<return\>','Wn')
 
     let a:res = 1
     if s:contains(a:block,a:return) == 1
         let a:res = 0
-    "elseif a:ref[1] != [0,0] && s:contains(a:block,a:ref[1][0]) == 1 && a:ref[0] != a:var[0]
-    "    let a:res = 0
     else
-        let a:i = 0
-        while a:i < len(a:decs)
-            if s:contains(a:block,a:decs[a:i]) == 1
-                let a:use = s:getNextUse(a:names[a:i])
-                while a:use[1] != [0,0] && s:isBefore(a:use[1],a:close) == 1
-                    if a:use[1][0] > a:block[1]
-                        let a:res = 0
-                        break
-                    endif
-                    call cursor(a:use[1][0],a:use[1][1])
-                    let a:use = s:getNextUse(a:names[a:i])
-                endwhile
-            elseif a:decs[a:i] < a:block[0]
-                let a:left = s:getNextReference(a:names[a:i],'left')
-                while a:left[1] != [0,0] && s:isBefore(a:left[1],a:close) == 1
-                    let a:eq = a:left[0] . '\s*=[^=]'
-                    if match(getline(a:left[1][0]),a:eq) >= 0 && s:contains(a:block,a:left[1][0]) == 1 && a:left[0] != a:var[0]
-                        let a:res = 0
-                        break
-                    endif
-                    call cursor(a:left[1][0],a:left[1][1])
-                    let a:left = s:getNextReference(a:names[a:i],'left')
-                endwhile
-            endif
-            if a:res == 0
+        while a:ref[1] != [0,0] && s:isBefore(a:ref[1],[a:block[1]+1,1]) == 1
+            let a:i = index(a:names,a:ref[2])
+            if s:contains(a:block,a:decs[a:i]) == 0
+                let a:res = 0
                 break
             endif
-            call cursor(a:block[0],1)
-            let a:i += 1
+            call cursor(a:ref[1][0],a:ref[1][1])
+            let a:ref = s:getNextReference(a:search,'left',1)
         endwhile
-    endif
-
-    call cursor(a:orig[0],a:orig[1])
-    return a:res
-endfunction
-
-function! s:isIsoTest(block,var,names,decs,close)
-    let a:orig[line('.'),col('.')]
-    call cursor(a:block[0],1)
-
-    let a:search = join(a:names,'\|')
-    let a:search = substitute(a:search,'\|\<' . a:var[0] . '\>','','')
-    let a:search = substitute(a:search,'\<' . a:var[0] . '\>\|','','')
-    let a:ref = s:getNextReference(a:search,'left')
-    let a:return = search('\<return\>','Wn')
-
-    let a:res = 1
-    if s:contains(a:block,a:return) == 1
-        let a:res = 0
-    elseif s:contains(a:block,a:ref[1][0]) == 1
-        let a:res = 0
-    else
-
     endif
 
     call cursor(a:orig[0],a:orig[1])
@@ -1159,15 +1119,15 @@ function! s:getIsolatedLines(var,refs,names,decs,blocks,close)
     for i in range(2)
         let twrap = a:wraps[i]
         let a:temp = []
-        if s:isIsolatedBlock(twrap,a:var,a:names,a:decs,a:close) == 1
-            let a:i = twrap[0]
-            while a:i <= twrap[1]
-                if index(a:temp,a:i) < 0
-                    call add(a:temp,a:i)
-                endif
-                let a:i += 1
-            endwhile
-        endif
+        "if s:isIsolatedBlock(twrap,a:var,a:names,a:decs,a:close) == 1
+        "    let a:i = twrap[0]
+        "    while a:i <= twrap[1]
+        "        if index(a:temp,a:i) < 0
+        "            call add(a:temp,a:i)
+        "        endif
+        "        let a:i += 1
+        "    endwhile
+        "endif
 
         let a:next_use = s:getNextReference(a:var[0],'right')
         call cursor(a:next_use[1][0],a:next_use[1][1])
@@ -1188,6 +1148,7 @@ function! s:getIsolatedLines(var,refs,names,decs,blocks,close)
             endif
 
             let a:block = s:getContainingBlock(line,a:blocks,twrap)
+
             if a:block[0] < twrap[0] || a:block[1] > twrap[1]
                 break
             endif
@@ -1195,6 +1156,7 @@ function! s:getIsolatedLines(var,refs,names,decs,blocks,close)
             if s:isIsolatedBlock(a:block,a:var,a:names,a:decs,a:close) == 0 
                 break
             endif
+
             if a:block[1] - a:block[0] == 0 && match(getline(a:block[0]),'\<\(try\|for\|if\|while\)\>') < 0
                 let a:stop = a:block[0]
                 while match(getline(a:stop),';') < 0
