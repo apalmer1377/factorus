@@ -3,7 +3,6 @@
 " Description: Vim plugin for refactoring
 "
 " =============================================================================
-"
 
 function! s:init(var,val)
     if !exists('g:factorus_' . a:var)
@@ -32,12 +31,12 @@ function! s:init_vars()
 endfunction
 call s:init_vars()
 
-command! -nargs=0 FExtractMethod    call factorus#extractMethod()
+command! -nargs=0 FExtractMethod    call factorus#redirect('extractMethod')
 
-command! -nargs=1 FRenameArg        call factorus#renameSomething(<f-args>,'arg')
-command! -nargs=1 FRenameClass      call factorus#renameSomething(<f-args>,'class')
-command! -nargs=1 FRenameMethod     call factorus#renameSomething(<f-args>,'method')
-command! -nargs=1 FRenameField      call factorus#renameSomething(<f-args>,'field') 
+command! -nargs=1 FRenameArg        call factorus#redirect('renameSomething', <f-args>, 'arg')
+command! -nargs=1 FRenameClass      call factorus#redirect('renameSomething', <f-args>, 'class')
+command! -nargs=1 FRenameMethod     call factorus#redirect('renameSomething', <f-args>, 'method')
+command! -nargs=1 FRenameField      call factorus#redirect('renameSomething', <f-args>, 'field') 
 
-command! -nargs=0 FEncapsulate      call factorus#encapsulateField()
-command! -nargs=+ FAddParam         call factorus#addParam(<f-args>)  
+command! -nargs=0 FEncapsulate      call factorus#redirect('encapsulateField')
+command! -nargs=+ FAddParam         call factorus#redirect('addParam', <f-args>)  
