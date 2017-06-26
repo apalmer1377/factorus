@@ -321,7 +321,7 @@ function! s:getAllFunctions(type)
     let a:defs = s:getFunctionDecs(a:type)
     for class in a:hier
         if class != expand('%:p')
-            execute 'silent edit ' . class
+            execute 'silent tabedit ' . class
             let a:defs += s:getFunctionDecs(a:type)
             bdelete
         endif
@@ -358,7 +358,6 @@ function! s:jumpToNearest(vars,next,paren) abort
 endfunction
 
 function! s:getSuperClasses()
-
     let a:class_tag = s:getClassTag()
     let a:class_name = expand('%:t:r')
     let a:super_search = '.*\s' . a:class_name . '\s\+' . s:sub_class . '\s\+\<\(' . g:factorus_java_identifier . '\)\>.*{.*'
@@ -371,14 +370,14 @@ function! s:getSuperClasses()
     let a:super = substitute(getline(a:class_tag),a:super_search,'\2','')
 
     let a:possibles = split(system('find -name "' . a:super . '.java"'),'\n')
+    echom 'possis ' . string(a:possibles)
     for poss in a:possibles
-        execute 'silent edit ' poss
+        execute 'silent tabedit ' poss
         let a:sups += s:getSuperClasses()
         bdelete
     endfor
 
     return a:sups
-
 endfunction
 
 function! s:getSubClasses(class_name)
@@ -709,7 +708,7 @@ function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
             let a:packages[a:sub_package] = a:packages[a:sub_package] + [a:sub_class]
         endif
 
-        execute 'silent edit ' . file
+        execute 'silent tabedit ' . file
         if a:is_static == 1 || a:paren == '('
             call s:updateFile(a:old_name,a:new_name,a:is_method,0,a:is_static)
             if a:paren == '('
@@ -736,7 +735,8 @@ function! s:updateNonLocalFiles(packages,old_name,new_name,paren,is_static)
             call s:findTags(a:temp_file,a:search,'no')
             call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/\1\.' . a:new_name . a:paren . '/g"')  
         else
-            call s:findTags(a:temp_file,a:old_name,'no')
+            call s:findTags(a:temp_file,a:classes,'no')
+            call s:narrowTags(a:temp_file,a:old_name)
             call s:updateMethodFiles(a:temp_file,a:classes,a:old_name,a:new_name,a:paren)
         endif
     endfor
@@ -777,7 +777,7 @@ function! s:updateMethodFiles(file_name,class_name,method_name,new_name,paren) a
     for file in a:files
         let a:name = substitute(file,s:strip_dir . '\.java','\2','')
         if a:name != expand('%:t:r')
-            execute 'silent edit ' . file
+            execute 'silent tabedit ' . file
             call s:updateMethodFile(a:class_name,a:method_name,a:new_name,a:paren)
             bdelete
         endif
@@ -1196,7 +1196,7 @@ function! s:getIsolatedLines(var,compact,rels,blocks,close)
     return a:usable
 endfunction
 
-"" Global Functions {{{1
+" Global Functions {{{1
 
 "" Insertion Functions {{{2
 
@@ -1211,12 +1211,12 @@ function! factorus#encapsulateField() abort
 
     let a:is_local = s:getClassTag() == s:getAdjacentTag('b') ? 0 : 1
     if a:is_local == 1
-        echom 'Factorus: Cannot encapsulate a local variable'
+        echo 'Factorus: Cannot encapsulate a local variable'
         return
     endif
 
     if a:is_static == 1
-        echom 'Factorus: Cannot encapsulate a static variable'
+        echo 'Factorus: Cannot encapsulate a static variable'
         return
     endif
 
@@ -1229,7 +1229,7 @@ function! factorus#encapsulateField() abort
     call append(a:end[0] - 1,a:encap)
     silent write
 
-    echom 'Created getters and setters for ' . a:var
+    echo 'Created getters and setters for ' . a:var
 endfunction
 
 function! factorus#addParam(param_type,param_name) abort
@@ -1245,7 +1245,7 @@ function! factorus#addParam(param_type,param_name) abort
     silent edit
     call cursor(a:orig[0],a:orig[1])
 
-    echom 'Added parameter ' . a:param_name . ' to method'
+    echo 'Added parameter ' . a:param_name . ' to method'
 endfunction
 
 " Renaming Functions {{{2
@@ -1254,11 +1254,14 @@ function! factorus#renameArg(new_name) abort
     let a:var = expand('<cword>')
     call s:updateFile(a:var,a:new_name,0,1,0)
 
-    echom 'Re-named ' . a:var . ' to ' . a:new_name
+    echo 'Re-named ' . a:var . ' to ' . a:new_name
 endfunction
 
 function! factorus#renameClass(new_name) abort
     let a:class_name = expand('%:t:r')
+    if a:class_name == a:new_name
+        throw 'DUPLICATE'
+    endif
     let a:old_file = expand('%:p')
     let a:package_name = s:getPackage(a:old_file)
 
@@ -1271,7 +1274,7 @@ function! factorus#renameClass(new_name) abort
     call system('mv ' . a:old_file . ' ' . a:new_file)
     execute 'silent edit ' . a:new_file
 
-    echom 'Re-named class ' . a:class_name . ' to ' . a:new_name
+    echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
 endfunction
 
 function! factorus#renameField(new_name) abort
@@ -1283,6 +1286,8 @@ function! factorus#renameField(new_name) abort
     let a:var = substitute(a:line,a:search,'\6','')
     if a:var == '' || a:type == '' || match(a:var,'[^' . s:search_chars . ']') >= 0
         throw 'INVALID'
+    elseif a:var == a:new_name
+        throw 'DUPLICATE'
     endif
 
     let a:is_local = s:getClassTag() == s:getAdjacentTag('b') ? 0 : 1
@@ -1301,7 +1306,8 @@ function! factorus#renameField(new_name) abort
         call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
     endif
 
-    echom 'Re-named ' . a:var . ' to ' . a:new_name
+    redraw
+    echo 'Re-named ' . a:var . ' to ' . a:new_name
 endfunction
 
 function! factorus#renameMethod(new_name) abort
@@ -1309,6 +1315,9 @@ function! factorus#renameMethod(new_name) abort
 
     let a:method_name = matchstr(getline('.'),'\s\+' . g:factorus_java_identifier . '\s*(')
     let a:method_name = matchstr(a:method_name,'[^[:space:](]\+')
+    if a:method_name == a:new_name
+        throw 'DUPLICATE'
+    endif
     let a:is_static = match(getline('.'),'\s\+static\s\+[^)]\+(') >= 0 ? 1 : 0
 
     call s:updateFile(a:method_name,a:new_name,1,0,a:is_static)
@@ -1316,8 +1325,9 @@ function! factorus#renameMethod(new_name) abort
     let a:packages = s:updateSubClassFiles(expand('%:t:r'),a:method_name,a:new_name,'(',a:is_static)
     call s:updateNonLocalFiles(a:packages,a:method_name,a:new_name,'(',a:is_static)
 
+    redraw
     let a:keyword = a:is_static == 1 ? ' static' : ''
-    echom 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
+    echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
 endfunction
 
 function! factorus#renameSomething(new_name,type)
@@ -1340,7 +1350,9 @@ function! factorus#renameSomething(new_name,type)
             endif
         endif
     catch /.*INVALID.*/
-        echom 'Factorus: Invalid expression under cursor'
+        echo 'Factorus: Invalid expression under cursor'
+    catch /.*DUPLICATE.*/
+        echo 'Factorus: New name is the same as old name'
     finally
         execute 'cd ' a:prev_dir
     endtry
@@ -1349,7 +1361,7 @@ endfunction
 " Extraction Functions {{{2
 
 function! factorus#extractMethod()
-    echom 'Extracting new method...'
+    echo 'Extracting new method...'
     call s:gotoTag(0)
     let a:tab = substitute(getline('.'),'\(\s*\).*','\1','')
     let a:method_name = substitute(getline('.'),'.*\s\+\(' . g:factorus_java_identifier . '\)\s*(.*','\1','')
@@ -1366,11 +1378,10 @@ function! factorus#extractMethod()
 
     let a:best_var = ['','',0]
     let a:best_lines = []
-
     let a:all = s:getAllRelevantLines(a:vars,a:names,a:close)
-    redraw
-    echom 'Finding best lines...'
 
+    redraw
+    echo 'Finding best lines...'
     for var in a:vars
         let a:iso = s:getIsolatedLines(var,a:compact,a:all,a:blocks,a:close)
         let a:ratio = (len(a:iso) / a:method_length)
@@ -1390,12 +1401,12 @@ function! factorus#extractMethod()
 
     if len(a:best_lines) < g:factorus_min_extracted_lines
         redraw
-        echom 'Nothing to extract'
+        echo 'Nothing to extract'
         return
     endif
 
     redraw
-    echom 'Almost done...'
+    echo 'Almost done...'
     if index(a:best_lines,a:best_var[2]) < 0 && a:best_var[2] != a:open
         let a:stop = a:best_var[2]
         let a:dec_lines = [a:stop]
@@ -1435,5 +1446,5 @@ function! factorus#extractMethod()
     call search('public.*' . g:factorus_method_name . '(')
     silent write
     redraw
-    echom 'Extracted ' . len(a:best_lines) . ' lines from ' . a:method_name
+    echo 'Extracted ' . len(a:best_lines) . ' lines from ' . a:method_name
 endfunction
