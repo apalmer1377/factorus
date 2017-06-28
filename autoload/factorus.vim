@@ -8,7 +8,7 @@ if exists(':Factorus') == 0
     runtime plugin/factorus.vim
 endif
 
-function! factorus#redirect(func,...)
+function! factorus#command(func,...)
     let a:ext = expand('%:e')
 
     let Func = function(a:ext . '#factorus#' . a:func,a:000)
