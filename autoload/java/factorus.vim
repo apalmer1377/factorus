@@ -39,12 +39,18 @@ function! s:isBefore(x,y)
 endfunction
 
 function! s:compare(x,y)
-    if s:isBefore(a:x,a:y) == 1
+    if a:x[0] < a:y[0]
         return -1
-    elseif s:isBefore(a:y,a:x) == 1
+    elseif a:x[0] > a:y[0]
         return 1
     else
-        return 0
+        if a:x[1] > a:y[1]
+            return -1
+        elseif a:x[1] < a:y[1]
+            return 1
+        else
+            return 0
+        endif
     endif
 endfunction
 
@@ -562,20 +568,25 @@ function! s:getAllBlocks(close)
             let a:ret =  searchpos('{','Wn')
             let a:semi = searchpos(';','Wn')
 
+            let a:o = line('.')
             if s:isBefore(a:ret,a:semi) == 1
                 call cursor(a:ret[0],a:ret[1])
-                call searchpair('{','','}','W')
+                execute 'normal %'
+
                 let a:next = searchpos('}\_s*\(else\_s*\(\<if\>\_.*)\)\=\|\<catch\>[^{]*\)\_s*{','Wnc')
                 while a:next == [line('.'),col('.')]
                     if a:next == [0,0]
                         let a:next = a:ret
                         break
                     endif
+                    call add(a:blocks,[a:o,line('.')])
                     call search('{','W')
-                    call searchpair('{','','}','W')
+                    let a:o = line('.')
+                    execute 'normal %'
 
                     let a:next = searchpos('}\_s*\(else\_s*\(\<if\>\_.*)\)\=\|\<catch\>[^{]*\)\_s*{','Wnc')
                 endwhile
+                call add(a:blocks,[a:o,line('.')])
             else
                 call cursor(a:semi[0],a:semi[1])
             endif
@@ -594,7 +605,7 @@ function! s:getAllBlocks(close)
     endwhile
 
     call cursor(a:orig[0],a:orig[1])
-    return sort(a:blocks,'s:compare')
+    return uniq(sort(a:blocks,'s:compare'))
 endfunction
 
 function! s:getContainingBlock(line,ranges,exclude)
@@ -853,25 +864,31 @@ endfunction
 function! s:buildArgs(args,is_call)
     if a:is_call == 0
         let a:defs = map(deepcopy(a:args),{n,arg -> arg[1] . ' ' . arg[0]})
+        let a:sep = '| '
     else
         let a:defs = map(deepcopy(a:args),{n,arg -> arg[0]})
+        let a:sep = ', '
     endif
-    return join(a:defs,', ')
+    return join(a:defs,a:sep)
 endfunction
 
-function! s:formatMethod(method,spaces)
-    call map(a:method,{n,line -> substitute(line,'\s*\(.*\)','\1','')})
+function! s:formatMethod(def,body,spaces)
+    let a:paren = stridx(a:def[0],'(')
+    let a:def_space = repeat(' ',a:paren+1)
+    call map(a:def,{n,line -> a:spaces . a:def_space . substitute(line,'\s*\(.*\)','\1','')})
+    let a:def[0] = strpart(a:def[0],len(a:def_space))
 
-    let a:dspaces = a:spaces
+    let a:dspaces = repeat(a:spaces,2)
     let a:i = 0
-    let a:block = 0
-    while a:i < len(a:method)
-        if match(a:method[a:i],'}') >= 0
+
+    call map(a:body,{n,line -> substitute(line,'\s*\(.*\)','\1','')})
+    while a:i < len(a:body)
+        if match(a:body[a:i],'}') >= 0
             let a:dspaces = strpart(a:dspaces,len(a:spaces))
         endif
-        let a:method[a:i] = a:dspaces . a:method[a:i]
+        let a:body[a:i] = a:dspaces . a:body[a:i]
 
-        if match(a:method[a:i],'{') >= 0
+        if match(a:body[a:i],'{') >= 0
             let a:dspaces .= a:spaces
         endif
 
@@ -950,6 +967,7 @@ function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
     let a:call = ''
 
     let a:outer = s:getContainingBlock(a:lines[0],a:ranges,a:ranges[0])
+    let a:include_dec = 1
     for var in a:vars
         if index(a:lines,var[2]) >= 0
             let a:outside = s:getNextUse(var[0])    
@@ -958,7 +976,29 @@ function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
                 if a:contain[0] <= a:outer[0] || a:contain[1] >= a:outer[1]
                     let a:type = var[1]
                     let a:return = ['return ' . var[0] . ';','}']
-                    let a:call = var[1] . ' ' . var[0] . ' = '
+                    let a:call = a:type . ' ' . var[0] . ' = '
+
+                    let i = 0
+                    while i < len(a:lines)
+                        let line = getline(a:lines[i])
+                        if match(line,';') >= 0
+                            break
+                        endif
+                        let i += 1
+                    endwhile
+
+                    if i == len(a:lines) - 1
+                        break
+                    endif
+
+                    let a:inner = s:getContainingBlock(a:lines[i+1],a:ranges,a:outer)
+                    if a:inner[1] - a:inner[0] > 0
+                        for j in range(i+1)
+                            call remove(a:lines,0)
+                        endfor
+                        let a:call = var[0] . ' = '
+                        let a:include_dec = 0
+                    endif
                     break
                 endif
             endif
@@ -966,9 +1006,32 @@ function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
     endfor
 
     let a:build = s:buildArgs(a:args,0)
-    let a:def = ['public ' . a:type . ' ' .  g:factorus_method_name . '(' . a:build . ') {']
-    let a:final = [''] + a:def + a:body + a:return + ['']
-    call s:formatMethod(a:final,a:tab)
+    let a:build_string = 'public ' . a:type . ' ' .  g:factorus_method_name . '(' . a:build . ') {'
+    let a:temp = join(reverse(split(a:build_string, '.\zs')), '')
+    let a:def = []
+
+    if g:factorus_split_lines == 1
+        while len(a:temp) >= g:factorus_line_length
+            let i = stridx(a:temp,'|',len(a:temp) - g:factorus_line_length)
+            if i < 0
+                break
+            endif
+            let a:segment = strpart(a:temp,0,i)
+            let a:segment = join(reverse(split(a:segment, '.\zs')), '')
+            let a:segment = substitute(a:segment,'|',',','g')
+            call add(a:def,a:segment)
+            let a:temp = strpart(a:temp,i)
+        endwhile
+    endif
+
+    let a:temp = join(reverse(split(a:temp, '.\zs')), '')
+    let a:temp = substitute(a:temp,'|',',','g')
+    call add(a:def,a:temp)
+    call reverse(a:def)
+
+    let a:body += a:return
+    call s:formatMethod(a:def,a:body,a:tab)
+    let a:final = [''] + a:def + a:body + ['']
 
     let a:arg_string = s:buildArgs(a:args,1)
     let a:call_space = substitute(getline(a:lines[-1]),'\(\s*\).*','\1','')
@@ -1098,10 +1161,13 @@ function! s:isIsolatedBlock(block,var,rels,close)
     let a:search = substitute(a:search,'\\|\<' . a:var[0] . '\>','','')
     let a:search = substitute(a:search,'\<' . a:var[0] . '\>\\|','','')
     let a:ref = s:getNextReference(a:search,'left',1)
-    let a:return = search('\<return\>','Wn')
+    let a:return = search('\<\(return\)\>','Wn')
+    let a:continue = search('\<\(continue\|break\)\>','Wn')
 
     let a:res = 1
     if s:contains(a:block,a:return) == 1
+        let a:res = 0
+    elseif s:contains(a:block,a:continue) && match(getline(a:block[0]),'\<\(for\|while\)\>') < 0
         let a:res = 0
     else
         while a:ref[1] != [0,0] && s:isBefore(a:ref[1],[a:block[1]+1,1]) == 1
@@ -1167,7 +1233,6 @@ function! s:getIsolatedLines(var,compact,rels,blocks,close)
             endif
 
             let a:block = s:getContainingBlock(line,a:blocks,twrap)
-
             if a:block[0] < twrap[0] || a:block[1] > twrap[1]
                 break
             endif
