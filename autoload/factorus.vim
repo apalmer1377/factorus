@@ -449,7 +449,7 @@ function! s:getNextReference(var,type,...)
         let a:index = '\6'
         let a:alt_index = '\7'
     elseif a:type == 'left'
-        let a:search = s:no_comment . '\<\(' . a:var . '\)\>\s*[+-*/]\=[.=][^=].*'
+        let a:search = s:no_comment . '\<\(' . a:var . '\)\>\s*[-+*/]\=[.=][^=].*'
         let a:index = '\1'
         let a:alt_index = '\1'
     elseif a:type == 'cond'
