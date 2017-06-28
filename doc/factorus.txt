@@ -3,7 +3,7 @@
 Author:         Austin Palmer
 License:        MIT License
 Homepage:       https://github.com/apalmer1377/factorus.git
-Version:        1.0
+Version:        1.5
 
 ==============================================================================
 Contents                                            *factorus* *factorus-help* 
