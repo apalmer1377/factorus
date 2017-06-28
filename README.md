@@ -1,8 +1,8 @@
-# Factorus: a simple refactoring automation tool for Vim
+# Factorus: automated refactoring in Vim
 
 Factorus is a Vim plugin for automated refactoring. It provides 
-many of the refactoring features found in IDEs like Eclipse or 
-IntelliJ, without sacrificing the lightness of Vim.
+renaming of methods and classes, encapsulation of variables, 
+and even method extraction, with a few very intutitive commands.
 
 ## Features
 
@@ -22,4 +22,4 @@ Use a plugin manager like [pathogen](https://github.com/tpope/vim-pathogen) or [
 
 ## Dependencies
 
-[Vim 8.0](http://vim.org/)
+[Vim 8.0](http://www.vim.org/)
