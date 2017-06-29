@@ -265,7 +265,7 @@ function! s:getNextDec(...)
         call cursor(a:line,a:col)
     endif
 
-    if s:isBefore([a:line,a:col],a:match)
+    if s:isBefore([a:line,a:col],a:match) == 1
         let a:var = substitute(getline(a:match[0]),a:get_variable,a:index,'')
         return [a:var,a:match]
     endif
@@ -347,7 +347,7 @@ function! s:getSuperClasses()
 
     let a:possibles = split(system('find -name "' . a:super . '.java"'),'\n')
     for poss in a:possibles
-        execute 'silent tabedit ' poss
+        execute 'silent tabedit ' . poss
         let a:sups += s:getSuperClasses()
         bdelete
     endfor

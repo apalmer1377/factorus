@@ -5,9 +5,9 @@ scriptencoding utf-8
 " Initialization {{{1
 
 " Dictionary of filetypes to languages for messaging
-let s:langs = {'java' : 'java',
-            \  'py'   : 'python',
-            \  'vim'  : 'vimscript',
+let s:langs = {'java' : 'Java',
+            \  'py'   : 'Python',
+            \  'vim'  : 'Vimscript',
             \  'c'    : 'C',
             \  'cpp'  : 'C++'
             \ }
@@ -19,9 +19,9 @@ function! factorus#command(func,...)
     let a:ext = expand('%:e')
 
     try
-        let Func = function(s:langs[a:ext] . '#factorus#' . a:func,a:000)
+        let Func = function(a:ext . '#factorus#' . a:func,a:000)
         call Func()
-    catch /.*\(Unknown\|not present\).*/
+    catch /.*Unknown.*/
         let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
         echo 'Factorus: ' . a:func . ' is not available for ' . a:lang . '.'
     endtry

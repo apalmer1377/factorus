@@ -24,10 +24,10 @@ function! s:getClassTag()
     if a:res == [0,0]
         return a:res
     endif
-    let a:close = python#factorus#getClosingIndent(0)
+    let a:close = py#factorus#getClosingIndent(0)
     let a:orig = [line('.'),col('.')]
     call cursor(a:res[0],a:res[1])
-    let a:class_close = python#factorus#getClosingIndent(1)
+    let a:class_close = py#factorus#getClosingIndent(1)
     if s:isBefore(a:class_close,a:close) == 1
         let a:res = [0,0]
     endif
@@ -51,7 +51,7 @@ function! s:gotoTag(head)
     endif
 endfunction
 
-function! python#factorus#getClosingIndent(stack)
+function! py#factorus#getClosingIndent(stack)
     let a:indent = substitute(getline('.'),'^\(\s*\)[^[:space:]].*','\1','')
     let a:l = len(a:indent) - 1
     if a:stack == 0
@@ -60,6 +60,10 @@ function! python#factorus#getClosingIndent(stack)
         endif
         let a:back_line = search('^\s\{,' . a:l . '}[^[:space:]].*','Wnb')
         let a:indent = substitute(getline(a:back_line),'^\(\s*\)[^[:space:]].*','\1','')
+    endif
+    let a:res = searchpos('^' . a:indent . '[^[:space:]]','Wn')
+    if a:res == [0,0]
+        return [line('$'),1]
     endif
     return searchpos('^' . a:indent . '[^[:space:]]','Wn')
 endfunction
@@ -72,7 +76,7 @@ function! s:findTags(temp_file,search_string,append)
         let a:ignore .= '\! -name "' . file . '" '
     endfor
     let a:fout = a:append == 'yes' ? '>>' : '>'
-    call system('find -name "*" \! -name ".*" ' . a:ignore . '-exec grep -l "' . a:search_string . '" {} + ' . a:fout . ' ' . a:temp_file . ' 2> /dev/null')
+    call system('find ' . getcwd() . ' -name "*" \! -name ".*" ' . a:ignore . '-exec grep -l "' . a:search_string . '" {} + ' . a:fout . ' ' . a:temp_file . ' 2> /dev/null')
 endfunction
 
 function! s:narrowTags(temp_file,search_string)
@@ -91,6 +95,59 @@ function! s:getModule(file)
     return [a:module,a:package]
 endfunction
 
+function! s:getNextDec(...)
+    if a:0 == 0
+    elseif a:0 == 1
+        let a:get_variable = '^[[:space:]>]*\(' . s:python_identifier . '\)\s*=\s*\(' . a:1 . '\).*'
+        let a:index = '\1'
+    else
+    endif
+
+    let a:line = line('.')
+    let a:col = col('.')
+
+    let a:match = searchpos(a:get_variable,'Wn')
+    if a:0 == 0
+        while a:match != [0,0] && match(getline(a:match[0]),'\<return\>') >= 0
+            call cursor(a:match[0],a:match[1])
+            let a:match = searchpos(a:get_variable,'Wn')
+        endwhile
+        call cursor(a:line,a:col)
+    endif
+
+    if s:isBefore([a:line,a:col],a:match) == 1
+        let a:var = substitute(getline(a:match[0]),a:get_variable,a:index,'')
+        return [a:var,a:match]
+    endif
+
+    return ['none',[0,0]]
+
+endfunction
+
+function! s:jumpToNearest(vars,next,paren) abort
+    let a:start = [line('.'),col('.')]
+    let [a:min,a:jump,a:add] = a:next[1][0] > 0 ? [a:next[1],a:next[0],1] : [[line('$'),1000], 'none' ,1]
+    let a:count = len(a:vars) - 1
+
+    while a:count >= 0
+        let a:var = a:vars[a:count]
+        let a:search = '^\s*[^/*]*' . a:var[0] . a:paren
+        let a:match = searchpos(a:search,'Wn') 
+        if s:isBefore(a:var[1],a:match) == 1
+            call remove(a:vars,a:count)
+        elseif a:match != [0,0] && s:isBefore(a:match,a:min)
+            let a:add = 0
+            let a:min = copy(a:match)
+            let a:jump = a:var[0]
+        endif
+        let a:count -= 1
+    endwhile
+
+    call cursor(a:min[0],a:min[1])
+    echom string(a:min)
+
+    return [a:jump,a:add]
+endfunction
 
 " File-Updating Functions {{{2
 
@@ -210,21 +267,17 @@ endfunction
 function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_global)
 
     let a:subs = s:getSubClasses(a:class_name)
+    echom string(a:subs)
     let a:is_method = a:paren == '(' ? 1 : 0
-    let a:modules = {s:getModule(expand('%:p'))[0] : [a:class_name]}
+    let a:modules = {s:getModule(expand('%:p'))[0] : [expand('%:p')]}
 
     for file in a:subs
-        let a:sub_class = substitute(substitute(file,s:strip_dir,'\2',''),'\.py','','')
-
-        if index(g:factorus_ignored_files,a:sub_class) >= 0
-            continue
-        endif
 
         let a:sub_module = s:getModule(file)[0]
         if index(keys(a:modules), a:sub_module) < 0
-            let a:modules[a:sub_module] = [a:sub_class]
+            let a:modules[a:sub_module] = [file]
         else
-            let a:modules[a:sub_module] = a:modules[a:sub_module] + [a:sub_class]
+            let a:modules[a:sub_module] = a:modules[a:sub_module] + [file]
         endif
 
         execute 'silent tabedit ' . file
@@ -260,27 +313,60 @@ function! s:getImports(module,name)
     return {a:module : a:res}
 endfunction
 
-function! s:updateNonLocalFiles(modules,old_name,new_name,paren,is_global)
+function! s:updateNonLocalFiles(modules,class_name,old_name,new_name,paren,is_global)
     let a:temp_file = '.NonLocal'
-    
-    for module in keys(a:modules)
-        let a:classes = join(a:modules[module],'\|')
-        if a:is_global == 1
-            let a:search = '\<' . a:old_name . '\>' . a:paren
-            for file in a:modules[module]
-                execute 'silent tabedit ' . file
-                execute '%s/\([^.]\)' . a:search . '/\1' . a:new_name . a:paren . '/ge'
-                silent write
-                bdelete
-            endfor
-        else
-            call s:findTags(a:temp_file,a:classes,'no')
-            call s:narrowTags(a:temp_file,a:old_name)
-            call s:updateMethodFiles(a:temp_file,a:classes,a:old_name,a:new_name,a:paren)
-        endif
-    endfor
 
+    let a:base_file = expand('%:p')
+    for module in values(a:modules)
+        for file in module
+            execute 'silent tabedit ' . file
+            if a:is_global == 1
+                let a:search = '\<' . a:old_name . '\>' . a:paren
+                execute 'silent %s/\([^.]\)' . a:search . '/\1' . a:new_name . a:paren . '/ge'
+            else
+                echom file
+                "let a:class = search('\(' . s:sub_class . '[^)]*\<' . a:class_name . '\>\|^\s*class\s*' . a:class_name . '\)','Wn')
+                "if a:class > 0
+                    "let a:sub_name = substitute(getline(a:class),s:class_def,'\1','')
+                    call s:updateMethodFile(a:class_name,a:old_name,a:new_name,a:paren)
+                "endif
+            endif
+            silent write
+
+            if file == a:base_file
+                q
+            else
+                bdelete
+            endif
+        endfor
+    endfor
+   
     call system('rm -rf ' . a:temp_file)
+endfunction
+
+function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
+    let a:vars = []
+    let a:here = line('.')
+    let a:next = s:getNextDec(a:class_name)
+
+    while a:here < line('$')
+        let [a:jump,a:add] = s:jumpToNearest(a:vars,a:next,a:paren)
+        echom string(a:jump)
+
+        if line('.') == a:here
+            break
+        elseif a:add == 1
+            call add(a:vars,[a:next[0] . '\.' . a:method_name,py#factorus#getClosingIndent(0)])
+            let a:next = s:getNextDec(a:class_name)
+        else
+            let a:rep = substitute(a:jump,'\.' . a:method_name,'.' . a:new_name,'')
+            execute 's/\(\s\=!\=\s\=\)' . a:jump . '\s*' . a:paren . '/\1' . a:rep . a:paren . '/g'
+        endif
+        let a:here = line('.')
+    endwhile
+    let a:dec_rep = '\(\(' . a:class_name . '\)\s*(.*)\.\)' . a:method_name . a:paren
+    execute '%s/' . a:dec_rep . '/\1' . a:new_name . a:paren . '/ge'
+    silent write
 endfunction
 
 function! s:updateFile(old_name,new_name,is_method,is_local,is_global)
@@ -291,7 +377,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_global)
         execute 's/' . a:query . '/\1' . a:new_name . '/g'
 
         call s:gotoTag(0)
-        let a:closing = python#factorus#getClosingIndent(1)
+        let a:closing = py#factorus#getClosingIndent(1)
 
         let a:next = searchpos(a:query,'Wn')
         while s:isBefore(a:next,a:closing)
@@ -305,7 +391,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_global)
         endwhile
     else
         let a:paren = a:is_method == 1 ? '(' : ''
-        execute '%s/\([^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
+        execute 'silent %s/\([^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
     endif
 
     call cursor(a:orig,1)
@@ -316,20 +402,20 @@ endfunction
 
 " Insertion Functions {{{2
 
-function! python#factorus#addParam(param_name)
+function! py#factorus#addParam(param_name)
 
 endfunction
 
 " Renaming Functions {{{2
 
-function! python#factorus#renameArg(new_name)
+function! py#factorus#renameArg(new_name)
     let a:var = expand('<cword>')
     call s:updateFile(a:var,a:new_name,0,1,0)
 
     echo 'Re-named ' . a:var . ' to ' . a:new_name
 endfunction
 
-function! python#factorus#renameClass(new_name) abort
+function! py#factorus#renameClass(new_name) abort
     let a:class_line = s:getClassTag()[0]
     let a:class_name = substitute(getline(a:class_line),s:class_def,'\1','')
     if a:class_name == a:new_name
@@ -339,24 +425,25 @@ function! python#factorus#renameClass(new_name) abort
     let [a:module_name,a:package_name] = s:getModule(a:old_file)
 
     let a:temp_file = '.' . a:class_name
+    let a:module_name = substitute(a:module_name,'\.','\\.','g')
+    let a:module_name = substitute(a:module_name,'\(.*\)\(\\\..*\)','\\(\1\\)\\{0,1\\}\2','')
     call s:findTags(a:temp_file,a:module_name,'no')
     call s:narrowTags(a:temp_file,a:class_name)
-    let a:files = readfile(a:temp_file)
 
     call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:class_name . '\>/' . a:new_name . '/g"') 
     call system('rm -rf ' . a:temp_file)
     silent edit
-    execute '%s/\<' . a:class_name . '\>/' . a:new_name . '/ge'
+    execute 'silent %s/\<' . a:class_name . '\>/' . a:new_name . '/ge'
     silent write
 
     echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
 endfunction
 
-function! python#factorus#renameField(new_name)
+function! py#factorus#renameField(new_name)
 
 endfunction
 
-function! python#factorus#renameMethod(new_name)
+function! py#factorus#renameMethod(new_name)
     call s:gotoTag(0)
     let a:class = s:getClassTag()
 
@@ -366,25 +453,36 @@ function! python#factorus#renameMethod(new_name)
     endif
     let a:is_global = a:class == [0,0] ? 1 : 0
     let a:class_name = a:class == [0,0] ? '' : substitute(getline(a:class[0]),s:class_def,'\1','')
+    echom 'CLASS ' . a:class_name . ' ' . string(a:class)
 
-    echom a:is_global . ' ' . a:method_name . ' ' . string(a:class)
     call s:updateFile(a:method_name,a:new_name,1,0,a:is_global)
 
+    let a:module = s:getModule(expand('%:p'))[0]
     if a:is_global == 0
-        let a:modules = s:updateSubClassFiles(a:class_name,a:method_name,a:new_name,'(',a:is_global)
+        let a:modules = s:getImports(a:module,a:class_name)
+        let a:subs = s:updateSubClassFiles(a:class_name,a:method_name,a:new_name,'(',a:is_global)
+        for key in keys(a:subs)
+            if index(keys(a:modules),key) < 0
+                let a:modules[key] = a:subs[key]
+            else
+                let a:modules[key] += a:subs[key]
+            endif
+        endfor
+        for key in keys(a:modules)
+            call uniq(a:modules[key])
+        endfor
     else
-        let a:module = s:getModule(expand('%:p'))[0]
         let a:modules = s:getImports(a:module,a:method_name)
     endif
     echom string(a:modules)
-    call s:updateNonLocalFiles(a:modules,a:method_name,a:new_name,'(',a:is_global)
+    call s:updateNonLocalFiles(a:modules,a:class_name,a:method_name,a:new_name,'(',a:is_global)
 
     redraw
     let a:keyword = a:is_global == 1 ? ' global' : ''
     echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
 endfunction
 
-function! python#factorus#renameSomething(new_name,type)
+function! py#factorus#renameSomething(new_name,type)
     let a:prev_dir = getcwd()
     execute 'cd ' . expand('%:p:h')
     "let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
@@ -393,13 +491,13 @@ function! python#factorus#renameSomething(new_name,type)
 
     try
         if a:type == 'class'
-            call python#factorus#renameClass(a:new_name)
+            call py#factorus#renameClass(a:new_name)
         elseif a:type == 'method'
-            call python#factorus#renameMethod(a:new_name)
+            call py#factorus#renameMethod(a:new_name)
         elseif a:type == 'field'
-            call python#factorus#renameField(a:new_name)
+            call py#factorus#renameField(a:new_name)
         elseif a:type == 'arg'
-            call python#factorus#renameArg(a:new_name)
+            call py#factorus#renameArg(a:new_name)
         else
             echo 'Unknown option ' . a:type
         endif
@@ -414,6 +512,6 @@ endfunction
 
 " Extraction Functions {{{2
 
-function! python#factorus#extractMethod()
+function! py#factorus#extractMethod()
 
 endfunction
