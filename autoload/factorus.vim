@@ -4,6 +4,13 @@ scriptencoding utf-8
 
 " Initialization {{{1
 
+" Dictionary of filetypes to languages for messaging
+let s:langs = {'java' : 'java',
+            \  'py'   : 'python',
+            \  'vim'  : 'vimscript',
+            \  'c'    : 'C',
+            \  'cpp'  : 'C++'
+            \ }
 if exists(':Factorus') == 0
     runtime plugin/factorus.vim
 endif
@@ -11,6 +18,11 @@ endif
 function! factorus#command(func,...)
     let a:ext = expand('%:e')
 
-    let Func = function(a:ext . '#factorus#' . a:func,a:000)
-    call Func()
+    try
+        let Func = function(s:langs[a:ext] . '#factorus#' . a:func,a:000)
+        call Func()
+    catch /.*\(Unknown\|not present\).*/
+        let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
+        echo 'Factorus: ' . a:func . ' is not available for ' . a:lang . '.'
+    endtry
 endfunction

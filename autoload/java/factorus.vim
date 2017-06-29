@@ -809,20 +809,13 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
 
             let a:next = searchpos(a:query,'Wn')
         endwhile
-        silent write
     else
-        let a:class_name = expand('%:t:r')
         let a:paren = a:is_method == 1 ? '(' : ''
-
-        let a:global_name = a:is_static == 0 ? a:class_name : a:class_name . '\\.' . a:old_name
-        let a:new = a:is_static == 0 ? a:new_name : a:class_name . '.' . a:new_name
-        let a:opt_name = a:is_static == 0 ? a:old_name : ''
-
-        call system('sed -i "s/\([^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/g" ' . expand('%:p'))
+        execute '%s/\([^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
     endif
 
     call cursor(a:orig,1)
-    silent edit
+    silent write
 endfunction
 
 function! s:getNextTag()
@@ -1404,22 +1397,21 @@ endfunction
 
 function! java#factorus#renameSomething(new_name,type)
     let a:prev_dir = getcwd()
+    execute 'cd ' . expand('%:p:h')
     let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
     execute 'cd ' a:project_dir
 
     try
         if a:type == 'class'
             call java#factorus#renameClass(a:new_name)
+        elseif a:type == 'method'
+            call java#factorus#renameMethod(a:new_name)
+        elseif a:type == 'field'
+            call java#factorus#renameField(a:new_name)
+        elseif a:type == 'arg'
+            call java#factorus#renameArg(a:new_name)
         else
-            if a:type == 'method'
-                call java#factorus#renameMethod(a:new_name)
-            elseif a:type == 'field'
-                call java#factorus#renameField(a:new_name)
-            elseif a:type == 'arg'
-                call java#factorus#renameArg(a:new_name)
-            else
-                echo 'Unknown option ' . a:type
-            endif
+            echo 'Unknown option ' . a:type
         endif
     catch /.*INVALID.*/
         echo 'Factorus: Invalid expression under cursor'
