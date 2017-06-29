@@ -1,7 +1,6 @@
 " =============================================================================
 " File: factorus.vim
-" Description: Vim plugin for refactoring
-"
+" Description: Vim plugin for automated refactoring
 " =============================================================================
 
 function! s:init(var,val)
@@ -16,7 +15,9 @@ function! s:init_vars()
         \ [ 'min_extracted_lines' , 2 ],
         \ [ 'method_name' , 'newFactorusMethod' ],
         \ [ 'method_threshold' , 0.9 ],
-        \ [ 'extract_heuristic' , 'longest' ]
+        \ [ 'extract_heuristic' , 'longest' ],
+        \ [ 'split_lines' , 1 ],
+        \ [ 'line_length' , 125 ]
     \ ]
 
     for [var,val] in a:vars

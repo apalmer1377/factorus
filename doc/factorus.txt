@@ -3,7 +3,7 @@
 Author:         Austin Palmer
 License:        MIT License
 Homepage:       https://github.com/apalmer1377/factorus.git
-Version:        1.0
+Version:        1.5
 
 ==============================================================================
 Contents                                            *factorus* *factorus-help* 
@@ -152,6 +152,31 @@ independent statements.
 Example:
 >
         let g:factorus_extract_heuristic = 'greedy'
+<
+
+                                                      *g:factorus_split_lines*
+g:factorus_split_lines~
+Default: 1
+
+If this equals 1, then |:FExtractMethod| will split a method declaration across
+multiple lines if the declaration is longer than |g:factorus_split_lines|.
+Otherwise, the declaration will be put onto a single line.
+
+Example:
+>
+        let g:factorus_split_lines = 0
+<
+
+                                                      *g:factorus_line_length*
+g:factorus_line_length~
+Default: 125
+
+If |g:factorus_split_lines| is 1, this determines the length at which a method
+declaration is split.
+
+Example:
+>
+        let g:factorus_line_length = 150
 <
 
 ==============================================================================
