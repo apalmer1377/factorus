@@ -20,7 +20,7 @@ let s:strip_dir = '\(.*\/\)\=\(.*\)'
 let s:no_comment = '^\s*'
 
 let s:factorus_java_identifier = '[' . s:start_chars . '][' . s:search_chars . ']*'
-let s:struct = '\(class\|enum\|interface\)\_s\+' . s:factorus_java_identifier . '\_s\+' . s:sub_class . '\=\_.*{'
+let s:struct = '\(class\|enum\|interface\)\_s\+' . s:factorus_java_identifier . '\_s\+' . s:sub_class . '\=\_.{-}{'
 let s:common = s:factorus_java_identifier . s:collection_identifier . '\=\_s\+' . s:factorus_java_identifier . '\_s*('
 let s:reflect = s:collection_identifier . '\_s\+' . s:factorus_java_identifier . '\_s\+' . s:factorus_java_identifier . '\_s*('
 let s:factorus_tag_query = '^\s*' . s:access_query . '\(' . s:struct . '\|' . s:common . '\|' . s:reflect . '\)'
