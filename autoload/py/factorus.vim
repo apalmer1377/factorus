@@ -76,7 +76,8 @@ function! s:findTags(temp_file,search_string,append)
         let a:ignore .= '\! -name "' . file . '" '
     endfor
     let a:fout = a:append == 'yes' ? '>>' : '>'
-    call system('find ' . getcwd() . ' -name "*" \! -name ".*" ' . a:ignore . '-exec grep -l "' . a:search_string . '" {} + ' . a:fout . ' ' . a:temp_file . ' 2> /dev/null')
+    call system('find ' . getcwd() . ' -name "*" \! -path "*.git*" \! -name ".*" ' . a:ignore . 
+                \ '-exec grep -l "' . a:search_string . '" {} + ' . a:fout . ' ' . a:temp_file . ' 2> /dev/null')
 endfunction
 
 function! s:narrowTags(temp_file,search_string)
@@ -91,8 +92,7 @@ function! s:getModule(file)
     let a:git = system('git rev-parse --show-toplevel')
     let a:module = strpart(a:file,len(a:git))
     let a:module = substitute(substitute(a:module,'\.py$','',''),'\/','.','g')
-    let a:package = substitute(a:module,'\.[^.]*$','','')
-    return [a:module,a:package]
+    return a:module
 endfunction
 
 function! s:getNextDec(...)
@@ -144,7 +144,6 @@ function! s:jumpToNearest(vars,next,paren) abort
     endwhile
 
     call cursor(a:min[0],a:min[1])
-    echom string(a:min)
 
     return [a:jump,a:add]
 endfunction
@@ -267,13 +266,12 @@ endfunction
 function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_global)
 
     let a:subs = s:getSubClasses(a:class_name)
-    echom string(a:subs)
     let a:is_method = a:paren == '(' ? 1 : 0
-    let a:modules = {s:getModule(expand('%:p'))[0] : [expand('%:p')]}
+    let a:modules = {s:getModule(expand('%:p')) : [expand('%:p')]}
 
     for file in a:subs
 
-        let a:sub_module = s:getModule(file)[0]
+        let a:sub_module = s:getModule(file)
         if index(keys(a:modules), a:sub_module) < 0
             let a:modules[a:sub_module] = [file]
         else
@@ -310,26 +308,61 @@ function! s:getImports(module,name)
 
     let a:res = readfile(a:temp_file)
     call system('rm -rf ' . a:temp_file)
-    return {a:module : a:res}
+    return a:res
+endfunction
+
+function! s:getAllImports(module,name)
+    let a:res = []
+    let a:temp = s:getImports(a:module,a:name)
+
+    while a:temp != []
+        let a:res += a:temp
+        call uniq(a:res)
+        let a:cycle = []
+        for file in a:temp
+            let a:next_module = s:getModule(file)
+            for tfile in s:getImports(a:next_module,a:name)
+                if index(a:res,tfile) < 0
+                    call add(a:cycle,tfile)
+                endif
+            endfor
+        endfor
+        let a:temp = uniq(a:cycle)
+    endwhile
+
+    return a:res
+endfunction
+
+function! s:updateImports(module,name,new_name)
+    let a:curr_file = expand('%:p')
+    let a:imports = s:getAllImports(a:module,a:name)
+
+    for file in a:imports
+        let a:next_module = s:getModule(file)
+        execute 'silent tabedit ' . file
+        execute '%s/\(from\s*' . a:next_module .'\s*import\_.{-}\)' . a:name . '\(.*\)/\1' . a:new_name . '\2/ge'
+        silent write
+        if file == a:curr_file
+            q
+        else
+            bdelete
+        endif
+    endfor
+
+    return {a:module : a:imports}
 endfunction
 
 function! s:updateNonLocalFiles(modules,class_name,old_name,new_name,paren,is_global)
     let a:temp_file = '.NonLocal'
 
     let a:base_file = expand('%:p')
-    for module in values(a:modules)
-        for file in module
+    for file in a:modules
             execute 'silent tabedit ' . file
             if a:is_global == 1
                 let a:search = '\<' . a:old_name . '\>' . a:paren
                 execute 'silent %s/\([^.]\)' . a:search . '/\1' . a:new_name . a:paren . '/ge'
             else
-                echom file
-                "let a:class = search('\(' . s:sub_class . '[^)]*\<' . a:class_name . '\>\|^\s*class\s*' . a:class_name . '\)','Wn')
-                "if a:class > 0
-                    "let a:sub_name = substitute(getline(a:class),s:class_def,'\1','')
-                    call s:updateMethodFile(a:class_name,a:old_name,a:new_name,a:paren)
-                "endif
+                call s:updateMethodFile(a:class_name,a:old_name,a:new_name,a:paren)
             endif
             silent write
 
@@ -338,7 +371,6 @@ function! s:updateNonLocalFiles(modules,class_name,old_name,new_name,paren,is_gl
             else
                 bdelete
             endif
-        endfor
     endfor
    
     call system('rm -rf ' . a:temp_file)
@@ -351,7 +383,6 @@ function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
 
     while a:here < line('$')
         let [a:jump,a:add] = s:jumpToNearest(a:vars,a:next,a:paren)
-        echom string(a:jump)
 
         if line('.') == a:here
             break
@@ -421,20 +452,17 @@ function! py#factorus#renameClass(new_name) abort
     if a:class_name == a:new_name
         throw 'DUPLICATE'
     endif    
-    let a:old_file = expand('%:p')
-    let [a:module_name,a:package_name] = s:getModule(a:old_file)
+
+    let a:module_name = s:getModule(expand('%:p'))
 
     let a:temp_file = '.' . a:class_name
     let a:module_name = substitute(a:module_name,'\.','\\.','g')
     let a:module_name = substitute(a:module_name,'\(.*\)\(\\\..*\)','\\(\1\\)\\{0,1\\}\2','')
-    call s:findTags(a:temp_file,a:module_name,'no')
-    call s:narrowTags(a:temp_file,a:class_name)
+    call s:findTags(a:temp_file,a:class_name,'no')
 
     call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:class_name . '\>/' . a:new_name . '/g"') 
-    call system('rm -rf ' . a:temp_file)
+    call system('rm -rf ' . a:temp_file
     silent edit
-    execute 'silent %s/\<' . a:class_name . '\>/' . a:new_name . '/ge'
-    silent write
 
     echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
 endfunction
@@ -453,13 +481,14 @@ function! py#factorus#renameMethod(new_name)
     endif
     let a:is_global = a:class == [0,0] ? 1 : 0
     let a:class_name = a:class == [0,0] ? '' : substitute(getline(a:class[0]),s:class_def,'\1','')
-    echom 'CLASS ' . a:class_name . ' ' . string(a:class)
 
     call s:updateFile(a:method_name,a:new_name,1,0,a:is_global)
 
-    let a:module = s:getModule(expand('%:p'))[0]
+    let a:module = s:getModule(expand('%:p'))
+    let a:keyword = a:is_global == 1 ? a:method_name : a:class_name
+    "let a:modules = s:getRefs(a:module,a:keyword,a:new_name)
+
     if a:is_global == 0
-        let a:modules = s:getImports(a:module,a:class_name)
         let a:subs = s:updateSubClassFiles(a:class_name,a:method_name,a:new_name,'(',a:is_global)
         for key in keys(a:subs)
             if index(keys(a:modules),key) < 0
@@ -471,12 +500,16 @@ function! py#factorus#renameMethod(new_name)
         for key in keys(a:modules)
             call uniq(a:modules[key])
         endfor
+        call s:updateNonLocalFiles(a:refs,a:class_name,a:method_name,a:new_name,'(',a:is_global)
     else
-        let a:modules = s:getImports(a:module,a:method_name)
+        let a:temp_file = '.' . a:method_name
+        call s:findTags(a:temp_file,a:method_name,'no')
+        let a:refs = readfile(a:temp_file)
+        echom string(a:refs)
+        call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:method_name . '\>(/' . a:new_name . '(/g"')
+        call system('rm -rf ' . a:temp_file)
     endif
-    echom string(a:modules)
-    call s:updateNonLocalFiles(a:modules,a:class_name,a:method_name,a:new_name,'(',a:is_global)
-
+    
     redraw
     let a:keyword = a:is_global == 1 ? ' global' : ''
     echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
