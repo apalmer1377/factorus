@@ -278,7 +278,6 @@ function! py#factorus#renameSomething(new_name,type)
 
 endfunction
 
-" Extraction Functions {{{2
 
 function! py#factorus#extractMethod()
 

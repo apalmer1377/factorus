@@ -19,13 +19,13 @@ let s:sub_class = '\(implements\|extends\)'
 let s:strip_dir = '\(.*\/\)\=\(.*\)'
 let s:no_comment = '^\s*'
 
-let s:factorus_java_identifier = '[' . s:start_chars . '][' . s:search_chars . ']*'
-let s:struct = '\(class\|enum\|interface\)\_s\+' . s:factorus_java_identifier . '\_s\+' . s:sub_class . '\=\_[^{]\{-\}{'
-let s:common = s:factorus_java_identifier . s:collection_identifier . '\=\_s\+' . s:factorus_java_identifier . '\_s*('
-let s:reflect = s:collection_identifier . '\_s\+' . s:factorus_java_identifier . '\_s\+' . s:factorus_java_identifier . '\_s*('
-let s:factorus_tag_query = '^\s*' . s:access_query . '\(' . s:struct . '\|' . s:common . '\|' . s:reflect . '\)'
+let s:java_identifier = '[' . s:start_chars . '][' . s:search_chars . ']*'
+let s:struct = '\(class\|enum\|interface\)\_s\+' . s:java_identifier . '\_s\+' . s:sub_class . '\=\_[^{]\{-\}{'
+let s:common = s:java_identifier . s:collection_identifier . '\=\_s\+' . s:java_identifier . '\_s*('
+let s:reflect = s:collection_identifier . '\_s\+' . s:java_identifier . '\_s\+' . s:java_identifier . '\_s*('
+let s:tag_query = '^\s*' . s:access_query . '\(' . s:struct . '\|' . s:common . '\|' . s:reflect . '\)'
 
-let s:factorus_java_keywords = '\<\(assert\|break\|case\|catch\|const\|continue\|default\|do\|else\|false\|finally\|for\|goto\|if\|import\|instanceof\|new\|package\|return\|strictfp\|super\|switch\|this\|throw\|transient\|true\|try\|volatile\|while\)\>'
+let s:java_keywords = '\<\(assert\|break\|case\|catch\|const\|continue\|default\|do\|else\|false\|finally\|for\|goto\|if\|import\|instanceof\|new\|package\|return\|strictfp\|super\|switch\|this\|throw\|transient\|true\|try\|volatile\|while\)\>'
 
 " Script-Defined Functions {{{1
 
@@ -162,8 +162,8 @@ function! s:isValidTag(line)
         return 0
     endif
 
-    let a:has_keyword = match(getline(a:line),s:factorus_java_keywords)
-    if a:has_keyword >= 0 && s:isQuoted(s:factorus_java_keywords,getline(a:line)) == 0
+    let a:has_keyword = match(getline(a:line),s:java_keywords)
+    if a:has_keyword >= 0 && s:isQuoted(s:java_keywords,getline(a:line)) == 0
         return 0
     endif
 
@@ -179,7 +179,7 @@ function! s:getAdjacentTag(dir)
     let [a:line,a:col] = [line('.') + 1,col('.')]
     call cursor(a:line,a:col)
 
-    let a:func = searchpos(s:factorus_tag_query,'Wn' . a:dir)
+    let a:func = searchpos(s:tag_query,'Wn' . a:dir)
     let a:is_valid = 0
     while a:func != [0,0]
         let a:is_valid = s:isValidTag(a:func[0])
@@ -189,7 +189,7 @@ function! s:getAdjacentTag(dir)
 
         call cursor(a:func[0],a:func[1])
         let [a:line,a:col] = [line('.'),col('.')]
-        let a:func = searchpos(s:factorus_tag_query,'Wn' . a:dir)
+        let a:func = searchpos(s:tag_query,'Wn' . a:dir)
 
     endwhile
     call cursor(a:oline,a:ocol)
@@ -203,7 +203,7 @@ endfunction
 function! s:getClassTag()
     let [a:line,a:col] = [line('.'),col('.')]
     call cursor(1,1)
-    let a:class_tag = searchpos(s:factorus_tag_query,'n')
+    let a:class_tag = searchpos(s:tag_query,'n')
     call cursor(a:line,a:col)
     return a:class_tag[0]
 endfunction
@@ -250,11 +250,11 @@ endfunction
 
 function! s:getNextDec(...)
     if a:0 == 0
-        let a:get_variable = '^[^/*]\s*\(' . s:access_query . '\|for\s*(\)\s*\(' . s:factorus_java_identifier . 
-                    \ s:collection_identifier . '\=\)\s\+\(' . s:factorus_java_identifier . '\)\s*[:,=;)].*'
+        let a:get_variable = '^[^/*]\s*\(' . s:access_query . '\|for\s*(\)\s*\(' . s:java_identifier . 
+                    \ s:collection_identifier . '\=\)\s\+\(' . s:java_identifier . '\)\s*[:,=;)].*'
         let a:index = '\5|\7'
     elseif a:0 == 1
-        let a:get_variable = '^[^/*]\s*' . s:access_query . '\s*\(' . a:1 . '\)' . s:collection_identifier . '\=\s\+\(' . s:factorus_java_identifier . '\)\s*[,=;)].*'
+        let a:get_variable = '^[^/*]\s*' . s:access_query . '\s*\(' . a:1 . '\)' . s:collection_identifier . '\=\s\+\(' . s:java_identifier . '\)\s*[,=;)].*'
         let a:index = '\6'
     else
         let a:get_variable = '^[^/*].*(.*\<\(' . a:1 . '\)\>' . s:collection_identifier . '\=\s\+\(\<' . a:2 . '\).*).*'
@@ -283,7 +283,7 @@ function! s:getNextDec(...)
 endfunction
 
 function! s:getFunctionDecs(class_name)
-    let a:query = '^\s*' . s:access_query . '\(' .  a:class_name . s:collection_identifier . '\=\)\_s\+\(' . s:factorus_java_identifier . '\)\_s*(.*'
+    let a:query = '^\s*' . s:access_query . '\(' .  a:class_name . s:collection_identifier . '\=\)\_s\+\(' . s:java_identifier . '\)\_s*(.*'
     let a:decs = []
     try
         execute 'silent vimgrep /' . a:query . '/j %:p'
@@ -344,7 +344,7 @@ endfunction
 function! s:getSuperClasses()
     let a:class_tag = s:getClassTag()
     let a:class_name = expand('%:t:r')
-    let a:super_search = '.*\s' . a:class_name . '\s\+' . s:sub_class . '\s\+\<\(' . s:factorus_java_identifier . '\)\>.*{.*'
+    let a:super_search = '.*\s' . a:class_name . '\s\+' . s:sub_class . '\s\+\<\(' . s:java_identifier . '\)\>.*{.*'
     let a:sups = [expand('%:p')]
 
     let a:imp = match(getline(a:class_tag),'\s' . s:sub_class . '\s')
@@ -455,8 +455,8 @@ endfunction
 
 function! s:getNextReference(var,type,...)
     if a:type == 'right'
-        let a:search = s:no_comment . s:access_query . '\s*\(' . s:factorus_java_identifier . s:collection_identifier . 
-                    \ '\=\s\)\=\s*\(' . s:factorus_java_identifier . '\)\s*[(.=]\_[^{;]*\<\(' . a:var . '\)\>\_.\{-\};$'
+        let a:search = s:no_comment . s:access_query . '\s*\(' . s:java_identifier . s:collection_identifier . 
+                    \ '\=\s\)\=\s*\(' . s:java_identifier . '\)\s*[(.=]\_[^{;]*\<\(' . a:var . '\)\>\_.\{-\};$'
         let a:index = '\6'
         let a:alt_index = '\7'
     elseif a:type == 'left'
@@ -637,7 +637,7 @@ function! s:getUsingVar()
     while 1 == 1
         call searchpair('(','',')','Wb')
         let a:end = col('.')
-        call search('\<' . s:factorus_java_identifier . '\>','b')
+        call search('\<' . s:java_identifier . '\>','b')
         let a:dot = searchpos('\.','Wnb')
         let a:else = searchpos('[^[:space:]]','Wnb')
         if s:isBefore(a:dot, a:else) == 1
@@ -645,11 +645,11 @@ function! s:getUsingVar()
             let a:var = strpart(getline('.'),a:begin,a:end-a:begin)
             break
         else
-            let a:begin = searchpos('\<' . s:factorus_java_identifier . '\>','Wbn')
+            let a:begin = searchpos('\<' . s:java_identifier . '\>','Wbn')
             let a:paren = searchpos(')','Wnb')
             if s:isBefore(a:paren,a:begin)
                 call cursor(a:begin[0],a:begin[1])
-                let a:end = searchpos('\<' . s:factorus_java_identifier . '\>','Wnce')
+                let a:end = searchpos('\<' . s:java_identifier . '\>','Wnce')
                 let a:var = strpart(getline('.'),a:begin[1]-1,a:end[1] + 1 - a:begin[1])
                 break
             endif
@@ -658,22 +658,22 @@ function! s:getUsingVar()
     endwhile
 
     let a:funcs = []
-    let a:next = searchpos('\.\<' . s:factorus_java_identifier . '\>(','Wn')
-    let a:next_end = searchpos('\.\<' . s:factorus_java_identifier . '\>(','Wne')
+    let a:next = searchpos('\.\<' . s:java_identifier . '\>(','Wn')
+    let a:next_end = searchpos('\.\<' . s:java_identifier . '\>(','Wne')
     while s:isBefore(a:next,a:orig) == 1
         call cursor(a:next[0],a:next[1])
         call add(a:funcs,strpart(getline('.'),a:next[1], a:next_end[1] - a:next[1] - 1))
         call search('(')
         call searchpair('(','',')','W')
-        let a:next = searchpos('\.\<' . s:factorus_java_identifier . '\>(','Wn')
-        let a:next_end = searchpos('\.\<' . s:factorus_java_identifier . '\>(','Wne')
+        let a:next = searchpos('\.\<' . s:java_identifier . '\>(','Wn')
+        let a:next_end = searchpos('\.\<' . s:java_identifier . '\>(','Wne')
     endwhile
 
     return [a:var,a:funcs]
 endfunction
 
 function! s:getVarDec(var)
-    let a:search = s:no_comment  . '.\{-\}\(' . s:access_query . '\|for\s*(\)\s*\(' . s:factorus_java_identifier .
+    let a:search = s:no_comment  . '.\{-\}\(' . s:access_query . '\|for\s*(\)\s*\(' . s:java_identifier .
                 \ s:collection_identifier . '\=\)\s\+\<' . a:var . '\>.*'
 
     let a:pos = search(a:search,'Wbn')
@@ -690,7 +690,7 @@ function! s:followChain(class,funcs,new_method)
         let a:temp_list = []
         for file in a:chain_files
             execute 'silent tabedit ' . file
-            let a:search = s:no_comment . s:access_query . s:factorus_java_identifier . s:collection_identifier . '\=\_s\+\<' . func . '\>\_s*('
+            let a:search = s:no_comment . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+\<' . func . '\>\_s*('
             let a:find =  search(a:search)
             if a:find > 0
                 call cursor(line('.') + 1,1)
@@ -706,7 +706,7 @@ function! s:followChain(class,funcs,new_method)
     let a:res = 0
     for file in a:chain_files
         execute 'silent tabedit ' . file
-        let a:search = s:no_comment . s:access_query . s:factorus_java_identifier . s:collection_identifier . '\=\_s\+\<' . a:new_method . '\>\_s*('
+        let a:search = s:no_comment . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+\<' . a:new_method . '\>\_s*('
         let a:find =  search(a:search)
         if a:find > 0
             let a:res = 1
@@ -1385,7 +1385,7 @@ endfunction
 " Insertion Functions {{{2
 
 function! java#factorus#encapsulateField() abort
-    let a:search = '\s*' . s:access_query . '\(' . s:factorus_java_identifier . s:collection_identifier . '\=\)\_s*\(' . s:factorus_java_identifier . '\)\_s*[;=]'
+    let a:search = '\s*' . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\_s*\(' . s:java_identifier . '\)\_s*[;=]'
 
     let a:line = getline('.')
     let a:is_static = substitute(a:line,a:search,'\2','')
@@ -1416,7 +1416,7 @@ function! java#factorus#encapsulateField() abort
     echo 'Created getters and setters for ' . a:var
 endfunction
 
-function! java#factorus#addParam(param_type,param_name) abort
+function! java#factorus#addParam(param_name,param_type) abort
     let a:orig = [line('.'),col('.')]
     call s:gotoTag(0)
 
@@ -1463,7 +1463,7 @@ function! java#factorus#renameClass(new_name) abort
 endfunction
 
 function! java#factorus#renameField(new_name) abort
-    let a:search = '^\s*' . s:access_query . '\(' . s:factorus_java_identifier . s:collection_identifier . '\=\)\=\s*\(' . s:factorus_java_identifier . '\)\s*[;=].*'
+    let a:search = '^\s*' . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\=\s*\(' . s:java_identifier . '\)\s*[;=].*'
 
     let a:line = getline('.')
     let a:is_static = substitute(substitute(a:line,a:search,'\2',''),'\s','','g') == 'static' ? 1 : 0
@@ -1498,7 +1498,7 @@ endfunction
 function! java#factorus#renameMethod(new_name) abort
     call s:gotoTag(0)
 
-    let a:method_name = matchstr(getline('.'),'\s\+' . s:factorus_java_identifier . '\s*(')
+    let a:method_name = matchstr(getline('.'),'\s\+' . s:java_identifier . '\s*(')
     let a:method_name = matchstr(a:method_name,'[^[:space:](]\+')
     if a:method_name == a:new_name
         throw 'DUPLICATE'
@@ -1559,7 +1559,7 @@ function! java#factorus#extractMethod()
     echo 'Extracting new method...'
     call s:gotoTag(0)
     let a:tab = substitute(getline('.'),'\(\s*\).*','\1','')
-    let a:method_name = substitute(getline('.'),'.*\s\+\(' . s:factorus_java_identifier . '\)\s*(.*','\1','')
+    let a:method_name = substitute(getline('.'),'.*\s\+\(' . s:java_identifier . '\)\s*(.*','\1','')
 
     let [a:open,a:close] = [line('.'),s:getClosingBracket(1)]
     call searchpos('{','W')
