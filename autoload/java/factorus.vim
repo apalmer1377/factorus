@@ -20,7 +20,7 @@ let s:strip_dir = '\(.*\/\)\=\(.*\)'
 let s:no_comment = '^\s*'
 
 let s:factorus_java_identifier = '[' . s:start_chars . '][' . s:search_chars . ']*'
-let s:struct = '\(class\|enum\|interface\)\_s\+' . s:factorus_java_identifier . '\_s\+' . s:sub_class . '\=\_.{-}{'
+let g:struct = '\(class\|enum\|interface\)\_s\+' . s:factorus_java_identifier . '\_s\+' . s:sub_class . '\=\_.\{-\}{'
 let s:common = s:factorus_java_identifier . s:collection_identifier . '\=\_s\+' . s:factorus_java_identifier . '\_s*('
 let s:reflect = s:collection_identifier . '\_s\+' . s:factorus_java_identifier . '\_s\+' . s:factorus_java_identifier . '\_s*('
 let s:factorus_tag_query = '^\s*' . s:access_query . '\(' . s:struct . '\|' . s:common . '\|' . s:reflect . '\)'
@@ -448,7 +448,7 @@ endfunction
 function! s:getNextReference(var,type,...)
     if a:type == 'right'
         let a:search = s:no_comment . s:access_query . '\s*\(' . s:factorus_java_identifier . s:collection_identifier . 
-                    \ '\=\s\)\=\s*\(' . s:factorus_java_identifier . '\)\s*[(.=]\_[^{;]*\<\(' . a:var . '\)\>\_.\{-};$'
+                    \ '\=\s\)\=\s*\(' . s:factorus_java_identifier . '\)\s*[(.=]\_[^{;]*\<\(' . a:var . '\)\>\_.\{-\};$'
         let a:index = '\6'
         let a:alt_index = '\7'
     elseif a:type == 'left'

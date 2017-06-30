@@ -23,6 +23,19 @@ function! factorus#command(func,...)
         call Func()
     catch /.*Unknown.*/
         let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
-        echo 'Factorus: ' . a:func . ' is not available for ' . a:lang . '.'
+        let a:name = a:func
+        if a:func == 'renameSomething'
+            if a:000[-1] == 'class'
+                let a:name = 'renameClass'
+            elseif a:000[-1] == 'method'
+                let a:name = 'renameMethod'
+            elseif a:000[-1] == 'field'
+                let a:name = 'renameField'
+            elseif a:000[-1] == 'arg'
+                let a:name = 'renameArg'
+            endif
+        endif
+
+        echo 'Factorus: ' . a:name . ' is not available for ' . a:lang . '.'
     endtry
 endfunction

@@ -6,7 +6,7 @@ let s:start_chars = '[_A-Za-z]'
 let s:search_chars = '[_0-9A-Za-z]*'
 let s:python_identifier = s:start_chars . s:search_chars
 
-let s:function_def = '^\s*def\s*\(' . s:python_identifier . '\)\s*(.*'
+let s:function_def = '^\s*def\s*\<\(' . s:python_identifier . '\)\>\s*(.*'
 let s:class_def = '^\s*class\s*\(' . s:python_identifier . '\)\s*[(:].*'
 let s:sub_class = '^\s*class\s*\(' . s:python_identifier . '\)\s*('
 let s:strip_dir = '\(.*\/\)\=\(.*\)'
@@ -76,7 +76,7 @@ function! s:findTags(temp_file,search_string,append)
         let a:ignore .= '\! -name "' . file . '" '
     endfor
     let a:fout = a:append == 'yes' ? '>>' : '>'
-    call system('find ' . getcwd() . ' -name "*" \! -path "*.git*" \! -name ".*" ' . a:ignore . 
+    call system('find ' . getcwd() . ' -name "*" \! -path "*/.git/*" \! -name ".*" ' . a:ignore . 
                 \ '-exec grep -l "' . a:search_string . '" {} + ' . a:fout . ' ' . a:temp_file . ' 2> /dev/null')
 endfunction
 
@@ -340,7 +340,7 @@ function! s:updateImports(module,name,new_name)
     for file in a:imports
         let a:next_module = s:getModule(file)
         execute 'silent tabedit ' . file
-        execute '%s/\(from\s*' . a:next_module .'\s*import\_.{-}\)' . a:name . '\(.*\)/\1' . a:new_name . '\2/ge'
+        execute '%s/\(from\s*' . a:next_module .'\s*import\_.\{-\}\)' . a:name . '\(.*\)/\1' . a:new_name . '\2/ge'
         silent write
         if file == a:curr_file
             q
@@ -467,10 +467,10 @@ function! py#factorus#renameClass(new_name) abort
     echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
 endfunction
 
-function! py#factorus#renameField(new_name)
-
-endfunction
-
+"NOTE: This is dangerous, because it renames all instances of the method
+"everywhere to new_name.  Python's lack of strict typing make it nearly
+"impossible to accurately do this, so the function does a clean sweep through
+"the whole project.
 function! py#factorus#renameMethod(new_name)
     call s:gotoTag(0)
     let a:class = s:getClassTag()
@@ -479,37 +479,39 @@ function! py#factorus#renameMethod(new_name)
     if a:method_name == a:new_name
         throw 'DUPLICATE'
     endif
+
     let a:is_global = a:class == [0,0] ? 1 : 0
     let a:class_name = a:class == [0,0] ? '' : substitute(getline(a:class[0]),s:class_def,'\1','')
 
     call s:updateFile(a:method_name,a:new_name,1,0,a:is_global)
 
-    let a:module = s:getModule(expand('%:p'))
-    let a:keyword = a:is_global == 1 ? a:method_name : a:class_name
-    "let a:modules = s:getRefs(a:module,a:keyword,a:new_name)
+    let a:keyword = a:is_global == 1 ? a:method_name : '\(' . a:class_name . '\|' . a:method_name . '\)'
+    let a:period = a:is_global == 1 ? '\([^.]\)\{0,1\}' : '\(\.\)'
 
-    if a:is_global == 0
-        let a:subs = s:updateSubClassFiles(a:class_name,a:method_name,a:new_name,'(',a:is_global)
-        for key in keys(a:subs)
-            if index(keys(a:modules),key) < 0
-                let a:modules[key] = a:subs[key]
+    let a:file_name = expand('%:p')
+    let a:temp_file = '.' . a:method_name
+    call s:findTags(a:temp_file,a:method_name,'no')
+    call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:period . '\<' . a:method_name . '\>/\1' . a:new_name . '/g"')
+    call s:findTags(a:temp_file,a:method_name,'no')
+
+    for file in readfile(a:temp_file)
+            execute 'silent tabedit ' . file
+            let a:find =  searchpos('from.*import\_[^:)]\{-\}\<' . a:keyword. '\>','Wc')
+            let a:end = searchpos('\<' . a:method_name . '\>','Wne')
+            while  a:find != [0,0]
+                execute a:find[0] . ',' . a:end[0] . 's/\<' . a:method_name . '\>/' . a:new_name . '/e'
+                let a:find = searchpos('from.*import\_[^:)]\{-\}\<' . a:keyword . '\>','W')
+                let a:end = searchpos('\<' . a:method_name . '\>','Wne')
+            endwhile
+            silent write
+            if expand('%:p') == a:file_name
+                q
             else
-                let a:modules[key] += a:subs[key]
+                bdelete
             endif
-        endfor
-        for key in keys(a:modules)
-            call uniq(a:modules[key])
-        endfor
-        call s:updateNonLocalFiles(a:refs,a:class_name,a:method_name,a:new_name,'(',a:is_global)
-    else
-        let a:temp_file = '.' . a:method_name
-        call s:findTags(a:temp_file,a:method_name,'no')
-        let a:refs = readfile(a:temp_file)
-        echom string(a:refs)
-        call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:method_name . '\>(/' . a:new_name . '(/g"')
-        call system('rm -rf ' . a:temp_file)
-    endif
-    
+    endfor
+    call system('rm -rf ' . a:temp_file)
+
     redraw
     let a:keyword = a:is_global == 1 ? ' global' : ''
     echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
@@ -525,7 +527,7 @@ function! py#factorus#renameSomething(new_name,type)
     try
         if a:type == 'class'
             call py#factorus#renameClass(a:new_name)
-        elseif a:type == 'method'
+        elseif a:type == 'method' 
             call py#factorus#renameMethod(a:new_name)
         elseif a:type == 'field'
             call py#factorus#renameField(a:new_name)
@@ -538,6 +540,8 @@ function! py#factorus#renameSomething(new_name,type)
         echo 'Factorus: Invalid expression under cursor'
     catch /.*DUPLICATE.*/
         echo 'Factorus: New name is the same as old name'
+    catch /.*/
+        throw 'Unknown function'
     finally
         execute 'cd ' a:prev_dir
     endtry
