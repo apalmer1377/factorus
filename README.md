@@ -6,15 +6,14 @@ and even method extraction, with a few very intutitive commands.
 
 ## Features
 
-Currently, Factorus supports automated versions of the following
-refactoring tools for Java:
-* Add Parameter
-* Encapsulate Variable
-* Extract Method
-* Rename Argument
-* Rename Class
-* Rename Method
-* Rename Variable
+The following table shows which features Factorus supports for
+which languages:
+
+|              | Add Parameter|Encapsulate Variable|Extract Method|Rename Argument|Rename Class|Rename Method |Rename Field|
+|:------------:|:------------:|:------------------:|:------------:|:-------------:|:----------:|:------------:|:----------:|
+|     Java     |   %#10003;   |      %#10003;      |   %#10003;   |    %#10003;   |  %#10003;  |   %#10003;   |  %#10003;  |
+|    Python    |   %#10003;   |      %#10007;      |   %#10007;   |    %#10003;   |  %#10003;  |   %#10003;   |  %#10007;  |
+
 
 ## Installation
 
