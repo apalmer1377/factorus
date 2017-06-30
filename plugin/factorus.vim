@@ -24,10 +24,11 @@ function! s:init_vars()
         call s:init(var,val)
     endfor
 
+    let a:ignore_defaults = ['tags', 'cscope.out','*.pyc']
     if !exists('g:factorus_ignored_files')
-        let g:factorus_ignored_files = ['tags', 'cscope.out']
+        let g:factorus_ignored_files = a:ignore_defaults
     else
-        let g:factorus_ignored_files += ['tags', 'cscope.out']
+        let g:factorus_ignored_files += a:ignore_defaults
     endif
 endfunction
 call s:init_vars()

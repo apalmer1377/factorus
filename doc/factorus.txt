@@ -44,11 +44,21 @@ and modification.
 ------------------------------------------------------------------------------
 2.2 Insertion                                                *factorus-insert*
 
-:FAddParam {new_type} {new_name}                                  *:FAddParam*
-    Adds a new parameter with type {new_type} and name {new_name} to 
-    the function definition.
+:FAddParam {new_name} {other}                                  *:FAddParam*
+    Adds a new parameter with name {new_name} to 
+    the function definition. The use of {other} depends on what language
+    is being used:
+        
+        in Java, {other} is mandatory, and represents the type of the new
+        parameter. The argument will be added to the end of the argument
+        list.
 
-    NOTE: As of 06/16/2017, this function doesn't update any calls to the
+        in Python, {other} is optional, and represents the default argument
+        for the parameter.  If {other} is included, the argument will be
+        added to the end of the argument list; otherwise, it will be added
+        to the end.
+
+    NOTE: As of 06/30/2017, this function doesn't update any calls to the
     function in other parts of the project, as it is assumed that will be done
     manually.  This feature may be added later.
 
