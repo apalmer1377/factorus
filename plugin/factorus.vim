@@ -24,12 +24,32 @@ function! s:init_vars()
         call s:init(var,val)
     endfor
 
-    let a:ignore_defaults = ['tags', 'cscope.out','*.pyc']
+    let a:ignore_defaults = ['.Factorus*', 'tags', 'cscope.out', '.*.sw*', '*.pyc']
     if !exists('g:factorus_ignored_files')
         let g:factorus_ignored_files = a:ignore_defaults
     else
         let g:factorus_ignored_files += a:ignore_defaults
+        let g:factorus_ignored_files =  filter(g:factorus_ignored_files, 'index(g:factorus_ignored_files, v:val, v:key+1) == -1')
     endif
+
+    let a:ignore_dir_defaults = ['.git']
+    if !exists('g:factorus_ignored_dirs')
+        let g:factorus_ignored_dirs = a:ignore_dir_defaults
+    else
+        let g:factorus_ignored_dirs += a:ignore_dir_defaults
+        call filter(g:factorus_ignored_dirs, 'index(g:factorus_ignored_dirs, v:val, v:key+1)==-1')
+    endif
+
+    let g:factorus_ignore_string = ' '
+
+    for dir in g:factorus_ignored_dirs
+        let g:factorus_ignore_string .= '\! -path "*/' . dir . '/*" '
+    endfor
+
+    for file in g:factorus_ignored_files
+        let g:factorus_ignore_string .= '\! -name "' . file . '" '
+    endfor
+
 endfunction
 call s:init_vars()
 
