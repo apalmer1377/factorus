@@ -946,7 +946,7 @@ function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
     return a:packages
 endfunction
 
-function! s:updateNonLocalFiles(packages,old_name,new_name,paren,is_static)
+function! s:updateReferences(packages,old_name,new_name,paren,is_static)
     let a:temp_file = '.Factorus' . a:new_name . 'NonLocal'
     let a:class_names = join(map(values(a:packages),{n,val -> join(val,'\|')}),'\|')
     if a:is_static == 1
@@ -976,7 +976,7 @@ function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
         if len(a:funcs) == 0 
             let a:dec = join(a:dec,'|')
             if match(a:dec,a:classes) >= 0
-                execute 'silent s/\<' .a:method_name . a:paren . '/' . a:new_name . a:paren . '/e'
+                execute 'silent s/\<' .a:method_name . '\>' . a:paren . '/' . a:new_name . a:paren . '/e'
             endif
         else
             if s:followChain(a:dec,a:funcs,a:new_name) == 1
@@ -1473,8 +1473,46 @@ endfunction
 
 " Insertion Functions {{{2
 
-function! java#factorus#encapsulateField() abort
-    let a:search = '\s*' . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\_s*\(' . s:java_identifier . '\)\_s*[;=]'
+function! s:rollbackEncapsulation()
+        let a:orig = [line('.'),col('.')]
+        let [a:var,a:type,a:is_pub] = g:factorus_history['old']
+        let a:cap = substitute(a:var,'\(.\)\(.*\)','\U\1\E\2','')
+
+        if a:is_pub == 1
+            execute 'silent s/\<private\>/public/e'
+        endif
+       
+        let a:open = search('public ' . a:type . ' get' . a:cap . '() {','n')
+        if match(getline(a:open-1),'^\s*$') >= 0
+            let a:open -= 1
+        endif
+
+        let a:close = s:getClosingBracket(1,[a:open,1])[0]
+        if match(getline(a:close+1),'^\s*$') >= 0
+            let a:close += 1
+        endif
+        execute 'silent ' . a:open . ',' . a:close . 'delete'
+
+        let a:open = search('public void set' . a:cap . '(','n')
+        let a:close = s:getClosingBracket(1,[a:open,1])[0]
+        if match(getline(a:close+1),'^\s*$') >= 0
+            let a:close += 1
+        endif
+        execute 'silent ' . a:open . ',' . a:close . 'delete'
+        call cursor(a:orig[0],a:orig[1])
+        silent write
+endfunction
+
+function! java#factorus#encapsulateField(...) abort
+    if a:0 > 0 && a:1 == 'rollback'
+        call s:rollbackEncapsulation() 
+
+        redraw
+        echo 'Rolled back encapsulation for ' . g:factorus_history['old'][0]
+        return
+    endif
+
+    let a:search = '\s*' . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\_s*\(' . s:java_identifier . '\)\_s*[;=].*'
 
     let a:line = getline('.')
     let a:is_static = substitute(a:line,a:search,'\2','')
@@ -1493,7 +1531,11 @@ function! java#factorus#encapsulateField() abort
         return
     endif
 
-    execute 'silent s/\<public\>/private/e'
+    let a:is_pub = 0
+    if match(getline('.'),'\<public\>') >= 0
+        let a:is_pub = 1
+        execute 'silent s/\<public\>/private/e'
+    endif
     let a:get = ["\tpublic " . a:type . " get" . a:cap . "() {" , "\t\treturn " . a:var . ";" , "\t}"]
     let a:set = ["\tpublic void set" . a:cap . "(" . a:type . ' ' . a:var . ") {" , "\t\tthis." . a:var . " = " . a:var . ";" , "\t}"]
     let a:encap = [""] + a:get + [""] + a:set + [""]
@@ -1503,9 +1545,19 @@ function! java#factorus#encapsulateField() abort
     silent write
 
     echo 'Created getters and setters for ' . a:var
+    return [a:var,a:type,a:is_pub]
 endfunction
 
-function! java#factorus#addParam(param_name,param_type) abort
+function! java#factorus#addParam(param_name,param_type,...) abort
+    if a:0 > 0 && a:1 == 'rollback'
+        call s:gotoTag(0)
+        execute 'silent s/,[^,]\{-\})/)/e'
+        silent write
+        redraw
+        echo 'Removed new parameter ' . a:param_name
+        return
+    endif
+
     let a:orig = [line('.'),col('.')]
     call s:gotoTag(0)
 
@@ -1519,18 +1571,20 @@ function! java#factorus#addParam(param_name,param_type) abort
     call cursor(a:orig[0],a:orig[1])
 
     echo 'Added parameter ' . a:param_name . ' to method'
+    return a:param_name
 endfunction
 
 " Renaming Functions {{{2
 
-function! java#factorus#renameArg(new_name) abort
+function! s:renameArg(new_name) abort
     let a:var = expand('<cword>')
     call s:updateFile(a:var,a:new_name,0,1,0)
 
     echo 'Re-named ' . a:var . ' to ' . a:new_name
+    return a:var
 endfunction
 
-function! java#factorus#renameClass(new_name) abort
+function! s:renameClass(new_name) abort
     let a:class_name = expand('%:t:r')
     if a:class_name == a:new_name
         throw 'DUPLICATE'
@@ -1549,9 +1603,10 @@ function! java#factorus#renameClass(new_name) abort
     execute 'silent edit ' . a:new_file
 
     echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
+    return a:class_name
 endfunction
 
-function! java#factorus#renameField(new_name) abort
+function! s:renameField(new_name) abort
     let a:search = '^\s*' . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\=\s*\(' . s:java_identifier . '\)\s*[;=].*'
 
     let a:line = getline('.')
@@ -1579,15 +1634,16 @@ function! java#factorus#renameField(new_name) abort
         let a:packages = s:updateSubClassFiles(expand('%:t:r'),a:var,a:new_name,'',a:is_static)
 
         redraw
-        echo 'Updating non-local files...'
-        call s:updateNonLocalFiles(a:packages,a:var,a:new_name,'',a:is_static)
+        echo 'Updating references...'
+        call s:updateReferences(a:packages,a:var,a:new_name,'',a:is_static)
     endif
 
     redraw
     echo 'Re-named ' . a:var . ' to ' . a:new_name
+    return a:var
 endfunction
 
-function! java#factorus#renameMethod(new_name) abort
+function! s:renameMethod(new_name) abort
     call s:gotoTag(0)
 
     let a:method_name = matchstr(getline('.'),'\s\+' . s:java_identifier . '\s*(')
@@ -1605,12 +1661,13 @@ function! java#factorus#renameMethod(new_name) abort
     let a:packages = s:updateSubClassFiles(expand('%:t:r'),a:method_name,a:new_name,'(',a:is_static)
 
     redraw
-    echo 'Updating non-local files...'
-    call s:updateNonLocalFiles(a:packages,a:method_name,a:new_name,'(',a:is_static)
+    echo 'Updating references...'
+    call s:updateReferences(a:packages,a:method_name,a:new_name,'(',a:is_static)
 
     redraw
     let a:keyword = a:is_static == 1 ? ' static' : ''
     echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
+    return a:method_name
 endfunction
 
 function! java#factorus#renameSomething(new_name,type)
@@ -1628,18 +1685,10 @@ function! java#factorus#renameSomething(new_name,type)
     let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
     execute 'silent cd ' a:project_dir
 
+    let a:res = ''
     try
-        if a:type == 'class'
-            call java#factorus#renameClass(a:new_name)
-        elseif a:type == 'method'
-            call java#factorus#renameMethod(a:new_name)
-        elseif a:type == 'field'
-            call java#factorus#renameField(a:new_name)
-        elseif a:type == 'arg'
-            call java#factorus#renameArg(a:new_name)
-        else
-            echo 'Unknown option ' . a:type
-        endif
+        let Rename = function('s:rename' . a:type)
+        let a:res = Rename(a:new_name)
     catch /.*INVALID.*/
         echo 'Factorus: Invalid expression under cursor'
     catch /.*DUPLICATE.*/
@@ -1651,18 +1700,52 @@ function! java#factorus#renameSomething(new_name,type)
             execute 'silent sbuffer ' . a:curr_buf
             let &switchbuf = a:buf_setting
         endif
+        return a:res
     endtry
 endfunction
 
 " Extraction Functions {{{2
 
-function! java#factorus#extractMethod()
+function! s:rollbackExtraction()
+    let a:open = search('public .*' . g:factorus_method_name . '(')
+    let a:close = s:getClosingBracket(1)[0]
+
+    if match(getline(a:open - 1),'^\s*$') >= 0
+        let a:open -= 1
+    endif
+    if match(getline(a:close + 1),'^\s*$') >= 0
+        let a:close += 1
+    endif
+
+    execute 'silent ' . a:open . ',' . a:close . 'delete'
+
+    call search('\<' . g:factorus_method_name . '\>(')
+    call s:gotoTag(0)
+    let a:open = line('.')
+    let a:close = s:getClosingBracket(1)[0]
+
+    execute 'silent ' . a:open . ',' . a:close . 'delete'
+    call append(line('.')-1,g:factorus_history['old'][1])
+    call cursor(a:open,1)
+    silent write
+endfunction
+
+function! java#factorus#extractMethod(...)
+    if a:0 > 0 && a:1 == 'rollback'
+        call s:rollbackExtraction()
+
+        redraw
+        echo 'Rolled back extraction for method ' . g:factorus_history['old'][0]
+        return
+    endif
     echo 'Extracting new method...'
     call s:gotoTag(0)
     let a:tab = substitute(getline('.'),'\(\s*\).*','\1','')
     let a:method_name = substitute(getline('.'),'.*\s\+\(' . s:java_identifier . '\)\s*(.*','\1','')
 
     let [a:open,a:close] = [line('.'),s:getClosingBracket(1)]
+    let a:old_lines = getline(a:open,a:close[0])
+
     call searchpos('{','W')
 
     let a:method_length = (a:close[0] - (line('.') + 1)) * 1.0
@@ -1745,4 +1828,5 @@ function! java#factorus#extractMethod()
     silent write
     redraw
     echo 'Extracted ' . len(a:best_lines) . ' lines from ' . a:method_name
+    return [a:method_name,a:old_lines]
 endfunction

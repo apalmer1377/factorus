@@ -1,0 +1,15 @@
+BUGS
+====
+
+* When two references to a method occur on the same line, only the first gets updated (FIXED)
+* Methods of superclasses don't get checked in updateOutliers (FIXED)
+* Methods returning Collections or other structures(Trees, Lists, Sets) don't get updated (TESTING)
+* getSuperClasses method causes strange "find: too many open files" error (CAN'T REPRODUCE)
+
+TASKS
+=====
+
+* Rollback function--when things don't go as expected, provide a rollback to undo the previous action (JAVA 07-06-2017)
+* Speed up renameMethod (down from 60s to 30s in test 07-06-2017)
+* Make all methods atomic--if an error is thrown or the function is interrupted, roll back the changes
+* Provide list of all files/ all changes made after a rename

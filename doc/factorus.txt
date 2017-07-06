@@ -13,7 +13,8 @@ Contents                                            *factorus* *factorus-help*
             2.1. Extraction ......... ....... |factorus-extract|
             2.2. Insertion .................. |factorus-insert|
             2.3. Modification ............... |factorus-modify|
-        3. Configuration .................... |factorus-configure|
+        3. Reverting Changes ................ |factorus-undo|
+        4. Configuration .................... |factorus-configure|
 
 ==============================================================================
 1. Intro                                                      *factorus-intro*
@@ -44,7 +45,7 @@ and modification.
 ------------------------------------------------------------------------------
 2.2 Insertion                                                *factorus-insert*
 
-:FAddParam {new_name} {other}                                  *:FAddParam*
+:FAddParam {new_name} {other}                                     *:FAddParam*
     Adds a new parameter with name {new_name} to 
     the function definition. The use of {other} depends on what language
     is being used:
@@ -82,7 +83,30 @@ and modification.
     Renames the current method to {new_name}.  
 
 ==============================================================================
-3. Configuration                                          *factorus-configure*
+3. Reverting Changes                                           *factorus-undo*
+
+Every so often, you'll want to undo the changes made after running a Factorus
+command, without having to reset unrelated changes in Git. After running most 
+commands, this is a simple process, but when renaming methods or classes it 
+can become a pain. Luckily, the |:FRollback| command provides an easy way to
+do that.
+
+:FRollback                                                        *:FRollback*
+
+    Reverts the changes made by the latest Factorus command. For instance, if
+    you most changed a class Foo using the command
+>
+        :FRenameClass Bar
+<
+    and would like to change back, simply run
+>
+        :FRollback
+<
+    to set everything back to normal.  This only works for the most recent
+    command, so changes made before then are permanent.
+
+==============================================================================
+4. Configuration                                          *factorus-configure*
 
 
                                                       *g:factorus_project_dir*
