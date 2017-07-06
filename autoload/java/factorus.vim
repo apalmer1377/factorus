@@ -1651,7 +1651,10 @@ function! s:renameClass(new_name) abort
     call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:class_name . '\>/' . a:new_name . '/g"') 
     call system('mv ' . a:old_file . ' ' . a:new_file)
     call system('rm -rf ' . a:temp_file)
+
+    let a:bufnr = bufnr('.')
     execute 'silent edit ' . a:new_file
+    execute 'silent! bwipeout ' . a:bufnr
 
     echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
     return a:class_name
@@ -1787,7 +1790,7 @@ function! java#factorus#renameSomething(new_name,type)
         echo 'Factorus: New name is the same as old name'
     finally
         execute 'silent cd ' a:prev_dir
-        if a:type != 'class'
+        if a:type != 'Class'
             let &switchbuf = 'useopen,usetab'
             execute 'silent sbuffer ' . a:curr_buf
             let &switchbuf = a:buf_setting
