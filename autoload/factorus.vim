@@ -25,6 +25,7 @@ function! factorus#command(func,...)
         let Func = function(a:ext . '#factorus#' . a:func,a:000)
         let a:res = Func()
     catch /.*Unknown.*/
+        redraw
         let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
         let a:name = a:func
         if a:func == 'renameSomething'

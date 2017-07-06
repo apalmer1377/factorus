@@ -1664,7 +1664,8 @@ function! s:renameField(new_name) abort
     let a:search = '^\s*' . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\=\s*\(' . s:java_identifier . '\)\s*[;=].*'
 
     let a:line = getline('.')
-    let a:is_static = substitute(substitute(a:line,a:search,'\2',''),'\s','','g') == 'static' ? 1 : 0
+    let a:is_static = match(a:line,'\<static\>') >= 0 ? 1 : 0
+    let a:is_local = s:getAdjacentTag('b') != s:getClassTag()[0]
     let a:type = substitute(a:line,a:search,'\4','')
     let a:var = substitute(a:line,a:search,'\6','')
     if a:var == '' || a:type == '' || match(a:var,'[^' . s:search_chars . ']') >= 0
@@ -1676,12 +1677,12 @@ function! s:renameField(new_name) abort
     let a:file_name = expand('%:p')
     let a:supers = s:getSuperClasses()
     let a:top = len(a:supers) - 1
-    let a:var_search = s:no_comment . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+\<' . a:method_name . '\>\_s*[;=]'
+    let a:var_search = s:no_comment . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+\<' . a:var . '\>\_s*[;=]'
     while a:top >= 1
         if a:supers[a:top] != a:file_name
             execute 'silent tabedit ' . a:supers[a:top]
             call cursor(1,1)
-            if search(a:func_search) != 0
+            if search(a:var_search) != 0
                 break
             endif
             call s:safeClose()
@@ -1693,7 +1694,7 @@ function! s:renameField(new_name) abort
         call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
     else
         if a:is_static == 0
-            execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/'
+            execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/e'
             call s:updateClassFile(a:type,a:var,a:new_name)
         else
             call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
