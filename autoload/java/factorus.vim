@@ -959,6 +959,7 @@ function! s:updateNonLocalFiles(packages,old_name,new_name,paren,is_static)
         let a:files = split(system('cat ' . a:temp_file),'\n')
         call s:updateMethodFiles(a:files,a:class_names,a:old_name,a:new_name,a:paren)
     endif
+    call system('rm -rf ' . a:temp_file)
 endfunction
 
 function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
