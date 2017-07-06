@@ -129,12 +129,31 @@ Default: ['tags','cscope.out']
 These files are ignored when updating class or method names.  Anything custom-
 defined will be appended to the array instead of replacing it; i.e., if you 
 set it to ['.*.swp'] in your vimrc file, the ignored files will be
-['tags','cscope.out','.*.swp'] 
+['tags','cscope.out','.*.swp'].
 
 Example:
 >
-        let g:factorus_ignored_files = ['*.xml','*.jsp'] 
+        let g:factorus_ignored_files = ['*.xml','*.jsp','*.jar'] 
 <
+
+                                                     *g:factorus_ignored_dirs*
+g:factorus_ignored_dirs~
+defaults: ['.git']
+
+This is the same as |g:factorus_ignored_files|, but with directories.  This is
+useful if you have a directory with build files, that might slow down the
+program if searched.  NOTE: globbing characters are added to the directories
+in the list, i.e. the directory '.git' becomes '*/.git/*'.  Thus, if you have
+two directories, one with the path '/home/factorus/project/ignore' and one
+with the path '/home/factorus/project/do/not/ignore', all files in both of
+these directories will be ignored. If you need greater specificity, use a
+full path to the directory. As with |g:factorus_ignored_files|, any user-defined
+value will be appended to the default, rather than replacing it.
+
+Example:
+>
+        let g:factorus_ignored_dirs = ['WEB-INF']
+>
 
                                                  *g:factorus_method_threshold*
 g:factorus_method_threshold~

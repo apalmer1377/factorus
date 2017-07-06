@@ -90,6 +90,17 @@ function! s:isSmallerRange(x,y)
     return 0
 endfunction
 
+function! s:isCommented()
+    if match(getline('.'),'//') >= 0 && match(getline('.'),'//') < col('.')
+        return 1
+    endif
+
+    if searchpairpos('[^/]\/\*','','\*\/','Wbn') != [0,0]
+        return 1
+    endif
+    return 0
+endfunction
+
 function! s:isQuoted(pat,state)
     let a:temp = a:state
     let a:mat = match(a:temp,a:pat)
@@ -164,17 +175,6 @@ function! s:safeClose()
     if a:prev == 1
         tabprev
     endif
-endfunction
-
-function! java#factorus#getRelevantFiles(search)
-    let a:res = system('find ' . getcwd() . g:factorus_ignore_string . '-exec grep -l "' . a:search . '" {} + 2> /dev/null')
-    return split(a:res)
-endfunction
-
-function! java#factorus#narrowRelevantFiles(search,...)
-    let a:files = a:0 > 0 ? a:1 : s:files
-    let a:res = system('echo "' . join(a:files) . '" | xargs grep -l "' . a:search . '"')
-    return split(a:res)
 endfunction
 
 function! s:findTags(temp_file,search_string,append)
@@ -377,28 +377,7 @@ function! s:getAllFunctions()
     silent edit
 
     let s:all_funcs[expand('%:p')] = a:defs
-
     return a:defs
-endfunction
-
-function! s:getNearest(vars,paren) abort
-    let a:count = len(a:vars) - 1
-    let [a:min,a:jump] = [[line('$'),line('$')],'none']
-
-    while a:count >= 0
-        let a:var = a:vars[a:count]
-        let a:search = '^.*\<' . a:var[0] . '\>' .  a:paren
-        let a:match = searchpos(a:search,'Wn') 
-        if s:isBefore(a:var[1],a:match) == 1
-            call remove(a:vars,a:count)
-        elseif a:match != [0,0] && s:isBefore(a:match,a:min)
-            let a:min = copy(a:match)
-            let a:jump = a:var[0]
-        endif
-        let a:count -= 1
-    endwhile
-
-    return [[a:min[0],a:min[1]],a:jump]
 endfunction
 
 function! s:getSuperClasses()
@@ -696,14 +675,12 @@ endfunction
 " File-Updating Functions {{{2
 
 function! s:getUsingVar()
-    call cursor(line('.'),col('.')+1)
     let a:orig = [line('.'),col('.')]
 
     while 1 == 1
         let a:adj = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
         if a:adj == ')'
             call cursor(line('.'),col('.')-1)
-            "call searchpair('(','',')','Wb')
             execute 'normal %'
             call search('\.','b')
         else
@@ -756,12 +733,10 @@ function! s:getStructVars(var,dec,funcs)
         return [a:dec]
     endif
 
-    if len(a:funcs) > 0 
-        if len(a:funcs) > 1
-            let old = a:funcs[0]
-            call remove(a:funcs,0)
-            call add(a:funcs[0],old)
-        endif
+    if len(a:funcs) > 1
+        let old = a:funcs[0]
+        call remove(a:funcs,0)
+        call add(a:funcs[0],old)
     endif
 
     let a:res = substitute(a:dec,'^.*<','','')
@@ -783,12 +758,18 @@ function! s:getVarDec(var)
     let a:orig = [line('.'),col('.')]
     let a:search = s:no_comment  . '.\{-\}\(' . s:access_query . '\|for\s*(\)\s*\(' . s:java_identifier .
                 \ s:collection_identifier . '\=\)\s\+\<' . a:var . '\>.*'
+    let a:jump = '\<' . a:var . '\>'
 
-    let a:pos = search(a:search,'Wbn')
+    let a:pos = search(a:search,'Wb')
+    call search(a:jump)
     let a:res = substitute(getline(a:pos),a:search,'\5','')
-    while s:isQuoted(a:res,getline(a:pos)) == 1
+    while s:isQuoted(a:res,getline(a:pos)) == 1 || s:isCommented() == 1 || match(a:res,s:java_keywords) >= 0
+        if a:pos == 0
+            return ''
+        endif
         call cursor(a:pos-1,a:pos)
-        let a:pos = search(a:search,'Wbn')
+        let a:pos = search(a:search,'Wb')
+        call search(a:jump)
         let a:res = substitute(getline(a:pos),a:search,'\5','')
     endwhile
 
@@ -864,26 +845,6 @@ function! s:followChain(classes,funcs,new_method)
     return a:res
 endfunction
 
-function! s:updateOutliers(old_name,new_name,paren)
-    let a:search = '[])]\.\<' . a:old_name . '\>' . a:paren
-    let a:files = java#factorus#narrowRelevantFiles(a:search)
-    for file in a:files
-        execute 'silent tabedit ' . file
-        call cursor(1,1)
-        let a:find =  search(a:search,'W')
-        while a:find > 0
-            let [a:var,a:dec,a:funcs] = s:getUsingVar()
-            if s:followChain(a:dec,a:funcs,a:new_name) == 1
-                execute 'silent s/\<' . a:old_name . '\>' . a:paren . '/' . a:new_name . a:paren . '/e'
-            endif
-            let a:find = search(a:search,'W')
-        endwhile
-        silent write
-
-        call s:safeClose()
-    endfor
-endfunction
-
 function! s:updateClassFile(class_name,old_name,new_name) abort
     let a:prev = [line('.'),col('.')]
     call cursor(1,1)
@@ -949,9 +910,7 @@ function! s:updateDeclaration(method_name,new_name)
     call cursor(a:orig[0],a:orig[1])
 endfunction
 
-
 function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
-
     let a:subs = s:getSubClasses(a:class_name)
     let a:is_method = a:paren == '(' ? 1 : 0
     let a:packages = {s:getPackage(expand('%:p')) : [a:class_name]}
@@ -988,56 +947,18 @@ function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
 endfunction
 
 function! s:updateNonLocalFiles(packages,old_name,new_name,paren,is_static)
-    let a:classes = []
-    for package in keys(a:packages)
-        call add(a:classes,join(a:packages[package],'\|'))
-    endfo
-    let a:class_names = join(a:classes,'\|') 
+    let a:temp_file = '.Factorus' . a:new_name . 'NonLocal'
+    let a:class_names = join(map(values(a:packages),{n,val -> join(val,'\|')}),'\|')
     if a:is_static == 1
         let a:search = '\<\(' . a:class_names . '\)\>\.\<' . a:old_name . '\>' . a:paren
-        let a:files = java#factorus#narrowRelevantFiles(a:search)
-        call system('echo "' . join(a:files) . '" | xargs sed -i "s/' . a:search . '/\1\.' . a:new_name . a:paren . '/g"')  
+        call s:findTags(a:temp_file,a:search,'no')
+        call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/\1\.' . a:new_name . a:paren . '/g"')  
     else
-        let a:files = java#factorus#narrowRelevantFiles('\(' . a:class_names . '\)')
-        let a:files = java#factorus#narrowRelevantFiles('[^)]\.' . a:old_name . a:paren,a:files)
+        call s:findTags(a:temp_file,'\.' . a:old_name . a:paren,'no')
+        call s:narrowTags(a:temp_file,'\(' . a:class_names . '\)')
+        let a:files = split(system('cat ' . a:temp_file),'\n')
         call s:updateMethodFiles(a:files,a:class_names,a:old_name,a:new_name,a:paren)
     endif
-endfunction
-
-function! s:compareDec(x,y)
-    if s:isBefore(a:x[1],a:y[1]) == 1
-        return -1
-    elseif s:isBefore(a:y[1],a:x[1]) == 1
-        return 1
-    else
-        return 0
-    endif
-endfunction
-
-function! s:getAllDecs(class,method)
-    let a:orig = [line('.'),col('.')]
-    let a:vars = []
-    let a:search = '\(\<' . a:class . '\>' . s:collection_identifier . '\=\)\s\+\<\(' . s:java_identifier . '\)\>\s*[;=,):]'
-
-    let a:begin = searchpos(a:search,'Wn')
-    while a:begin != [0,0]
-        let a:end = searchpos(a:search,'Wnez')
-        let a:var = strpart(getline(a:begin[0]),a:begin[1] - 1,a:end[1] - a:begin[1] + 1)
-        let a:var = substitute(a:var,a:search,'\3','')
-        call cursor(a:end[0],a:end[1])
-        if match(getline(a:begin[0]),'\<for\>') >= 0
-            let a:close = s:getClosingBracket(1)
-        else
-            let a:close = s:getClosingBracket(0)
-        endif
-        if search(a:var . '\.' . a:method,'Wn') != 0
-            call add(a:vars,[a:var,a:begin[0],a:close[0]])
-        endif
-        let a:begin = searchpos(a:search,'Wn')
-    endwhile
-
-    call cursor(a:orig[0],a:orig[1])
-    return a:vars
 endfunction
 
 function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
@@ -1045,22 +966,24 @@ function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
     call cursor(line('.')+1,1)
     let a:here = [line('.'),col('.')]
     let a:classes = '\<\(' . a:class_name . '\)\>'
+    let a:search = '\.' . a:method_name . a:paren
 
-    let a:next = searchpos('[^])]\.' . a:method_name . a:paren,'Wn')
+    let a:next = searchpos(a:search,'Wn')
     while a:next != [0,0]
         call cursor(a:next[0],a:next[1])
         let [a:var,a:dec,a:funcs] = s:getUsingVar()
-
-        let a:dec = join(a:dec,'|')
-        if len(a:funcs) == 0 && match(a:dec,a:classes) >= 0
-            execute 'silent s/\<' .a:method_name . a:paren . '/' . a:new_name . a:paren . '/e'
+        if len(a:funcs) == 0 
+            let a:dec = join(a:dec,'|')
+            if match(a:dec,a:classes) >= 0
+                execute 'silent s/\<' .a:method_name . a:paren . '/' . a:new_name . a:paren . '/e'
+            endif
+        else
+            if s:followChain(a:dec,a:funcs,a:new_name) == 1
+                execute 'silent s/\<' . a:method_name . '\>' . a:paren . '/' . a:new_name . a:paren . '/e'
+            endif
         endif
-        let a:next = searchpos('[^])]\.' . a:method_name . a:paren,'Wn')
+        let a:next = searchpos(a:search,'Wn')
     endwhile
-"    let a:vars = s:getAllDecs(a:class_name,a:method_name)
-"    for var in a:vars
-"        execute 'silent ' . var[1] . ',' . var[2] . 's/\<' . var[0] . '\>\.' . a:method_name . a:paren . '/' . var[0] . '.' .  a:new_name . a:paren . '/ge'
-"    endfor
 
     silent write
 endfunction
@@ -1640,9 +1563,9 @@ function! java#factorus#renameField(new_name) abort
         throw 'DUPLICATE'
     endif
 
-    let a:is_local = s:getClassTag()[0] == s:getAdjacentTag('b') ? 0 : 1
-
-    if a:is_local == 0
+    if a:is_local == 1
+        call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
+    else
         if a:is_static == 0
             execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/'
             call s:updateClassFile(a:type,a:var,a:new_name)
@@ -1657,14 +1580,6 @@ function! java#factorus#renameField(new_name) abort
         redraw
         echo 'Updating non-local files...'
         call s:updateNonLocalFiles(a:packages,a:var,a:new_name,'',a:is_static)
-
-        if a:is_static == 0
-            redraw
-            echo 'Updating outliers...'
-            call s:updateOutliers(a:var,a:new_name,'')
-        endif
-    else
-        call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
     endif
 
     redraw
@@ -1681,7 +1596,6 @@ function! java#factorus#renameMethod(new_name) abort
     endif
     let a:is_static = match(getline('.'),'\s\+static\s\+[^)]\+(') >= 0 ? 1 : 0
 
-    let s:files = java#factorus#getRelevantFiles('\<' . a:method_name . '\>(')
     let s:all_funcs = {}
     call s:updateFile(a:method_name,a:new_name,1,0,a:is_static)
 
@@ -1692,12 +1606,6 @@ function! java#factorus#renameMethod(new_name) abort
     redraw
     echo 'Updating non-local files...'
     call s:updateNonLocalFiles(a:packages,a:method_name,a:new_name,'(',a:is_static)
-
-    if a:is_static == 0
-        redraw
-        echo 'Updating outliers...'
-        call s:updateOutliers(a:method_name,a:new_name,'(')
-    endif
 
     redraw
     let a:keyword = a:is_static == 1 ? ' static' : ''

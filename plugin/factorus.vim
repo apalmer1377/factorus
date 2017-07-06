@@ -49,7 +49,7 @@ function! s:init_vars()
     for file in g:factorus_ignored_files
         let g:factorus_ignore_string .= '\! -name "' . file . '" '
     endfor
-
+    let g:factorus_ignore_string = substitute(g:factorus_ignore_string,'\/\/','/','g')
 endfunction
 call s:init_vars()
 
