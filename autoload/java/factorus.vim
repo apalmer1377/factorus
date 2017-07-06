@@ -14,7 +14,8 @@ let s:search_chars = s:start_chars . '\u0030-\u0039\u007f-\u009f\u00ad\u0300-\u0
 "Regex patterns used to identify Java constructs (classes, variables, etc.)
 
 let s:collection_identifier = '\(\[\]\|<[<>,.[:space:]' . s:search_chars . ']*>\)'
-let s:access_query = '\(public\_s*\|private\_s*\|protected\_s*\)\=\(static\_s*\|abstract\_s*\)\=\(final\_s*\)\='
+let s:modifiers = '\(public\_s*\|private\_s*\|protected\_s*\|static\_s*\|abstract\_s*\|final\_s*\|synchronized\_s*\|native\_s*\|strictfp\_s*\|transient\_s*\|volatile\_s*\)\='
+let s:access_query = repeat(s:modifiers,3)
 let s:sub_class = '\(implements\|extends\)'
 let s:strip_dir = '\(.*\/\)\=\(.*\)'
 let s:no_comment = '^\s*'
@@ -22,12 +23,12 @@ let s:no_comment = '^\s*'
 let s:java_identifier = '[' . s:start_chars . '][' . s:search_chars . ']*'
 
 let s:class = '\<\(class\|enum\|interface\)\>'
-let s:struct = s:class . '\_s\+' . s:java_identifier . '\_s\+' . s:sub_class . '\=\_[^{]\{-\}{'
+let s:struct = s:class . '\_s\+' . s:java_identifier . '[^;{]\_[^;{]\{-\}' . s:sub_class . '\=\_[^{]\{-\}{'
 let s:common = s:java_identifier . s:collection_identifier . '\=\_s\+' . s:java_identifier . '\_s*('
 let s:reflect = s:collection_identifier . '\_s\+' . s:java_identifier . '\_s\+' . s:java_identifier . '\_s*('
 let s:tag_query = '^\s*' . s:access_query . '\(' . s:struct . '\|' . s:common . '\|' . s:reflect . '\)'
 
-let s:java_keywords = '\<\(assert\|break\|case\|catch\|const\|continue\|default\|do\|else\|false\|finally\|for\|goto\|if\|import\|instanceof\|new\|package\|return\|strictfp\|super\|switch\|this\|throw\|transient\|true\|try\|volatile\|while\)\>'
+let s:java_keywords = '\<\(assert\|break\|case\|catch\|const\|continue\|default\|do\|else\|false\|finally\|for\|goto\|if\|import\|instanceof\|new\|package\|return\|super\|switch\|this\|throw\|true\|try\|while\)\>'
 
 " Script-Defined Functions {{{1
 
@@ -85,6 +86,15 @@ endfunction
 
 function! s:isSmallerRange(x,y)
     if (a:x[1] - a:x[0]) < (a:y[1] - a:y[0])
+        return 1
+    endif
+    return 0
+endfunction
+
+function! s:isWrapped(pat,state)
+    let a:match = match(a:state,a:pat)
+    let a:begin = split(strpart(a:state,0,a:match),'\zs')
+    if count(a:begin,'>') < count(a:begin,'<')
         return 1
     endif
     return 0
@@ -383,17 +393,29 @@ endfunction
 function! s:getSuperClasses()
     let a:class_tag = s:getClassTag()
     let a:class_name = expand('%:t:r')
-    let a:super_search = '.*' . s:class . '\_s\+\<' . a:class_name . '\>\_s\+' . s:sub_class . '\_s\+\<\(' . s:java_identifier . '\)\>\_[^{]*{.*'
+    let a:super_search = '.*' . s:class . '\_s\+\<' . a:class_name . '\>[^{]\_[^{]\{-\}' . s:sub_class . '\_s\+\<\(' . s:java_identifier . '\)\>\_[^{]*{.*'
     let a:sups = [expand('%:p')]
 
     let a:class_line = join(getline(a:class_tag[0],a:class_tag[1]))
-    let a:imp = match(a:class_line,a:super_search)
-    if a:imp < 0
+    let a:class_line = substitute(a:class_line,',',' ','g')
+    let a:inherits = []
+
+    while match(a:class_line,a:super_search) >= 0
+        let a:super = substitute(a:class_line,a:super_search,'\3','')
+        if s:isWrapped(a:super,a:class_line) == 1
+            let a:class_line = substitute(a:class_line,s:sub_class,'','')
+        elseif match(a:super,s:sub_class) < 0
+            call add(a:inherits,a:super)
+        endif
+        let a:class_line = substitute(a:class_line,a:super,'','')
+    endwhile
+
+    if a:inherits == []
         return a:sups
     endif
-    let a:super = substitute(a:class_line,a:super_search,'\3','')
 
-    let a:search = 'find ' . getcwd() . ' -name "' . a:super . '.java"'
+    let a:names = join(map(a:inherits,{n,val -> ' -name "' . val . '.java"'}),' -or')
+    let a:search = 'find ' . getcwd() . a:names
     let a:possibles = system(a:search)
     let a:possibles = split(a:possibles,'\n')
     for poss in a:possibles
@@ -682,7 +704,16 @@ function! s:getUsingVar()
         if a:adj == ')'
             call cursor(line('.'),col('.')-1)
             execute 'normal %'
-            call search('\.','b')
+            if searchpos('\.','bn') == searchpos('[^[:space:]]\_\s*\<' . s:java_identifier . '\>','bn')
+                call search('\.','b')
+            else
+                let a:end = col('.')
+                call search('\<' . s:java_identifier . '\>','b')
+                let a:begin = col('.') - 1
+                let a:var = strpart(getline('.'),a:begin,a:end - a:begin)
+                let a:dec = s:getFuncDec(a:var)
+                break
+            endif
         else
             let a:end = col('.') - 1
             call search('\<' . s:java_identifier . '\>','b')
@@ -742,6 +773,26 @@ function! s:getStructVars(var,dec,funcs)
     let a:res = substitute(a:dec,'^.*<','','')
     let a:res = substitute(a:res,'\(<\|>\|\s\)','','g')
     return split(a:res,',')
+endfunction
+
+function! s:getFuncDec(func)
+    let a:orig = [line('.'),col('.')]
+    call cursor(1,1)
+    let a:search = s:no_comment . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\_s\+\<' . a:func . '\(\<\|\>\|)\|\s\).*'
+    let a:find =  search(a:search)
+    let a:next = ''
+    if a:find > 0
+        call cursor(line('.'),1)
+        let a:next = substitute(getline('.'),a:search,'\4','')
+    else
+        let a:all_funcs = s:getAllFunctions()
+        let a:ind = match(a:all_funcs['names'],a:func)
+        if a:ind >= 0
+            let a:next = a:all_funcs['types'][a:ind]
+        endif
+    endif
+    call cursor(a:orig[0],a:orig[1])
+    return a:next
 endfunction
 
 function! s:getClassVarDec(var)
@@ -947,7 +998,7 @@ function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
 endfunction
 
 function! s:updateReferences(packages,old_name,new_name,paren,is_static)
-    let a:temp_file = '.Factorus' . a:new_name . 'NonLocal'
+    let a:temp_file = '.Factorus' . a:new_name . 'References'
     let a:class_names = join(map(values(a:packages),{n,val -> join(val,'\|')}),'\|')
     if a:is_static == 1
         let a:search = '\<\(' . a:class_names . '\)\>\.\<' . a:old_name . '\>' . a:paren
@@ -1619,6 +1670,22 @@ function! s:renameField(new_name) abort
         throw 'DUPLICATE'
     endif
 
+    let a:file_name = expand('%:p')
+    let a:supers = s:getSuperClasses()
+    let a:top = len(a:supers) - 1
+    let a:var_search = s:no_comment . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+\<' . a:method_name . '\>\_s*[;=]'
+    while a:top >= 1
+        if a:supers[a:top] != a:file_name
+            execute 'silent tabedit ' . a:supers[a:top]
+            call cursor(1,1)
+            if search(a:func_search) != 0
+                break
+            endif
+            call s:safeClose()
+        endif
+        let a:top -= 1
+    endwhile
+
     if a:is_local == 1
         call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
     else
@@ -1638,6 +1705,10 @@ function! s:renameField(new_name) abort
         call s:updateReferences(a:packages,a:var,a:new_name,'',a:is_static)
     endif
 
+    if a:top > 0
+        call s:safeClose()
+    endif
+
     redraw
     echo 'Re-named ' . a:var . ' to ' . a:new_name
     return a:var
@@ -1651,6 +1722,23 @@ function! s:renameMethod(new_name) abort
     if a:method_name == a:new_name
         throw 'DUPLICATE'
     endif
+
+    let a:file_name = expand('%:p')
+    let a:supers = s:getSuperClasses()
+    let a:top = len(a:supers) - 1
+    let a:func_search = s:no_comment . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+\<' . a:method_name . '\>\_s*('
+    while a:top >= 1
+        if a:supers[a:top] != a:file_name
+            execute 'silent tabedit ' . a:supers[a:top]
+            call cursor(1,1)
+            if search(a:func_search) != 0
+                break
+            endif
+            call s:safeClose()
+        endif
+        let a:top -= 1
+    endwhile
+
     let a:is_static = match(getline('.'),'\s\+static\s\+[^)]\+(') >= 0 ? 1 : 0
 
     let s:all_funcs = {}
@@ -1663,6 +1751,10 @@ function! s:renameMethod(new_name) abort
     redraw
     echo 'Updating references...'
     call s:updateReferences(a:packages,a:method_name,a:new_name,'(',a:is_static)
+
+    if a:top > 0
+        call s:safeClose()
+    endif
 
     redraw
     let a:keyword = a:is_static == 1 ? ' static' : ''
