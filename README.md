@@ -14,6 +14,7 @@ which languages:
 |     Java     |   &#10003;   |      &#10003;      |   &#10003;   |    &#10003;   |  &#10003;  |   &#10003;   |  &#10003;  |
 |    Python    |   &#10003;   |      &#10007;      |   &#10007;   |    &#10003;   |  &#10003;  |   &#10003;   |  &#10007;  |
 
+Factorus also has a function for reverting changes, in case of bugs or other unwanted behavior.
 
 ## Installation
 
