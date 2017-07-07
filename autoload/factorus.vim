@@ -54,8 +54,11 @@ function! factorus#rollback()
     if a:func == 'addParam'
         call factorus#command('addParam','','','rollback')
     elseif a:func == 'renameSomething'
-        call factorus#command('renameSomething',g:factorus_history['old'],g:factorus_history['args'][-1])
+        let a:old = g:factorus_history['old']
+        call factorus#command('renameSomething',a:old,g:factorus_history['args'][-1])
+        let g:factorus_history['old'] = 0
         redraw
+        echo 'Rolled back renaming of ' . substitute(g:factorus_history['args'][-1],'\(.\)\(.*\)','\L\1\E\2','') . ' ' . a:old
     else
         call factorus#command(a:func,'rollback')
     endif

@@ -525,11 +525,11 @@ function! s:getNextReference(var,type,...)
         let a:index = '\6'
         let a:alt_index = '\7'
     elseif a:type == 'left'
-        let a:search = s:no_comment . '\<\(' . a:var . '\)\>\s*[-+*/]\=[.=][^=].*'
+        let a:search = s:no_comment . '\<\(' . a:var . '\)\>\s*\(++\_s*;\|--\_s*;\|[-+*/]\=[.=][^=]\).*'
         let a:index = '\1'
         let a:alt_index = '\1'
     elseif a:type == 'cond'
-        let a:search = s:no_comment . '\(\(while\|if\|else\s\+if\)\_s*(\_[^{;]*\<\(' . a:var . '\)\>\_[^{;]*).*\|' .
+        let a:search = s:no_comment . '\(\(switch\|while\|if\|else\s\+if\)\_s*(\_[^{;]*\<\(' . a:var . '\)\>\_[^{;]*).*\|' .
                     \ '\(for\)\_s*(\_[^{]*\<\(' . a:var . '\)\>\_[^{]*).*\)'
         let a:index = '\2'
         let a:alt_index = '\3'
@@ -563,7 +563,7 @@ function! s:getNextReference(var,type,...)
         let a:state = join(getline(a:line[0],a:endline[0]))
         if a:type == 'cond'
             let a:for = match(a:state,'\<for\>')
-            let a:c = match(a:state,'\<\(while\|if\|else\s\+if\)\>')
+            let a:c = match(a:state,'\<\(switch\|while\|if\|else\s\+if\)\>')
             if a:c == -1 || (a:for != -1 && a:for < a:c)
                 let a:index = '\4'
                 let a:alt_index = '\5'
@@ -617,7 +617,8 @@ function! s:getAllBlocks(close)
     let a:while = '\<while\>\_s*(\_[^{;]*)'
     let a:try = '\<try\>\_s*{'
     let a:do = '\<do\>\_s*{'
-    let a:search = '\(' . a:if . '\|' . a:for . '\|' . a:while . '\|' . a:try . '\|' . a:do . '\)'
+    let a:switch = '\<switch\>\_s*(\_[^{]*)\_s*{'
+    let a:search = '\(' . a:if . '\|' . a:for . '\|' . a:while . '\|' . a:try . '\|' . a:do . '\|' . a:switch . '\)'
 
     let a:orig = [line('.'),col('.')]
     call s:gotoTag(0)
@@ -646,7 +647,8 @@ function! s:getAllBlocks(close)
                 call cursor(a:ret[0],a:ret[1])
                 execute 'normal %'
 
-                let a:next = searchpos('}\_s*\(else\_s*\(\<if\>\_.*)\)\=\|\<catch\>[^{]*\)\_s*{','Wnc')
+                let a:continue = '}\_s*\(else\_s*\(\<if\>\_[^{]*)\)\=\|\<catch\>\_[^{]*\|\<finally\>\_[^{]*\){'
+                let a:next = searchpos(a:continue,'Wnc')
                 while a:next == [line('.'),col('.')]
                     if a:next == [0,0]
                         let a:next = a:ret
@@ -657,7 +659,7 @@ function! s:getAllBlocks(close)
                     let a:o = line('.')
                     execute 'normal %'
 
-                    let a:next = searchpos('}\_s*\(else\_s*\(\<if\>\_.*)\)\=\|\<catch\>[^{]*\)\_s*{','Wnc')
+                    let a:next = searchpos(a:continue,'Wnc')
                 endwhile
                 call add(a:blocks,[a:o,line('.')])
             else
@@ -666,6 +668,27 @@ function! s:getAllBlocks(close)
 
             call add(a:blocks,[a:open[0],line('.')])
             call cursor(a:open[0],a:open[1])
+        elseif match(getline('.'),'\<switch\>') >= 0
+            let a:open = [line('.'),col('.')]
+            call searchpos('{','W')
+
+            normal %
+            let a:sclose = [line('.'),col('.')]
+            normal %
+
+            let a:continue = '\<\(case\|default\)\>[^:]*:'
+            let a:next = searchpos(a:continue,'Wn')
+
+            while s:isBefore(a:next,a:sclose) == 1 && a:next != [0,0]
+                call cursor(a:next[0],a:next[1])
+                let a:next = searchpos(a:continue,'Wn')
+                if s:isBefore(a:close,a:next) == 1 || a:next == [0,0]
+                    call add(a:blocks,[line('.'),a:close[0]])
+                    break
+                endif
+                call add(a:blocks,[line('.'),a:next[0]-1])
+            endwhile
+            call add(a:blocks,[a:open[0],a:sclose[0]])
         else
             call search('{','W')
             let a:prev = [line('.'),col('.')]
@@ -1128,8 +1151,7 @@ endfunction
 function! s:formatMethod(def,body,spaces)
     let a:paren = stridx(a:def[0],'(')
     let a:def_space = repeat(' ',a:paren+1)
-    call map(a:def,{n,line -> a:spaces . a:def_space . substitute(line,'\s*\(.*\)','\1','')})
-    let a:def[0] = strpart(a:def[0],len(a:def_space))
+    call map(a:def,{n,line -> a:spaces . (n > 0 ? a:def_space : '') . substitute(line,'\s*\(.*\)','\1','')})
 
     let a:dspaces = repeat(a:spaces,2)
     let a:i = 0
@@ -1358,6 +1380,10 @@ function! s:getAllRelevantLines(vars,names,close)
                 if index(a:lines[a:name][a:ldec],a:next[1][0]) < 0
                     call add(a:lines[a:name][a:ldec],a:next[1][0])
                 endif
+            endif
+
+            if match(a:new_search,'\\|') < 0
+                break
             endif
 
             let a:new_search = substitute(a:new_search,'\\|\<' . a:name . '\>','','')
