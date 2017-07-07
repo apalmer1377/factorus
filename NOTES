@@ -4,24 +4,9 @@ JAVA
 
 Bugs
 ----
-- When two references to a method occur on the same line, only the first gets updated (FIXED)
-- Methods of superclasses don't get checked in updateOutliers (FIXED)
-- Methods returning Collections or other structures(Trees, Lists, Sets) don't get updated (CLOSED 07-07-2017)
-- getSuperClasses method causes strange "find: too many open files" error (CAN'T REPRODUCE)
-- Methods that are the initiater of a chain don't get updated (CLOSED 07-07-2017)
-- Methods with the 'synchronized' keyword aren't noticed (FIXED 07-06-2017)
-- When renaming a method or field, we should find the base class in which it's declared (CLOSED 07-07-2017)
-- When a class inherits from multiple other classes/interfaces, only the first is retrieved (FIXED 07-06-2017)
-- When a reflected type inherits from something in a class definition (<T extends List>), the reflected type is considered a superclass (FIXED 07-06-2017)
-- Switch statements are not recognized as blocks in extractMethod (TESTING 07-07-2017)
-- Increment and decrement operators not counted as left references (FIXED 07-07-2017)
-- Slight formatting error in formatMethod (FIXED 07-07-2017)
-- Methods with only one declared variable cause infinite loop (FIXED 07-07-2017)
 
 Tasks
 -----
-- Rollback function--when things don't go as expected, provide a rollback to undo the previous action (DONE 07-06-2017)
-- Speed up renameMethod (down from 60s to 30s in test 07-06-2017)
 - Make all methods atomic--if an error is thrown or the function is interrupted, roll back the changes
 - Provide list of all files/ all changes made after a rename
 
