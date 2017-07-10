@@ -17,7 +17,8 @@ function! s:init_vars()
         \ [ 'method_threshold' , 0.9 ],
         \ [ 'extract_heuristic' , 'longest' ],
         \ [ 'split_lines' , 1 ],
-        \ [ 'line_length' , 125 ]
+        \ [ 'line_length' , 125 ],
+        \ [ 'show_changes' , 0 ]
     \ ]
 
     for [var,val] in a:vars

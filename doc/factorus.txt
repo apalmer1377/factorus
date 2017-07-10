@@ -232,5 +232,18 @@ Example:
         let g:factorus_line_length = 150
 <
 
+                                                     *g:factorus_show_changes*
+g:factorus_show_changes~
+Default: 0
+
+If this is set to 1 then, at the end of a rename, the quickfix window will open
+with a list of all changes made. The quickfix list will show the line as it 
+was before the change, not after.
+
+Example:
+>
+        let g:factorus_show_changes = 1
+<
+
 ==============================================================================
 vim: tw=78 ts=8 sw=4 sts=4 et ft=help
