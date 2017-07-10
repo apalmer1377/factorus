@@ -34,6 +34,10 @@ let s:java_keywords = '\<\(assert\|break\|case\|catch\|const\|continue\|default\
 
 " General-Purpose Functions {{{2
 
+function! s:trim(string)
+    return substitute(a:string,'\(^\s*\|\s*$\)','','g')
+endfunction
+
 function! s:isBefore(x,y)
     if a:x[0] < a:y[0] || (a:x[0] == a:y[0] && a:x[1] < a:y[1])
         return 1
@@ -196,6 +200,13 @@ function! s:narrowTags(temp_file,search_string)
     let a:n_temp_file = a:temp_file . '.narrow'
     call system('cat ' . a:temp_file . ' | xargs grep -l "' . a:search_string . '" {} + > ' . a:n_temp_file)
     call system('mv ' . a:n_temp_file . ' ' . a:temp_file)
+endfunction
+
+function! s:addQuickFix(temp_file,search_string)
+    let a:res = split(system('cat ' . a:temp_file . ' | xargs grep -n "' . a:search_string . '"'),'\n')
+    call map(a:res,{n,val -> split(val,':')})
+    call map(a:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
+    let s:qf += a:res
 endfunction
 
 function! s:isValidTag(line)
@@ -948,6 +959,7 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
             endif
         else
             call cursor(a:rep[0],1)
+            call add(s:qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
             execute 'silent s/' . a:search[a:restricted] . '/\1' . a:new_name . '/g'
         endif
 
@@ -977,7 +989,10 @@ function! s:updateDeclaration(method_name,new_name)
         let a:prev = [line('.'),col('.')]
         let a:next = s:getNextTag()
         let a:match = match(getline('.'),'\<' . a:method_name . '\>')
-        execute 'silent s/\<' . a:method_name . '\>/' . a:new_name . '/e'
+        if a:match >= 0
+            call add(s:qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+            execute 'silent s/\<' . a:method_name . '\>/' . a:new_name . '/e'
+        endif
     endwhile
     silent write
 
@@ -1026,6 +1041,7 @@ function! s:updateReferences(packages,old_name,new_name,paren,is_static)
     if a:is_static == 1
         let a:search = '\<\(' . a:class_names . '\)\>\.\<' . a:old_name . '\>' . a:paren
         call s:findTags(a:temp_file,a:search,'no')
+        call s:addQuickFix(a:temp_file,a:search)
         call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/\1\.' . a:new_name . a:paren . '/g"')  
     else
         call s:findTags(a:temp_file,'\.' . a:old_name . a:paren,'no')
@@ -1050,10 +1066,12 @@ function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
         if len(a:funcs) == 0 
             let a:dec = join(a:dec,'|')
             if match(a:dec,a:classes) >= 0
+                call add(s:qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
                 execute 'silent s/\<' .a:method_name . '\>' . a:paren . '/' . a:new_name . a:paren . '/e'
             endif
         else
             if s:followChain(a:dec,a:funcs,a:new_name) == 1
+                call add(s:qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
                 execute 'silent s/\<' . a:method_name . '\>' . a:paren . '/' . a:new_name . a:paren . '/e'
             endif
         endif
@@ -1077,6 +1095,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
 
     if a:is_local == 1
         let a:query = '\([^.]\)\<' . a:old_name . '\>'
+        call add(s:qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
         execute 'silent s/' . a:query . '/\1' . a:new_name . '/g'
 
         call s:gotoTag(0)
@@ -1088,12 +1107,20 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
                 break
             endif
             call cursor(a:next[0],a:next[1])
+            call add(s:qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
             execute 'silent s/' . a:query . '/\1' . a:new_name . '/g'
 
             let a:next = searchpos(a:query,'Wn')
         endwhile
     else
         let a:paren = a:is_method == 1 ? '(' : ''
+        try
+            execute 'silent lvimgrep /\(\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/j %:p'
+            let s:qf += map(getloclist(0),{n,val -> {'filename' : expand('%:p'), 'lnum' : val['lnum'], 'text' : s:trim(val['text'])}})
+        catch /.*/
+        endtry
+        call setloclist(0,[])
+
         execute 'silent %s/\(\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
     endif
 
@@ -1256,20 +1283,27 @@ function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
                     let i = 0
                     while i < len(a:lines)
                         let line = getline(a:lines[i])
-                        if match(line,';') >= 0
+                        if match(line,';') >= 0 && match(line,'\<' . var[0] . '\>') >= 0
                             break
                         endif
                         let i += 1
                     endwhile
 
-                    if i == len(a:lines) - 1
+                    if i == len(a:lines)
                         break
                     endif
 
                     let a:inner = s:getContainingBlock(a:lines[i+1],a:ranges,a:outer)
                     if a:inner[1] - a:inner[0] > 0
+                        let a:removes = []
                         for j in range(i+1)
-                            call remove(a:lines,0)
+                            if match(getline(a:lines[j]),'\<' . var[0] . '\>') >= 0
+                                "call remove(a:lines,0)
+                                call add(a:removes,j)
+                            endif
+                        endfor
+                        for rem in reverse(a:removes)
+                            call remove(a:lines,rem)
                         endfor
                         let a:call = var[0] . ' = '
                         let a:include_dec = 0
@@ -1288,7 +1322,7 @@ function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
     if g:factorus_split_lines == 1
         while len(a:temp) >= g:factorus_line_length
             let i = stridx(a:temp,'|',len(a:temp) - g:factorus_line_length)
-            if i < 0
+            if i <= 0
                 break
             endif
             let a:segment = strpart(a:temp,0,i)
@@ -1581,12 +1615,9 @@ function! s:rollbackEncapsulation()
 endfunction
 
 function! java#factorus#encapsulateField(...) abort
-    if a:0 > 0 && a:1 == 'rollback'
+    if a:0 > 0 && a:1 == 'factorusRollback'
         call s:rollbackEncapsulation() 
-
-        redraw
-        echo 'Rolled back encapsulation for ' . g:factorus_history['old'][0]
-        return
+        return 'Rolled back encapsulation for ' . g:factorus_history['old'][0]
     endif
 
     let a:search = '\s*' . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\_s*\(' . s:java_identifier . '\)\_s*[;=].*'
@@ -1626,13 +1657,11 @@ function! java#factorus#encapsulateField(...) abort
 endfunction
 
 function! java#factorus#addParam(param_name,param_type,...) abort
-    if a:0 > 0 && a:1 == 'rollback'
+    if a:0 > 0 && a:1 == 'factorusRollback'
         call s:gotoTag(0)
-        execute 'silent s/,[^,]\{-\})/)/e'
+        execute 'silent s/,\=[^,]\{-\})/)/e'
         silent write
-        redraw
-        echo 'Removed new parameter ' . a:param_name
-        return
+        return 'Removed new parameter ' . a:param_name
     endif
 
     let a:orig = [line('.'),col('.')]
@@ -1663,17 +1692,20 @@ endfunction
 
 function! s:renameClass(new_name) abort
     let a:class_name = expand('%:t:r')
+    let a:class_tag = s:getClassTag()
     if a:class_name == a:new_name
-        throw 'DUPLICATE'
+        throw 'Factorus:Duplicate'
     endif
     let a:old_file = expand('%:p')
+    let a:new_file = expand('%:p:h') . '/' . a:new_name . '.java'
     let a:package_name = s:getPackage(a:old_file)
+    call add(s:qf,{'filename' : a:new_file, 'lnum' : a:class_tag[0], 'text' : s:trim(join(getline(a:class_tag[0],a:class_tag[1])))})
 
     let a:temp_file = '.Factorus' . a:class_name
     call s:findTags(a:temp_file,a:package_name,'no')
-    call s:narrowTags(a:temp_file,a:class_name)
+    call s:narrowTags(a:temp_file,'\<' . a:class_name . '\>')
+    call s:addQuickFix(a:temp_file,'\<' . a:class_name . '\>')
 
-    let a:new_file = expand('%:p:h') . '/' . a:new_name . '.java'
     call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:class_name . '\>/' . a:new_name . '/g"') 
     call system('mv ' . a:old_file . ' ' . a:new_file)
     call system('rm -rf ' . a:temp_file)
@@ -1682,6 +1714,7 @@ function! s:renameClass(new_name) abort
     execute 'silent edit ' . a:new_file
     execute 'silent! bwipeout ' . a:bufnr
 
+    redraw
     echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
     return a:class_name
 endfunction
@@ -1695,9 +1728,9 @@ function! s:renameField(new_name) abort
     let a:type = substitute(a:line,a:search,'\4','')
     let a:var = substitute(a:line,a:search,'\6','')
     if a:var == '' || a:type == '' || match(a:var,'[^' . s:search_chars . ']') >= 0
-        throw 'INVALID'
+        throw 'Factorus:Invalid'
     elseif a:var == a:new_name
-        throw 'DUPLICATE'
+        throw 'Factorus:Duplicate'
     endif
 
     let a:file_name = expand('%:p')
@@ -1720,6 +1753,7 @@ function! s:renameField(new_name) abort
         call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
     else
         if a:is_static == 0
+            call add(s:qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
             execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/e'
             call s:updateClassFile(a:type,a:var,a:new_name)
         else
@@ -1750,7 +1784,7 @@ function! s:renameMethod(new_name) abort
     let a:method_name = matchstr(getline('.'),'\s\+' . s:java_identifier . '\s*(')
     let a:method_name = matchstr(a:method_name,'[^[:space:](]\+')
     if a:method_name == a:new_name
-        throw 'DUPLICATE'
+        throw 'Factorus:Duplicate'
     endif
 
     let a:file_name = expand('%:p')
@@ -1792,15 +1826,17 @@ function! s:renameMethod(new_name) abort
     return a:method_name
 endfunction
 
-function! java#factorus#renameSomething(new_name,type)
-    let a:prev_dir = getcwd()
+function! java#factorus#renameSomething(new_name,type,...)
     let s:open_bufs = []
-    let s:buf_nrs = []
+    let s:qf = []
+
+    let a:prev_dir = getcwd()
+    let a:buf_nrs = []
     for buf in getbufinfo()
         call add(s:open_bufs,buf['name'])
-        call add(s:buf_nrs,buf['bufnr'])
+        call add(a:buf_nrs,buf['bufnr'])
     endfor
-    let a:curr_buf = s:buf_nrs[index(s:open_bufs,expand('%:p'))]
+    let a:curr_buf = a:buf_nrs[index(s:open_bufs,expand('%:p'))]
     let a:buf_setting = &switchbuf
 
     execute 'silent cd ' . expand('%:p:h')
@@ -1811,18 +1847,25 @@ function! java#factorus#renameSomething(new_name,type)
     try
         let Rename = function('s:rename' . a:type)
         let a:res = Rename(a:new_name)
-    catch /.*INVALID.*/
-        echo 'Factorus: Invalid expression under cursor'
-    catch /.*DUPLICATE.*/
-        echo 'Factorus: New name is the same as old name'
-    finally
         execute 'silent cd ' a:prev_dir
         if a:type != 'Class'
             let &switchbuf = 'useopen,usetab'
             execute 'silent sbuffer ' . a:curr_buf
             let &switchbuf = a:buf_setting
         endif
+                                                   
+        call setqflist(s:qf)                              
         return a:res
+    catch /.*/
+        call system('rm -rf .Factorus*')
+        execute 'silent cd ' a:prev_dir
+        if a:type != 'Class'
+            let &switchbuf = 'useopen,usetab'
+            execute 'silent sbuffer ' . a:curr_buf
+            let &switchbuf = a:buf_setting
+        endif
+        let a:err = match(v:exception,'^Factorus:') >= 0 ? v:exception : 'Factorus:' . v:exception
+        throw a:err
     endtry
 endfunction
 
@@ -1853,12 +1896,9 @@ function! s:rollbackExtraction()
 endfunction
 
 function! java#factorus#extractMethod(...)
-    if a:0 > 0 && a:1 == 'rollback'
+    if a:0 > 0 && a:1 == 'factorusRollback'
         call s:rollbackExtraction()
-
-        redraw
-        echo 'Rolled back extraction for method ' . g:factorus_history['old'][0]
-        return
+        return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
     endif
     echo 'Extracting new method...'
     call s:gotoTag(0)
