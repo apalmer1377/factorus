@@ -23,7 +23,7 @@ if exists(':Factorus') == 0
 endif
 
 function! factorus#command(func,...)
-    let a:ext = expand('%:e')
+    let a:ext = &filetype
     let [a:res,a:err] = ['','']
     let a:file = expand('%:p')
 

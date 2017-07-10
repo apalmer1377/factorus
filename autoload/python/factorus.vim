@@ -232,7 +232,7 @@ endfunction
 
 " Insertion Functions {{{2
 
-function! py#factorus#addParam(param_name,...)
+function! python#factorus#addParam(param_name,...)
     if a:0 > 0 && a:000[-1] == 'factorusRollback'
         call s:gotoTag(0)
         execute 'silent s/,\=\s\=\<' . a:param_name . '\>[^)]*)/)/e'
@@ -341,7 +341,7 @@ function! s:renameMethod(new_name)
     return a:method_name
 endfunction
 
-function! py#factorus#renameSomething(new_name,type,...)
+function! python#factorus#renameSomething(new_name,type,...)
     let s:open_bufs = []
     let s:qf = []
 
@@ -409,7 +409,7 @@ function! s:rollbackExtraction()
     silent write
 endfunction
 
-function! py#factorus#extractMethod(...)
+function! python#factorus#extractMethod(...)
     if a:0 > 0 && a:1 == 'factorusRollback'
         call s:rollbackExtraction()
         return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
