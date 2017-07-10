@@ -6,9 +6,9 @@ scriptencoding utf-8
 
 " Dictionary of filetypes to languages for messaging
 let s:langs = { 'java'  : 'Java',
-            \   'py'    : 'Python',
+            \   'python'    : 'Python',
             \   'cpp'   : 'C++',
-            \   'rb'    : 'Ruby',
+            \   'ruby'    : 'Ruby',
             \   'cs'    : 'C#',
             \   'c'     : 'C',
             \   'vim'   : 'Vimscript'
