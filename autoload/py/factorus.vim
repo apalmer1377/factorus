@@ -177,6 +177,57 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_global)
     silent write
 endfunction
 
+" Extraction {{{2
+
+function! s:getArgs() abort
+    let a:prev = [line('.'),col('.')]
+    call s:gotoTag(0)
+    let a:oparen = search('(','Wn')
+    let a:cparen = search(')','Wn')
+    
+    let a:dec = join(getline(a:oparen,a:cparen))
+    let a:dec = substitute(a:dec,'.*(\(.*\)).*','\1','')
+    if a:dec == ''
+        return []
+    endif
+    let a:args = split(a:dec,',')
+    call map(a:args,{n,val -> substitute(val,'=.*$','','')})
+    call filter(a:args,'match(v:val,"[''\"]") < 0')
+
+    call cursor(a:prev[0],a:prev[1])
+    return a:args
+endfunction
+
+function! s:getLocalDecs(close)
+    let a:orig = [line('.'),col('.')]
+    let a:here = [line('.'),col('.')]
+    let a:next = searchpos(
+
+    let a:vars = s:getArgs()
+    while s:isBefore(a:next[1],a:close)
+        if a:next[1] == [0,0]
+            break
+        endif
+        
+        let [a:type,a:name] = split(a:next[0],'|')
+        call add(a:vars,[a:name,a:type,a:next[1][0]])
+
+        call cursor(a:next[1][0],a:next[1][1])
+        let a:next = s:getNextDec()
+    endwhile
+    call cursor(a:orig[0],a:orig[1])
+
+    return a:vars
+endfunction
+
+function! s:getAllBlocks(close)
+
+endfunction
+
+function! s:getAllRelevantLines(vars,names,close)
+
+endfunction
+
 " Global Functions {{{1
 
 " Insertion Functions {{{2
@@ -219,6 +270,7 @@ function! s:renameArg(new_name)
     call s:updateFile(a:var,a:new_name,0,1,0)
 
     echo 'Re-named ' . a:var . ' to ' . a:new_name
+    return a:var
 endfunction
 
 function! s:renameClass(new_name) abort
@@ -241,6 +293,7 @@ function! s:renameClass(new_name) abort
     silent edit
 
     echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
+    return a:class_name
 endfunction
 
 function! s:renameMethod(new_name)
@@ -285,6 +338,7 @@ function! s:renameMethod(new_name)
     redraw
     let a:keyword = a:is_global == 1 ? ' global' : ''
     echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
+    return a:method_name
 endfunction
 
 function! py#factorus#renameSomething(new_name,type,...)
@@ -327,4 +381,128 @@ function! py#factorus#renameSomething(new_name,type,...)
         endif
         throw v:exception
     endtry
+endfunction
+
+" Extraction Functions {{{2
+
+function! s:rollbackExtraction()
+    let a:open = search('public .*' . g:factorus_method_name . '(')
+    let a:close = s:getClosingIndent(1)[0]
+
+    if match(getline(a:open - 1),'^\s*$') >= 0
+        let a:open -= 1
+    endif
+    if match(getline(a:close + 1),'^\s*$') >= 0
+        let a:close += 1
+    endif
+
+    execute 'silent ' . a:open . ',' . a:close . 'delete'
+
+    call search('\<' . g:factorus_method_name . '\>(')
+    call s:gotoTag(0)
+    let a:open = line('.')
+    let a:close = s:getClosingIndent(1)[0]
+
+    execute 'silent ' . a:open . ',' . a:close . 'delete'
+    call append(line('.')-1,g:factorus_history['old'][1])
+    call cursor(a:open,1)
+    silent write
+endfunction
+
+function! py#factorus#extractMethod(...)
+    if a:0 > 0 && a:1 == 'factorusRollback'
+        call s:rollbackExtraction()
+        return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
+    endif
+    echo 'Extracting new method...'
+    call s:gotoTag(0)
+    let a:tab = substitute(getline('.'),'\(\s*\).*','\1','')
+    let a:method_name = substitute(getline('.'),'.*\s\+\(' . s:java_identifier . '\)\s*(.*','\1','')
+
+    let [a:open,a:close] = [line('.'),s:getClosingIndent(1)]
+    let a:old_lines = getline(a:open,a:close[0])
+
+    call searchpos('{','W')
+
+    let a:method_length = (a:close[0] - (line('.') + 1)) * 1.0
+    let a:vars = s:getLocalDecs(a:close)
+    let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
+    let a:decs = map(deepcopy(a:vars),{n,var -> var[2]})
+    let a:compact = [a:names,a:decs]
+    let a:blocks = s:getAllBlocks(a:close)
+
+    let a:best_var = ['','',0]
+    let a:best_lines = []
+    let [a:all,a:isos] = s:getAllRelevantLines(a:vars,a:names,a:close)
+
+    redraw
+    echo 'Finding best lines...'
+    for var in a:vars
+        let a:iso = s:getIsolatedLines(var,a:compact,a:all,a:blocks,a:close)
+        let a:isos[var[0]][var[2]] = copy(a:iso)
+        let a:ratio = (len(a:iso) / a:method_length)
+
+        if g:factorus_extract_heuristic == 'longest'
+            if len(a:iso) > len(a:best_lines) && index(a:iso,a:open) < 0 && a:ratio < g:factorus_method_threshold
+                let a:best_var = var
+                let a:best_lines = copy(a:iso)
+            endif 
+        elseif g:factorus_extract_heuristic == 'greedy'
+            if len(a:iso) >= g:factorus_min_extracted_lines && a:ratio < g:factorus_method_threshold
+                let a:best_var = var
+                let a:best_lines = copy(a:iso)
+            endif
+        endif
+    endfor
+
+    if len(a:best_lines) < g:factorus_min_extracted_lines
+        redraw
+        echo 'Nothing to extract'
+        return
+    endif
+
+    redraw
+    echo 'Almost done...'
+    if index(a:best_lines,a:best_var[2]) < 0 && a:best_var[2] != a:open
+        let a:stop = a:best_var[2]
+        let a:dec_lines = [a:stop]
+        while match(getline(a:stop),';') < 0
+            let a:stop += 1
+            call add(a:dec_lines,a:stop)
+        endwhile
+
+        let a:best_lines = a:dec_lines + a:best_lines
+    endif
+
+    let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:all,a:best_var)
+    let [a:wrapped,a:wrapped_args] = s:wrapDecs(a:best_var,a:best_lines,a:vars,a:all,a:isos,a:new_args,a:close)
+    while a:wrapped != a:best_lines
+        let [a:best_lines,a:new_args] = [a:wrapped,a:wrapped_args]
+        let [a:wrapped,a:wrapped_args] = s:wrapDecs(a:best_var,a:best_lines,a:vars,a:all,a:isos,a:new_args,a:close)
+    endwhile
+
+    if a:best_var[2] == a:open && index(a:new_args,a:best_var) < 0
+        call add(a:new_args,a:best_var)
+    endif
+
+    let a:best_lines = s:wrapAnnotations(a:best_lines)
+
+    let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:all,a:best_var)
+    let [a:final,a:rep] = s:buildNewMethod(a:best_var,a:best_lines,a:new_args,a:blocks,a:vars,a:all,a:tab,a:close)
+
+    call append(a:close[0],a:final)
+    call append(a:best_lines[-1],a:rep)
+
+    let a:i = len(a:best_lines) - 1
+    while a:i >= 0
+        call cursor(a:best_lines[a:i],1)
+        d 
+        let a:i -= 1
+    endwhile
+
+    call search('public.*' . g:factorus_method_name . '(')
+    silent write
+    redraw
+    echo 'Extracted ' . len(a:best_lines) . ' lines from ' . a:method_name
+    return [a:method_name,a:old_lines]
 endfunction

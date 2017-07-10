@@ -1,3 +1,17 @@
+=======
+GENERAL
+=======
+
+Tasks
+-----
+- Create TestChanges command to validate code changes (ant/maven builds)
+- Make all methods atomic--if an error is thrown or the function is interrupted, roll back the changes
+- Provide list of all files/ all changes made after a rename
+    * Java: 07-10-2017
+    * Python: 07-10-2017
+- Manual extraction (methods, types, etc.)
+- Find repeated/duplicate code
+
 ====
 JAVA
 ====
@@ -7,11 +21,10 @@ Bugs
 - When breaking up lines in extractMethod, function hangs when line length == g:factorus_line_length (FIXED 07-09-2017)
 - When other declarations were before return declaration, extractMethod incorrectly added declaration into conditional block (FIXED 07-10-2017)
 - End message doesn't display when running FRollback from other tab (FIXED 07-10-2017)
+- Multiple declarations on the same line (int i,j or int i, float j) don't get noticed
 
 Tasks
 -----
-- Make all methods atomic--if an error is thrown or the function is interrupted, roll back the changes
-- Provide list of all files/ all changes made after a rename (DONE 07-10-2017)
 
 ======
 PYTHON
@@ -23,6 +36,4 @@ Bugs
 Tasks
 -----
 - Rollback function--when things don't go as expected, provide a rollback to undo the previous action (DONE 07-10-2017)
-- Make all methods atomic--if an error is thrown or the function is interrupted, roll back the changes
-- Provide list of all files/ all changes made after a rename (DONE 07-10-2017)
 - extractMethod function

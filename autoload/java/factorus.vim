@@ -108,7 +108,6 @@ function! s:isCommented()
     if match(getline('.'),'//') >= 0 && match(getline('.'),'//') < col('.')
         return 1
     endif
-
     if searchpairpos('[^/]\/\*','','\*\/','Wbn') != [0,0]
         return 1
     endif
