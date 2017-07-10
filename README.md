@@ -9,16 +9,20 @@ and even method extraction, with a few very intutitive commands.
 The following table shows which features Factorus supports for
 which languages:
 
-|              | Add Parameter|Encapsulate Variable|Extract Method|Rename Argument|Rename Class|Rename Method |Rename Field|
-|:------------:|:------------:|:------------------:|:------------:|:-------------:|:----------:|:------------:|:----------:|
-|     Java     |   &#10003;   |      &#10003;      |   &#10003;   |    &#10003;   |  &#10003;  |   &#10003;   |  &#10003;  |
-|    Python    |   &#10003;   |      &#10007;      |   &#10007;   |    &#10003;   |  &#10003;  |   &#10003;   |  &#10007;  |
+|              |Add  Parameter|Encapsulate Variable|Extract Method|Rename  Argument|Rename Class|Rename Method |Rename Field|
+|:------------:|:------------:|:------------------:|:------------:|:-------------: |:----------:|:------------:|:----------:|
+|     Java     |   &#10003;   |      &#10003;      |   &#10003;   |    &#10003;    |  &#10003;  |   &#10003;   |  &#10003;  |
+|    Python    |   &#10003;   |      &#10007;      |   &#10007;   |    &#10003;    |  &#10003;  |   &#10003;   |  &#10007;  |
 
 Factorus also has a function for reverting changes, in case of bugs or other unwanted behavior.
 
 ## Installation
 
-Use a plugin manager like [pathogen](https://github.com/tpope/vim-pathogen) or [vim-plug](https://github.com/junegunn/vim-plug), or just clone the repository into your `'runtimepath'`. 
+There are many ways to install Factorus. You can:
+
++ Use a plugin manager like [pathogen](https://github.com/tpope/vim-pathogen) or [vim-plug](https://github.com/junegunn/vim-plug) (Recommended), 
++ Clone the repository into your `'runtimepath'`, or
++ Download the tar file from [vim.org](http://www.vim.org/) and extract it into your `'runtimepath'`.
 
 ## Dependencies
 
