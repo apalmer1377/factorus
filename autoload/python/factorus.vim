@@ -18,6 +18,33 @@ let s:strip_dir = '\(.*\/\)\=\(.*\)'
 
 " General Functions {{{2
 
+function! s:merge(a,b)
+    let a:i = 0
+    let a:j = 0
+    let a:c = []
+
+    while a:i < len(a:a) || a:j < len(a:b)
+        if a:j >= len(a:b)
+            call add(a:c,a:a[a:i])
+            let a:i += 1
+        elseif a:i >= len(a:a)
+            call add(a:c,a:b[a:j])
+            let a:j += 1
+        elseif a:j >= len(a:b) || a:a[a:i] < a:b[a:j]
+            call add(a:c,a:a[a:i])
+            let a:i += 1
+        elseif a:i >= len(a:a) || a:b[a:j] < a:a[a:i]
+            call add(a:c,a:b[a:j])
+            let a:j += 1
+        else
+            call add(a:c,a:a[a:i])
+            let a:i += 1
+            let a:j += 1
+        endif
+    endwhile
+    return a:c
+endfunction
+
 function! s:trim(string)
     return substitute(a:string,'\(^\s*\|\s*$\)','','g')
 endfunction
@@ -90,21 +117,21 @@ function! s:gotoTag(head)
     endif
 endfunction
 
-function! s:getClosingIndent(stack)
+function! s:getClosingIndent(stack,...)
+    let a:orig = [line('.'),col('.')]
+    if a:0 > 0
+        call cursor(a:1[0],a:1[1])
+    endif
     let a:indent = substitute(getline('.'),'^\(\s*\)[^[:space:]].*','\1','')
-    let a:l = len(a:indent) - 1
-    if a:stack == 0
-        if a:l < 0
-            return [line('.'),col('.')]
-        endif
-        let a:back_line = search('^\s\{,' . a:l . '}[^[:space:]].*','Wnb')
-        let a:indent = substitute(getline(a:back_line),'^\(\s*\)[^[:space:]].*','\1','')
+    let a:l = a:stack == 1 ? len(a:indent) : len(a:indent) - 1
+    if a:l < 0
+        return [0,0]
     endif
-    let a:res = searchpos('^' . a:indent . '[^[:space:]]','Wn')
-    if a:res == [0,0]
-        return [line('$'),1]
-    endif
-    return searchpos('^' . a:indent . '[^[:space:]]','Wn')
+    let a:indent = '^\s\{,' . a:l . '\}'
+
+    let a:res = searchpos(a:indent . '[^[:space:]]','Wn')
+    call cursor(a:orig[0],a:orig[1])
+    return a:res
 endfunction
 
 " Tag-Related Functions {{{2
@@ -193,6 +220,8 @@ function! s:getArgs() abort
     let a:args = split(a:dec,',')
     call map(a:args,{n,val -> substitute(val,'=.*$','','')})
     call filter(a:args,'match(v:val,"[''\"]") < 0')
+    call map(a:args,{n,val -> substitute(val,'\(^\s*\|\s*$\)','','g')})
+    call map(a:args,{n,val -> [val,line('.')]})
 
     call cursor(a:prev[0],a:prev[1])
     return a:args
@@ -201,31 +230,248 @@ endfunction
 function! s:getLocalDecs(close)
     let a:orig = [line('.'),col('.')]
     let a:here = [line('.'),col('.')]
-    let a:next = searchpos(
+    let a:search = '.*\<\(' . s:python_identifier . '\)\>\s*=.*'
+    let a:next = searchpos(a:search,'Wn')
 
     let a:vars = s:getArgs()
-    while s:isBefore(a:next[1],a:close)
-        if a:next[1] == [0,0]
+    let a:names = map(deepcopy(a:vars),{n,val -> val[0]})
+    while s:isBefore(a:next,a:close)
+        if a:next == [0,0]
             break
         endif
         
-        let [a:type,a:name] = split(a:next[0],'|')
-        call add(a:vars,[a:name,a:type,a:next[1][0]])
+        let a:name = substitute(getline(a:next[0]),a:search,'\1','')
+        call add(a:vars,[a:name,a:next[0]])
+        call add(a:names,a:name)
 
-        call cursor(a:next[1][0],a:next[1][1])
-        let a:next = s:getNextDec()
+        call cursor(a:next[0],a:next[1])
+        let a:next = searchpos(a:search,'Wn')
     endwhile
     call cursor(a:orig[0],a:orig[1])
+
+    let i = 0
+    while i < len(a:names)
+        let a:ind = index(a:names,a:names[i],i+1)
+        if a:ind >= 0
+            call remove(a:names,a:ind)
+            call remove(a:vars,a:ind)
+            continue
+        endif
+        let i += 1
+    endwhile
 
     return a:vars
 endfunction
 
-function! s:getAllBlocks(close)
+function! s:compare(x,y)
+    if a:x[0] < a:y[0]
+        return -1
+    elseif a:x[0] > a:y[0]
+        return 1
+    else
+        if a:x[1] > a:y[1]
+            return -1
+        elseif a:x[1] < a:y[1]
+            return 1
+        else
+            return 0
+        endif
+    endif
+endfunction
 
+function! s:getAllBlocks(close)
+    let a:if = '\<if\>.*:'
+    let a:for = '\<for\>.*:'
+    let a:while = '\<while\>.*:'
+    let a:try = '\<try\>.*:'
+    let a:search = '\(' . a:if . '\|' . a:for . '\|' . a:while . '\|' . a:try . '\)'
+
+    let a:orig = [line('.'),col('.')]
+    call s:gotoTag(0)
+    let a:blocks = [[line('.'),a:close[0]]]
+
+    let a:open = searchpos(':','Wn')
+    let a:next = searchpos(a:search,'Wn')
+    while a:next[0] <= a:close[0]
+        if a:next == [0,0]
+            break
+        endif
+        call cursor(a:next[0],a:next[1])
+
+        if match(getline('.'),'\<else\>') >= 0
+            let a:next = searchpos(a:search,'Wn')
+            continue
+        endif
+
+        if match(getline('.'),'\<\(if\|try\)\>') >= 0
+            let a:open = [line('.'),col('.')]
+            let a:loc_close = s:getClosingIndent(1)
+
+            let a:o = line('.')
+            while match(getline(a:loc_close[0]),'\<\(else\|elif\|except\|finally\)\>.*') >= 0
+                if len(substitute(getline(a:loc_close[0]),'^\(\s*\)[[:space:]].*','\1','')) < len(substitute(getline('.'),'^\(\s*\)[[:space:]].*','\1',''))
+                    break
+                endif
+                call cursor(a:loc_close[0],a:loc_close[1])
+                call add(a:blocks,[a:o,a:loc_close[0]-1])
+                let a:o = line('.')
+                let a:loc_close = s:getClosingIndent(1)
+            endwhile
+
+            call add(a:blocks,[a:o,a:loc_close[0]-1])
+            call add(a:blocks,[a:open[0],a:loc_close[0]-1])
+            call cursor(a:open[0],a:open[1])
+        else
+            let a:loc_close = s:getClosingIndent(1)
+            call add(a:blocks,[line('.'),a:loc_close[0]-1])
+        endif
+
+        let a:next = searchpos(a:search,'Wn')
+    endwhile
+
+    call cursor(a:orig[0],a:orig[1])
+    return uniq(sort(a:blocks,'s:compare'))
+endfunction
+
+function! s:getNextReference(var,type,...)
+    if a:type == 'right'
+        let a:search = '^\s*\(' . s:python_identifier . '\)\s*[(.=].*\<\(' . a:var . '\)\>.*$'
+        let a:index = '\1'
+        let a:alt_index = '\2'
+    elseif a:type == 'left'
+        let a:search = '^\s*\<\(' . a:var . '\)\>\s*[-+*/]\=[.=][^=].*$'
+        let a:index = '\1'
+        let a:alt_index = '\1'
+    elseif a:type == 'cond'
+        let a:search = '^\s*\(for\|while\|if\|elif\).*\<\(' . a:var . '\)\>.*:'
+        let a:index = '\1'
+        let a:alt_index = '\2'
+    elseif a:type == 'return'
+        let a:search = '^\s*\<return\>.*\<\(' . a:var . '\)\>.*'
+        let a:index = '\1'
+        let a:alt_index = '\1'
+    endif
+
+    let a:line = searchpos(a:search,'Wn')
+
+    if a:line[0] > line('.')
+        let a:state = getline(a:line[0])
+        let a:loc = substitute(a:state,a:search,a:index,'')
+        if a:0 > 0 && a:1 == 1
+            let a:name = substitute(a:state,a:search,a:alt_index,'')
+            return [a:loc,a:line,a:name]
+        endif
+        return [a:loc,a:line]
+    endif
+        
+    return (a:0 > 0 && a:1 == 1) ? ['none',[0,0],'none'] : ['none',[0,0]]
+endfunction
+
+function! s:getNextUse(var,...)
+    let a:right = s:getNextReference(a:var,'right',a:0)
+    let a:left = s:getNextReference(a:var,'left',a:0)
+    let a:cond = s:getNextReference(a:var,'cond',a:0)
+    let a:return = s:getNextReference(a:var,'return',a:0)
+
+    let a:min = [a:right[0],copy(a:right[1]),'right']
+    let a:min_name = a:0 > 0 ? a:right[2] : ''
+
+    let a:poss = [a:right,a:left,a:cond,a:return]
+    let a:idents = ['right','left','cond','return']
+    for i in range(4)
+        let temp = a:poss[i]
+        if temp[1] != [0,0] && (s:isBefore(temp[1],a:min[1]) == 1 || a:min[1] == [0,0])
+            let a:min = [temp[0],copy(temp[1]),a:idents[i]]
+            if a:0 > 0
+                let a:min_name = temp[2]
+            endif
+        endif
+    endfor
+
+    if a:0 > 0
+        call add(a:min,a:min_name)
+    endif
+
+    return a:min
+endfunction
+
+function! s:isQuoted(pat,state)
+    let a:temp = a:state
+    let a:mat = match(a:temp,a:pat)
+    let a:res = 1
+    while a:mat >= 0 && a:res == 1
+        let a:begin = strpart(a:temp,0,a:mat)
+        let a:quotes = len(a:begin) - len(substitute(a:begin,'["'']','','g'))
+        if a:quotes % 2 == 1
+            let a:res = 1
+        else
+            let a:res = 0
+        endif
+        let a:temp = substitute(a:temp,a:pat,'','')
+        let a:mat = match(a:temp,a:pat)
+    endwhile
+    return a:res
 endfunction
 
 function! s:getAllRelevantLines(vars,names,close)
+    let a:orig = [line('.'),col('.')]
+    let a:begin = s:getAdjacentTag('b')
 
+    let a:lines = {}
+    let a:closes = {}
+    let a:isos = {}
+    for var in a:vars
+        call cursor(var[1],1)
+        let a:local_close = var[1] == a:begin[0] ? s:getClosingIndent(1) : s:getClosingIndent(0)
+        let a:closes[var[0]] = copy(a:local_close)
+        call cursor(a:orig[0],a:orig[1])
+        if index(keys(a:lines),var[0]) < 0
+            let a:lines[var[0]] = [var[1]]
+        else
+            call add(a:lines,var[1])
+        endif
+        let a:isos[var[0]] = []
+    endfor
+
+    let a:search = join(a:names,'\|')
+    let a:next = s:getNextUse(a:search,1)
+
+    while s:isBefore(a:next[1],a:close) == 1
+        if a:next[1] == [0,0]
+            break
+        endif
+
+        let a:pause = copy(a:next)
+        let a:new_search = a:search
+        while a:pause[1] == a:next[1]
+            let a:name = a:next[3]
+
+            let a:ldec = a:lines[a:name][0]
+
+            let a:quoted = s:isQuoted('\<' . a:name . '\>',getline(a:next[1][0]))
+            if a:quoted == 0 
+                if index(a:lines[a:name],a:next[1][0]) < 0
+                    call add(a:lines[a:name],a:next[1][0])
+                endif
+            endif
+
+            if match(a:new_search,'\\|') < 0
+                break
+            endif
+
+            let a:new_search = substitute(a:new_search,'\\|\<' . a:name . '\>','','')
+            let a:new_search = substitute(a:new_search,'\<' . a:name . '\>\\|','','')
+
+            let a:next = s:getNextUse(a:new_search,1)
+        endwhile
+        let a:next = copy(a:pause)
+
+        call cursor(a:next[1][0],a:next[1][1])
+        let a:next = s:getNextUse(a:search,1)
+    endwhile
+    
+    call cursor(a:orig[0],a:orig[1])
+    return [a:lines,a:isos]
 endfunction
 
 " Global Functions {{{1
@@ -386,8 +632,8 @@ endfunction
 " Extraction Functions {{{2
 
 function! s:rollbackExtraction()
-    let a:open = search('public .*' . g:factorus_method_name . '(')
-    let a:close = s:getClosingIndent(1)[0]
+    let a:open = search('def ' . g:factorus_method_name . '(')
+    let a:close = s:getClosingIndent(1)[0] - 1
 
     if match(getline(a:open - 1),'^\s*$') >= 0
         let a:open -= 1
@@ -401,12 +647,345 @@ function! s:rollbackExtraction()
     call search('\<' . g:factorus_method_name . '\>(')
     call s:gotoTag(0)
     let a:open = line('.')
-    let a:close = s:getClosingIndent(1)[0]
+    let a:close = s:getClosingIndent(1)[0] - 1
 
     execute 'silent ' . a:open . ',' . a:close . 'delete'
     call append(line('.')-1,g:factorus_history['old'][1])
     call cursor(a:open,1)
     silent write
+endfunction
+
+function! s:getContainingBlock(line,ranges,exclude)
+    for range in a:ranges
+        if range[0] > a:line
+            return [a:line,a:line]
+        endif
+
+        if range[1] >= a:line && range[0] > a:exclude[0]
+            return range
+        endif
+    endfor
+    return [a:line,a:line]
+endfunction
+
+function! s:contains(range,line)
+    if a:line >= a:range[0] && a:line <= a:range[1]
+        return 1
+    endif
+    return 0
+endfunction
+
+function! s:isIsolatedBlock(block,var,rels,close)
+    let a:orig = [line('.'),col('.')]
+    call cursor(a:block[0],1)
+    if a:block[1] - a:block[0] == 0
+        call cursor(line('.')-1,1)
+    endif
+
+    let a:search = join(keys(a:rels),'\|')
+    let a:search = substitute(a:search,'\\|\<' . a:var[0] . '\>','','')
+    let a:search = substitute(a:search,'\<' . a:var[0] . '\>\\|','','')
+    let a:ref = s:getNextReference(a:search,'left',1)
+    let a:return = search('\<\(return\)\>','Wn')
+    let a:continue = search('\<\(continue\|break\)\>','Wn')
+
+    let a:res = 1
+    if s:contains(a:block,a:return) == 1
+        let a:res = 0
+    elseif s:contains(a:block,a:continue) && match(getline(a:block[0]),'\<\(for\|while\)\>') < 0
+        let a:res = 0
+    else
+        while a:ref[1] != [0,0] && s:isBefore(a:ref[1],[a:block[1]+1,1]) == 1
+            let a:i = a:rels[a:ref[2]][0]
+            if s:contains(a:block,a:i) == 0
+                let a:res = 0
+                break
+            endif
+            call cursor(a:ref[1][0],a:ref[1][1])
+            let a:ref = s:getNextReference(a:search,'left',1)
+        endwhile
+    endif
+
+    call cursor(a:orig[0],a:orig[1])
+    return a:res
+endfunction
+
+function! s:getIsolatedLines(var,names,rels,blocks,close)
+    let a:refs = a:rels[a:var[0]]
+
+    if len(a:refs) == 1
+        return []
+    endif
+
+    let a:orig = [line('.'),col('.')]
+    let [a:name,a:dec] = a:var
+
+    let a:wraps = []
+    if match(getline(a:var[1]),'\<for\>') >= 0
+        let a:for = s:getContainingBlock(a:dec,a:blocks,a:blocks[0])
+        if s:isIsolatedBlock(a:for,a:var,a:rels,a:close) == 0
+            return []
+        endif
+    endif
+    let a:dec_block = s:getContainingBlock(a:dec,a:blocks,a:blocks[0])
+    if a:dec_block[1] - a:dec_block[0] == 0
+        call add(a:wraps,copy(a:blocks[0]))
+    endif
+    call add(a:wraps,s:getContainingBlock(a:refs[1],a:blocks,a:blocks[0]))
+
+    let a:usable = []
+    for i in range(len(a:wraps))
+        let twrap = a:wraps[i]
+        let a:temp = []
+
+        let a:next_use = s:getNextReference(a:var[0],'right')
+        call cursor(a:next_use[1][0],a:next_use[1][1])
+
+        let a:block = [0,0]
+        for j in range(i,len(a:refs)-1)
+            let line = a:refs[j]
+            if line == a:next_use[1][0]
+                if index(a:names,a:next_use[0]) >= 0
+                    break
+                endif
+                call cursor(a:next_use[1][0],a:next_use[1][1])
+                let a:next_use = s:getNextReference(a:var[0],'right')
+            endif
+            if line >= a:block[0] && line <= a:block[1]
+                continue
+            endif
+
+            let a:block = s:getContainingBlock(line,a:blocks,twrap)
+            if a:block[0] < twrap[0] || a:block[1] > twrap[1]
+                break
+            endif
+
+            if s:isIsolatedBlock(a:block,a:var,a:rels,a:close) == 0 
+                break
+            endif
+
+            let a:i = a:block[0]
+            while a:i <= a:block[1]
+                if index(a:temp,a:i) < 0
+                    call add(a:temp,a:i)
+                endif
+                let a:i += 1
+            endwhile
+        endfor
+
+        if len(a:temp) > len(a:usable)
+            let a:usable = copy(a:temp)
+        endif
+
+        call cursor(a:orig[0],a:orig[1])
+    endfor
+
+    return a:usable
+endfunction
+
+function! s:getNewArgs(lines,vars,rels,var)
+    let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
+    let a:search = '\(' . join(a:names,'\|') . '\)'
+    let a:search = '^.*\<' . a:search . '\>.*'
+    let a:args = []
+
+    for line in a:lines
+        let a:this = getline(line)
+        if match(a:this,'^\s*\(\/\/\|*\)') >= 0
+            continue
+        endif
+        let a:new = substitute(a:this,a:search,'\1','')
+        while a:new != a:this
+            let a:spot = a:rels[a:new]
+            let a:next_var = filter(deepcopy(a:vars),'v:val[0] == a:new')[0]
+
+            if index(a:args,a:next_var) < 0 && index(a:lines,a:spot) < 0 && (a:next_var[0] != a:var[0] || a:next_var[1] == a:var[1]) 
+                call add(a:args,a:next_var)
+            endif
+            let a:this = substitute(a:this,'\<' . a:new . '\>','','g')
+            let a:new = substitute(a:this,a:search,'\1','')
+        endwhile
+    endfor
+    return a:args
+endfunction
+
+function! s:buildArgs(args)
+    let a:defs = map(deepcopy(a:args),{n,arg -> arg[0]})
+    return join(a:defs,',')
+endfunction
+
+function! s:formatMethod(def,body,return,lines,spaces)
+    let a:paren = stridx(a:def[0],'(')
+    let a:def_space = repeat(' ',a:paren+1)
+    call map(a:def,{n,line -> a:spaces[0] . (n > 0 ? a:def_space : '') . substitute(line,'^\s*\(.*\)','\1','')})
+
+    let a:dspaces = join(a:spaces,'')
+    let a:i = 0
+
+    call map(a:body,{n,line -> substitute(line,'^\s*\(.*\)','\1','')})
+    let a:next_closes = []
+    while a:i < len(a:lines)
+        if len(a:next_closes) > 0 && s:isBefore(a:next_closes[-1],[a:lines[a:i],1])
+            call remove(a:next_closes,len(a:next_closes)-1)
+        endif
+
+        let a:tspaces = a:dspaces . repeat(a:spaces[1],len(a:next_closes))
+        let a:body[a:i] = a:tspaces . a:body[a:i]
+
+        if match(a:body[a:i],':\s*$') >= 0
+            call add(a:next_closes,s:getClosingIndent(1,[a:lines[a:i],1]))
+        endif
+
+        let a:i += 1
+    endwhile
+    call add(a:body,a:dspaces . substitute(a:return,'^\s*\(.*\)','\1',''))
+endfunction
+
+function! s:wrapDecs(var,lines,vars,rels,isos,args,close)
+    let a:head = s:getAdjacentTag('b')
+    let a:orig = [line('.'),col('.')]
+    let a:fin = copy(a:lines)
+    let a:fin_args = deepcopy(a:args)
+    for arg in a:args
+
+        if arg[1] == a:head[0]
+            continue
+        endif
+
+        let a:wrap = 1
+        let a:name = arg[0]
+        let a:next = s:getNextUse(a:name)
+
+        while a:next[1] != [0,0] && s:isBefore(a:next[1],a:close) == 1
+            if a:next[2] != 'left' && index(a:lines,a:next[1][0]) < 0
+                let a:wrap = 0    
+                break
+            endif
+            call cursor(a:next[1][0],a:next[1][1])
+            let a:next = s:getNextUse(a:name)
+        endwhile
+
+        if a:wrap == 1
+            let a:relevant = a:rels[arg[0]][arg[2]]
+            let a:stop = arg[1]
+            let a:dec = [a:stop]
+            while match(getline(a:stop),';') < 0
+                let a:stop += 1
+                call add(a:dec,a:stop)
+            endwhile
+            let a:iso = a:dec + a:isos[arg[0]]
+
+            let a:con = 1
+            for rel in a:relevant
+                if index(a:iso,rel) < 0 && index(a:lines,rel) < 0
+                    let a:con = 0
+                    break
+                endif
+            endfor
+            if a:con == 0
+                continue
+            endif
+
+            let a:next_args = s:getNewArgs(a:iso,a:vars,a:rels,arg)
+            let a:fin = uniq(s:merge(a:fin,a:iso))
+
+            call remove(a:fin_args,index(a:fin_args,arg))
+            for narg in a:next_args
+                if index(a:fin_args,narg) < 0 && narg[0] != a:var[0]
+                    call add(a:fin_args,narg)
+                endif
+            endfor
+        endif
+        call cursor(a:orig[0],a:orig[1])
+    endfor
+
+    call cursor(a:orig[0],a:orig[1])
+    return [a:fin,a:fin_args]
+endfunction
+
+function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
+
+    call cursor(a:lines[-1],1)
+    let a:return = ''
+    let a:call = ''
+
+    let a:outer = s:getContainingBlock(a:lines[0],a:ranges,a:ranges[0])
+    let a:include_dec = 1
+    for var in a:vars
+        if index(a:lines,var[1]) >= 0
+            let a:outside = s:getNextUse(var[0])    
+            if a:outside[1] != [0,0] && s:isBefore(a:outside[1],a:close) == 1
+                let a:contain = s:getContainingBlock(var[1],a:ranges,a:ranges[0])
+                if a:contain[0] <= a:outer[0] || a:contain[1] >= a:outer[1]
+                    let a:type = var[1]
+                    let a:return = 'return ' . var[0]
+                    let a:call = var[0] . ' = '
+
+                    let i = 0
+                    while i < len(a:lines)
+                        let line = getline(a:lines[i])
+                        if match(line,'\<\(if\|elif\|while\|for\)\>') < 0 && match(line,'\<' . var[0] . '\>') >= 0
+                            break
+                        endif
+                        let i += 1
+                    endwhile
+
+                    if i == len(a:lines)
+                        break
+                    endif
+
+                    let a:inner = s:getContainingBlock(a:lines[i+1],a:ranges,a:outer)
+                    if a:inner[1] - a:inner[0] > 0
+                        let a:removes = []
+                        for j in range(i+1)
+                            if match(getline(a:lines[j]),'\<' . var[0] . '\>') >= 0
+                                call add(a:removes,j)
+                            endif
+                        endfor
+                        for rem in reverse(a:removes)
+                            call remove(a:lines,rem)
+                        endfor
+                        let a:include_dec = 0
+                    endif
+                    break
+                endif
+            endif
+        endif
+    endfor
+    let a:body = map(copy(a:lines),{n,line -> getline(line)})
+
+
+    let a:arg_string = s:buildArgs(a:args)
+    let a:build_string = 'def ' .  g:factorus_method_name . '(' . a:arg_string . '):'
+    let a:temp = join(reverse(split(a:build_string, '.\zs')), '')
+    let a:def = []
+
+    if g:factorus_split_lines == 1
+        while len(a:temp) >= g:factorus_line_length
+            let i = stridx(a:temp,'|',len(a:temp) - g:factorus_line_length)
+            if i <= 0
+                break
+            endif
+            let a:segment = strpart(a:temp,0,i)
+            let a:segment = join(reverse(split(a:segment, '.\zs')), '')
+            let a:segment = substitute(a:segment,'|',',','g')
+            call add(a:def,a:segment)
+            let a:temp = strpart(a:temp,i)
+        endwhile
+    endif
+
+    let a:temp = join(reverse(split(a:temp, '.\zs')), '')
+    let a:temp = substitute(a:temp,'|',',','g')
+    call add(a:def,a:temp)
+    call reverse(a:def)
+
+    call s:formatMethod(a:def,a:body,a:return,a:lines,a:tab)
+    let a:final = a:def + a:body + ['']
+
+    let a:call_space = substitute(getline(s:getContainingBlock(a:lines[-1],a:ranges,a:ranges[0])[0]),'\(\s*\).*','\1','')
+    let a:rep = [a:call_space . a:call . g:factorus_method_name . '(' . a:arg_string . ')']
+
+    return [a:final,a:rep]
 endfunction
 
 function! python#factorus#extractMethod(...)
@@ -416,19 +995,17 @@ function! python#factorus#extractMethod(...)
     endif
     echo 'Extracting new method...'
     call s:gotoTag(0)
-    let a:tab = substitute(getline('.'),'\(\s*\).*','\1','')
-    let a:method_name = substitute(getline('.'),'.*\s\+\(' . s:java_identifier . '\)\s*(.*','\1','')
+    let a:tab = [substitute(getline('.'),'\(\s*\).*','\1',''),substitute(getline(line('.')+1),'\(\s*\).*','\1','')]
+    let a:method_name = substitute(getline('.'),'^\s*def\s\+\<\(' . s:python_identifier . '\)\s*(.*','\1','')
 
     let [a:open,a:close] = [line('.'),s:getClosingIndent(1)]
-    let a:old_lines = getline(a:open,a:close[0])
+    let a:old_lines = getline(a:open,a:close[0]-1)
 
-    call searchpos('{','W')
+    call searchpos(':','W')
 
     let a:method_length = (a:close[0] - (line('.') + 1)) * 1.0
     let a:vars = s:getLocalDecs(a:close)
     let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
-    let a:decs = map(deepcopy(a:vars),{n,var -> var[2]})
-    let a:compact = [a:names,a:decs]
     let a:blocks = s:getAllBlocks(a:close)
 
     let a:best_var = ['','',0]
@@ -438,8 +1015,8 @@ function! python#factorus#extractMethod(...)
     redraw
     echo 'Finding best lines...'
     for var in a:vars
-        let a:iso = s:getIsolatedLines(var,a:compact,a:all,a:blocks,a:close)
-        let a:isos[var[0]][var[2]] = copy(a:iso)
+        let a:iso = s:getIsolatedLines(var,a:names,a:all,a:blocks,a:close)
+        let a:isos[var[0]] = copy(a:iso)
         let a:ratio = (len(a:iso) / a:method_length)
 
         if g:factorus_extract_heuristic == 'longest'
@@ -463,15 +1040,8 @@ function! python#factorus#extractMethod(...)
 
     redraw
     echo 'Almost done...'
-    if index(a:best_lines,a:best_var[2]) < 0 && a:best_var[2] != a:open
-        let a:stop = a:best_var[2]
-        let a:dec_lines = [a:stop]
-        while match(getline(a:stop),';') < 0
-            let a:stop += 1
-            call add(a:dec_lines,a:stop)
-        endwhile
-
-        let a:best_lines = a:dec_lines + a:best_lines
+    if index(a:best_lines,a:best_var[1]) < 0 && a:best_var[1] != a:open
+        let a:best_lines = [a:best_var[1]] + a:best_lines
     endif
 
     let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:all,a:best_var)
@@ -481,16 +1051,14 @@ function! python#factorus#extractMethod(...)
         let [a:wrapped,a:wrapped_args] = s:wrapDecs(a:best_var,a:best_lines,a:vars,a:all,a:isos,a:new_args,a:close)
     endwhile
 
-    if a:best_var[2] == a:open && index(a:new_args,a:best_var) < 0
+    if a:best_var[1] == a:open && index(a:new_args,a:best_var) < 0
         call add(a:new_args,a:best_var)
     endif
-
-    let a:best_lines = s:wrapAnnotations(a:best_lines)
 
     let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:all,a:best_var)
     let [a:final,a:rep] = s:buildNewMethod(a:best_var,a:best_lines,a:new_args,a:blocks,a:vars,a:all,a:tab,a:close)
 
-    call append(a:close[0],a:final)
+    call append(a:close[0]-1,a:final)
     call append(a:best_lines[-1],a:rep)
 
     let a:i = len(a:best_lines) - 1
@@ -500,7 +1068,7 @@ function! python#factorus#extractMethod(...)
         let a:i -= 1
     endwhile
 
-    call search('public.*' . g:factorus_method_name . '(')
+    call search('def ' . g:factorus_method_name . '(')
     silent write
     redraw
     echo 'Extracted ' . len(a:best_lines) . ' lines from ' . a:method_name

@@ -35,9 +35,13 @@ function! factorus#command(func,...)
             copen
         endif
     catch /^Vim(\a\+):E117:/
-        let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
-        let a:name = a:func == 'renameSomething' ? 'rename' . a:000[-1] : a:func
-        let a:err = 'Factorus: ' . a:name . ' is not available for ' . a:lang . '.'
+        if match(v:exception,'\<' . a:func . '\>') >= 0
+            let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
+            let a:name = a:func == 'renameSomething' ? 'rename' . a:000[-1] : a:func
+            let a:err = 'Factorus: ' . a:name . ' is not available for ' . a:lang . '.'
+        else
+            let a:err = v:exception
+        endif
     catch /^Factorus:/
         let a:custom = index(keys(s:errors),join(split(v:exception,':')[1:]))
         if a:custom >= 0
@@ -46,7 +50,7 @@ function! factorus#command(func,...)
             let a:err = v:exception
         endif
     catch /.*/
-        let a:err = 'Factorus: an unexpected error has occurred: ' . v:exception
+        let a:err = 'Factorus: an unexpected error has occurred: ' . v:exception . ', at ' . v:throwpoint
     endtry
 
     redraw

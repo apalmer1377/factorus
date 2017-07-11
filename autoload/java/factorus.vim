@@ -13,7 +13,7 @@ let s:search_chars = s:start_chars . '\u0030-\u0039\u007f-\u009f\u00ad\u0300-\u0
 
 "Regex patterns used to identify Java constructs (classes, variables, etc.)
 
-let s:collection_identifier = '\(\[\]\|<[<>,.[:space:]' . s:search_chars . ']*>\)'
+let s:collection_identifier = '\(\[\]\|<[<>?,.[:space:]' . s:search_chars . ']*>\)'
 let s:modifiers = '\(public\_s*\|private\_s*\|protected\_s*\|static\_s*\|abstract\_s*\|final\_s*\|synchronized\_s*\|native\_s*\|strictfp\_s*\|transient\_s*\|volatile\_s*\)\='
 let s:access_query = repeat(s:modifiers,3)
 let s:sub_class = '\(implements\|extends\)'
@@ -219,7 +219,7 @@ function! s:isValidTag(line)
         return 0
     endif
 
-    if match(getline(a:line-1),'new.*{') >= 0
+    if match(getline(a:line-1),'\<new\>.*{') >= 0
         return 0   
     endif
 
@@ -306,24 +306,15 @@ function! s:getPackage(file)
     return a:head
 endfunction
 
-function! s:getNextDec(...)
-    if a:0 == 0
-        let a:get_variable = '^[^/*]\s*\(' . s:access_query . '\|for\s*(\)\s*\(' . s:java_identifier . 
-                    \ s:collection_identifier . '\=\)\s\+\(' . s:java_identifier . '\)\s*[:,=;)].*'
-        let a:index = '\5|\7'
-    elseif a:0 == 1
-        let a:get_variable = '^.*\<\(' . a:1 . '\)\>' . s:collection_identifier . '\=\s\+\<\(' . s:java_identifier . '\)\>\s*[;=,):].*'
-        let a:index = '\3'
-    else
-        let a:get_variable = '^[^/*].*(.*\<\(' . a:1 . '\)\>' . s:collection_identifier . '\=\s\+\(\<' . a:2 . '\).*).*'
-        let a:index = '\3'
-    endif
+function! s:getNextDec()
+    let a:get_variable = '^\s*\(' . s:access_query . '\|for\s*(\)\s*\(' . s:java_identifier . 
+                \ s:collection_identifier . '\=\)\s\+\(\<' . s:java_identifier . '\>[^:=;]*\)[;=:].*'
+    
+    let a:alt_get = '^\s*' . s:access_query . '\s*\(' . s:java_identifier . 
+                \ s:collection_identifier . '\=\)\s\+\(\<' . s:java_identifier . '\>[^=;]*\)[=;].*'
 
-    let a:line = line('.')
-    let a:col = col('.')
-
+    let [a:line,a:col] = [line('.'),col('.')]
     let a:match = searchpos(a:get_variable,'Wn')
-    let a:end_match = searchpos(a:get_variable,'Wnze')
 
     if a:0 == 0
         while a:match != [0,0] && match(getline(a:match[0]),'\<return\>') >= 0
@@ -334,12 +325,38 @@ function! s:getNextDec(...)
     endif
 
     if s:isBefore([a:line,a:col],a:match) == 1
+        if match(getline(a:match[0]),'\<for\>') >= 0
+            let a:var = substitute(getline(a:match[0]),a:get_variable,'\5','')
+            let a:fline = split(substitute(getline(a:match[0]),a:get_variable,'\7',''),',')
+        else
+            let a:var = substitute(getline(a:match[0]),a:alt_get,'\4','')
+            let a:fline = split(substitute(getline(a:match[0]),a:alt_get,'\6',''),',')
+        endif
+        call map(a:fline,{n,var -> s:trim(var)})
+        call map(a:fline,{n,var -> substitute(var,'^\<\(' . s:java_identifier . '\)\>.*','\1','')})
+
+        return [a:var,a:fline,a:match]
+    endif
+
+    return ['none',[],[0,0]]
+endfunction
+
+function! s:getNextArg(...)
+    let a:get_variable = '^[^/*].*(.*\<\(' . a:1 . '\)\>' . s:collection_identifier . '\=\s\+\(\<' . a:2 . '\).*).*'
+    let a:index = '\3'
+
+    let a:line = line('.')
+    let a:col = col('.')
+
+    let a:match = searchpos(a:get_variable,'Wn')
+    let a:end_match = searchpos(a:get_variable,'Wnze')
+
+    if s:isBefore([a:line,a:col],a:match) == 1
         let a:var = substitute(getline(a:match[0]),a:get_variable,a:index,'')
         return [a:var,a:match]
     endif
 
     return ['none',[0,0]]
-
 endfunction
 
 function! s:getFunctionDecs()
@@ -504,15 +521,17 @@ function! s:getLocalDecs(close)
     let a:next = s:getNextDec()
 
     let a:vars = s:getArgs()
-    while s:isBefore(a:next[1],a:close)
-        if a:next[1] == [0,0]
+    while s:isBefore(a:next[2],a:close)
+        if a:next[2] == [0,0]
             break
         endif
         
-        let [a:type,a:name] = split(a:next[0],'|')
-        call add(a:vars,[a:name,a:type,a:next[1][0]])
+        let a:type = a:next[0]
+        for name in a:next[1]
+            call add(a:vars,[name,a:type,a:next[2][0]])
+        endfor
 
-        call cursor(a:next[1][0],a:next[1][1])
+        call cursor(a:next[2][0],a:next[2][1])
         let a:next = s:getNextDec()
     endwhile
     call cursor(a:orig[0],a:orig[1])
@@ -539,8 +558,8 @@ function! s:getNextReference(var,type,...)
         let a:index = '\1'
         let a:alt_index = '\1'
     elseif a:type == 'cond'
-        let a:search = s:no_comment . '\(\(switch\|while\|if\|else\s\+if\)\_s*(\_[^{;]*\<\(' . a:var . '\)\>\_[^{;]*).*\|' .
-                    \ '\(for\)\_s*(\_[^{]*\<\(' . a:var . '\)\>\_[^{]*).*\)'
+        let a:search = s:no_comment . '\<\(\(switch\|while\|if\|else\s\+if\)\>\_s*(\_[^{;]*\<\(' . a:var . '\)\>\_[^{;]*).*\|' .
+                    \ '\<\(for\)\>\_s*(\_[^{]*\<\(' . a:var . '\)\>\_[^{]*).*\)'
         let a:index = '\2'
         let a:alt_index = '\3'
     elseif a:type == 'return'
@@ -587,10 +606,7 @@ function! s:getNextReference(var,type,...)
         return [a:loc,a:line]
     endif
         
-    if a:0 > 0 && a:1 == 1
-        return ['none',[0,0],'none']
-    endif
-    return ['none',[0,0]]
+    return (a:0 > 0 && a:1 == 1) ? ['none',[0,0],'none'] : ['none',[0,0]]
 endfunction
 
 function! s:getNextUse(var,...)
@@ -803,9 +819,10 @@ function! s:getStructVars(var,dec,funcs)
         call add(a:funcs[0],old)
     endif
 
+    let a:orig = substitute(a:dec,'^\([^<]*\)<.*','\1','')
     let a:res = substitute(a:dec,'^.*<','','')
     let a:res = substitute(a:res,'\(<\|>\|\s\)','','g')
-    return split(a:res,',')
+    return [a:orig] + split(a:res,',')
 endfunction
 
 function! s:getFuncDec(func)
@@ -937,7 +954,7 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
 
     let a:search = ['\([^.]\|\<this\>\.\)\<\(' . a:old_name . '\)\>' , '\(\<this\>\.\)\<\(' . a:old_name . '\)\>']
 
-    let [a:dec,a:next] = s:getNextDec(a:class_name,a:old_name)
+    let [a:dec,a:next] = s:getNextArg(a:class_name,a:old_name)
     if a:next[0] == 0
         let a:next = line('$')
     endif
@@ -951,7 +968,7 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
             if a:restricted == 1
                 let a:next = s:getNextTag()
             else
-                let [a:dec,a:next] = s:getNextDec(a:class_name,a:old_name)
+                let [a:dec,a:next] = s:getNextArg(a:class_name,a:old_name)
                 if a:next[0] == 0
                     let a:next = [line('$'),1]
                 endif
@@ -1083,7 +1100,9 @@ endfunction
 function! s:updateMethodFiles(files,class_name,method_name,new_name,paren) abort
     for file in a:files
         execute 'silent tabedit ' . file
-        call s:updateMethodFile(a:class_name,a:method_name,a:new_name,a:paren)
+        "if expand('%:p:t') == 'AbstractGraph.java'
+            call s:updateMethodFile(a:class_name,a:method_name,a:new_name,a:paren)
+        "endif
         call s:safeClose()
     endfor
     silent edit
@@ -1297,7 +1316,6 @@ function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
                         let a:removes = []
                         for j in range(i+1)
                             if match(getline(a:lines[j]),'\<' . var[0] . '\>') >= 0
-                                "call remove(a:lines,0)
                                 call add(a:removes,j)
                             endif
                         endfor
@@ -1360,10 +1378,6 @@ function! s:wrapAnnotations(lines)
     return uniq(sort(a:lines,'N'))
 endfunction
 
-function! s:decFromString(str)
-    return split(a:str,'-')
-endfunction
-
 function! s:getLatestDec(rels,name,loc)
     let a:min = 0
     for dec in keys(a:rels[a:name])
@@ -1376,13 +1390,14 @@ endfunction
 
 function! s:getAllRelevantLines(vars,names,close)
     let a:orig = [line('.'),col('.')]
+    let a:begin = s:getAdjacentTag('b')
 
     let a:lines = {}
     let a:closes = {}
     let a:isos = {}
     for var in a:vars
         call cursor(var[2],1)
-        let a:local_close = s:getClosingBracket(0)
+        let a:local_close = var[2] == a:begin ? s:getClosingBracket(1) : s:getClosingBracket(0)
         let a:closes[var[0]] = copy(a:local_close)
         call cursor(a:orig[0],a:orig[1])
         if index(keys(a:lines),var[0]) < 0
@@ -1919,6 +1934,7 @@ function! java#factorus#extractMethod(...)
     let a:best_var = ['','',0]
     let a:best_lines = []
     let [a:all,a:isos] = s:getAllRelevantLines(a:vars,a:names,a:close)
+    "return a:all
 
     redraw
     echo 'Finding best lines...'
