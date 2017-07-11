@@ -13,10 +13,34 @@ let s:class_def = '^\s*class\s*\(' . s:python_identifier . '\)\s*[(:].*'
 let s:sub_class = '^\s*class\s*\(' . s:python_identifier . '\)\s*('
 let s:strip_dir = '\(.*\/\)\=\(.*\)'
 
+" Local Functions {{{1
+" Universal Functions {{{2
+" General {{{3
 
-" Script-Defined Functions {{{1
+function! s:isBefore(x,y)
+    if a:x[0] < a:y[0] || (a:x[0] == a:y[0] && a:x[1] < a:y[1])
+        return 1
+    endif
+    return 0
+endfunction
 
-" General Functions {{{2
+function! s:contains(range,line)
+    if a:line >= a:range[0] && a:line <= a:range[1]
+        return 1
+    endif
+    return 0
+endfunction
+
+function! s:isSmallerRange(x,y)
+    if (a:x[1] - a:x[0]) < (a:y[1] - a:y[0])
+        return 1
+    endif
+    return 0
+endfunction
+
+function! s:trim(string)
+    return substitute(a:string,'\(^\s*\|\s*$\)','','g')
+endfunction
 
 function! s:merge(a,b)
     let a:i = 0
@@ -45,9 +69,23 @@ function! s:merge(a,b)
     return a:c
 endfunction
 
-function! s:trim(string)
-    return substitute(a:string,'\(^\s*\|\s*$\)','','g')
+function! s:compare(x,y)
+    if a:x[0] < a:y[0]
+        return -1
+    elseif a:x[0] > a:y[0]
+        return 1
+    else
+        if a:x[1] > a:y[1]
+            return -1
+        elseif a:x[1] < a:y[1]
+            return 1
+        else
+            return 0
+        endif
+    endif
 endfunction
+
+" File Navigation {{{3
 
 function! s:isAlone()
     let a:file = expand('%:p')
@@ -80,62 +118,6 @@ function! s:safeClose()
     endif
 endfunction
 
-
-function! s:getAdjacentTag(dir)
-    return searchpos(s:function_def,'Wnc' . a:dir)
-endfunction
-
-function! s:getClassTag()
-    let a:res = searchpos(s:class_def,'Wnbc')
-    if a:res == [0,0]
-        return a:res
-    endif
-    let a:close = s:getClosingIndent(0)
-    let a:orig = [line('.'),col('.')]
-    call cursor(a:res[0],a:res[1])
-    let a:class_close = s:getClosingIndent(1)
-    if s:isBefore(a:class_close,a:close) == 1
-        let a:res = [0,0]
-    endif
-    call cursor(a:orig[0],a:orig[1])
-    return a:res
-endfunction
-
-function! s:isBefore(x,y)
-    if a:x[0] < a:y[0] || (a:x[0] == a:y[0] && a:x[1] < a:y[1])
-        return 1
-    endif
-    return 0
-endfunction
-
-function! s:gotoTag(head)
-    let a:tag = a:head == 1 ? s:getClassTag() : s:getAdjacentTag('b') 
-    if a:tag[0] <= line('.') && a:tag != [0,0]
-        call cursor(a:tag[0],a:tag[1])
-    else
-        echo 'No tag found'
-    endif
-endfunction
-
-function! s:getClosingIndent(stack,...)
-    let a:orig = [line('.'),col('.')]
-    if a:0 > 0
-        call cursor(a:1[0],a:1[1])
-    endif
-    let a:indent = substitute(getline('.'),'^\(\s*\)[^[:space:]].*','\1','')
-    let a:l = a:stack == 1 ? len(a:indent) : len(a:indent) - 1
-    if a:l < 0
-        return [0,0]
-    endif
-    let a:indent = '^\s\{,' . a:l . '\}'
-
-    let a:res = searchpos(a:indent . '[^[:space:]]','Wn')
-    call cursor(a:orig[0],a:orig[1])
-    return a:res
-endfunction
-
-" Tag-Related Functions {{{2
-
 function! s:findTags(temp_file,search_string,append)
     let a:fout = a:append == 'yes' ? '>>' : '>'
     call system('find ' . getcwd() . g:factorus_ignore_string . '-exec grep -l "' . a:search_string . '" {} + ' . a:fout . ' ' . a:temp_file . ' 2> /dev/null')
@@ -154,8 +136,79 @@ function! s:addQuickFix(temp_file,search_string)
     let s:qf += a:res
 endfunction
 
-" Class-Related Functions {{{2
+" Utilities {{{2
 
+function! s:isQuoted(pat,state)
+    let a:temp = a:state
+    let a:mat = match(a:temp,a:pat)
+    let a:res = 1
+    while a:mat >= 0 && a:res == 1
+        let a:begin = strpart(a:temp,0,a:mat)
+        let a:quotes = len(a:begin) - len(substitute(a:begin,'["'']','','g'))
+        if a:quotes % 2 == 1
+            let a:res = 1
+        else
+            let a:res = 0
+        endif
+        let a:temp = substitute(a:temp,a:pat,'','')
+        let a:mat = match(a:temp,a:pat)
+    endwhile
+    return a:res
+endfunction
+
+" Tag Navigation {{{2
+" getAdjacentTag {{{3
+function! s:getAdjacentTag(dir)
+    return searchpos(s:function_def,'Wnc' . a:dir)
+endfunction
+
+" getClosingIndent {{{3
+function! s:getClosingIndent(stack,...)
+    let a:orig = [line('.'),col('.')]
+    if a:0 > 0
+        call cursor(a:1[0],a:1[1])
+    endif
+    let a:indent = substitute(getline('.'),'^\(\s*\)[^[:space:]].*','\1','')
+    let a:l = a:stack == 1 ? len(a:indent) : len(a:indent) - 1
+    if a:l < 0
+        return [0,0]
+    endif
+    let a:indent = '^\s\{,' . a:l . '\}'
+
+    let a:res = searchpos(a:indent . '[^[:space:]]','Wn')
+    call cursor(a:orig[0],a:orig[1])
+    return a:res
+endfunction
+
+" getClassTag {{{3
+function! s:getClassTag()
+    let a:res = searchpos(s:class_def,'Wnbc')
+    if a:res == [0,0]
+        return a:res
+    endif
+    let a:close = s:getClosingIndent(0)
+    let a:orig = [line('.'),col('.')]
+    call cursor(a:res[0],a:res[1])
+    let a:class_close = s:getClosingIndent(1)
+    if s:isBefore(a:class_close,a:close) == 1
+        let a:res = [0,0]
+    endif
+    call cursor(a:orig[0],a:orig[1])
+    return a:res
+endfunction
+
+" gotoTag {{{3
+function! s:gotoTag(head)
+    let a:tag = a:head == 1 ? s:getClassTag() : s:getAdjacentTag('b') 
+    if a:tag[0] <= line('.') && a:tag != [0,0]
+        call cursor(a:tag[0],a:tag[1])
+    else
+        echo 'No tag found'
+    endif
+endfunction
+
+" Class Hierarchy {{{2
+" getModule {{{3
 function! s:getModule(file)
     let a:git = system('git rev-parse --show-toplevel')
     let a:module = strpart(a:file,len(a:git))
@@ -163,8 +216,133 @@ function! s:getModule(file)
     return a:module
 endfunction
 
-" File-Updating Functions {{{2
+" Declarations {{{2
+" getArgs {{{3
+function! s:getArgs() abort
+    let a:prev = [line('.'),col('.')]
+    call s:gotoTag(0)
+    let a:oparen = search('(','Wn')
+    let a:cparen = search(')','Wn')
+    
+    let a:dec = join(getline(a:oparen,a:cparen))
+    let a:dec = substitute(a:dec,'.*(\(.*\)).*','\1','')
+    if a:dec == ''
+        return []
+    endif
+    let a:args = split(a:dec,',')
+    call map(a:args,{n,val -> substitute(val,'=.*$','','')})
+    call filter(a:args,'match(v:val,"[''\"]") < 0')
+    call map(a:args,{n,val -> substitute(val,'\(^\s*\|\s*$\)','','g')})
+    call map(a:args,{n,val -> [val,line('.')]})
 
+    call cursor(a:prev[0],a:prev[1])
+    return a:args
+endfunction
+
+" getLocalDecs {{{3
+function! s:getLocalDecs(close)
+    let a:orig = [line('.'),col('.')]
+    let a:here = [line('.'),col('.')]
+    let a:search = '.*\<\(' . s:python_identifier . '\)\>\s*=.*'
+    let a:next = searchpos(a:search,'Wn')
+
+    let a:vars = s:getArgs()
+    let a:names = map(deepcopy(a:vars),{n,val -> val[0]})
+    while s:isBefore(a:next,a:close)
+        if a:next == [0,0]
+            break
+        endif
+        
+        let a:name = substitute(getline(a:next[0]),a:search,'\1','')
+        call add(a:vars,[a:name,a:next[0]])
+        call add(a:names,a:name)
+
+        call cursor(a:next[0],a:next[1])
+        let a:next = searchpos(a:search,'Wn')
+    endwhile
+    call cursor(a:orig[0],a:orig[1])
+
+    let i = 0
+    while i < len(a:names)
+        let a:ind = index(a:names,a:names[i],i+1)
+        if a:ind >= 0
+            call remove(a:names,a:ind)
+            call remove(a:vars,a:ind)
+            continue
+        endif
+        let i += 1
+    endwhile
+
+    return a:vars
+endfunction
+
+" References {{{2
+" getNextReference {{{3
+function! s:getNextReference(var,type,...)
+    if a:type == 'right'
+        let a:search = '^\s*\(' . s:python_identifier . '\)\s*[(.=].*\<\(' . a:var . '\)\>.*$'
+        let a:index = '\1'
+        let a:alt_index = '\2'
+    elseif a:type == 'left'
+        let a:search = '^\s*\<\(' . a:var . '\)\>\s*[-+*/]\=[.=][^=].*$'
+        let a:index = '\1'
+        let a:alt_index = '\1'
+    elseif a:type == 'cond'
+        let a:search = '^\s*\(for\|while\|if\|elif\).*\<\(' . a:var . '\)\>.*:'
+        let a:index = '\1'
+        let a:alt_index = '\2'
+    elseif a:type == 'return'
+        let a:search = '^\s*\<return\>.*\<\(' . a:var . '\)\>.*'
+        let a:index = '\1'
+        let a:alt_index = '\1'
+    endif
+
+    let a:line = searchpos(a:search,'Wn')
+
+    if a:line[0] > line('.')
+        let a:state = getline(a:line[0])
+        let a:loc = substitute(a:state,a:search,a:index,'')
+        if a:0 > 0 && a:1 == 1
+            let a:name = substitute(a:state,a:search,a:alt_index,'')
+            return [a:loc,a:line,a:name]
+        endif
+        return [a:loc,a:line]
+    endif
+        
+    return (a:0 > 0 && a:1 == 1) ? ['none',[0,0],'none'] : ['none',[0,0]]
+endfunction
+
+" getNextUse {{{3
+function! s:getNextUse(var,...)
+    let a:right = s:getNextReference(a:var,'right',a:0)
+    let a:left = s:getNextReference(a:var,'left',a:0)
+    let a:cond = s:getNextReference(a:var,'cond',a:0)
+    let a:return = s:getNextReference(a:var,'return',a:0)
+
+    let a:min = [a:right[0],copy(a:right[1]),'right']
+    let a:min_name = a:0 > 0 ? a:right[2] : ''
+
+    let a:poss = [a:right,a:left,a:cond,a:return]
+    let a:idents = ['right','left','cond','return']
+    for i in range(4)
+        let temp = a:poss[i]
+        if temp[1] != [0,0] && (s:isBefore(temp[1],a:min[1]) == 1 || a:min[1] == [0,0])
+            let a:min = [temp[0],copy(temp[1]),a:idents[i]]
+            if a:0 > 0
+                let a:min_name = temp[2]
+            endif
+        endif
+    endfor
+
+    if a:0 > 0
+        call add(a:min,a:min_name)
+    endif
+
+    return a:min
+endfunction
+
+" File-Updating {{{2
+" updateFile {{{3
 function! s:updateFile(old_name,new_name,is_method,is_local,is_global)
     let a:orig = line('.')
 
@@ -204,81 +382,102 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_global)
     silent write
 endfunction
 
-" Extraction {{{2
+" Renaming {{{2
+" renameArg {{{3
+function! s:renameArg(new_name)
+    let a:var = expand('<cword>')
+    call s:updateFile(a:var,a:new_name,0,1,0)
 
-function! s:getArgs() abort
-    let a:prev = [line('.'),col('.')]
+    echo 'Re-named ' . a:var . ' to ' . a:new_name
+    return a:var
+endfunction
+
+" renameClass {{{3
+function! s:renameClass(new_name) abort
+    let a:class_line = s:getClassTag()[0]
+    let a:class_name = substitute(getline(a:class_line),s:class_def,'\1','')
+    if a:class_name == a:new_name
+        throw 'Factorus:Duplicate'
+    endif    
+
+    let a:module_name = s:getModule(expand('%:p'))
+
+    let a:temp_file = '.Factorus' . a:class_name
+    let a:module_name = substitute(a:module_name,'\.','\\.','g')
+    let a:module_name = substitute(a:module_name,'\(.*\)\(\\\..*\)','\\(\1\\)\\{0,1\\}\2','')
+    call s:findTags(a:temp_file,'\<' . a:class_name . '\>','no')
+    call s:addQuickFix(a:temp_file,'\<' . a:class_name . '\>')
+
+    call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:class_name . '\>/' . a:new_name . '/g"') 
+    call system('rm -rf ' . a:temp_file)
+    silent edit
+
+    echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
+    return a:class_name
+endfunction
+
+" renameMethod {{{3
+function! s:renameMethod(new_name)
     call s:gotoTag(0)
-    let a:oparen = search('(','Wn')
-    let a:cparen = search(')','Wn')
-    
-    let a:dec = join(getline(a:oparen,a:cparen))
-    let a:dec = substitute(a:dec,'.*(\(.*\)).*','\1','')
-    if a:dec == ''
-        return []
+    let a:class = s:getClassTag()
+
+    let a:method_name = substitute(getline('.'),s:function_def,'\1','')
+    if a:method_name == a:new_name
+        throw 'Factorus:Duplicate'
     endif
-    let a:args = split(a:dec,',')
-    call map(a:args,{n,val -> substitute(val,'=.*$','','')})
-    call filter(a:args,'match(v:val,"[''\"]") < 0')
-    call map(a:args,{n,val -> substitute(val,'\(^\s*\|\s*$\)','','g')})
-    call map(a:args,{n,val -> [val,line('.')]})
 
-    call cursor(a:prev[0],a:prev[1])
-    return a:args
+    let a:is_global = a:class == [0,0] ? 1 : 0
+    let a:class_name = a:class == [0,0] ? '' : substitute(getline(a:class[0]),s:class_def,'\1','')
+
+    call s:updateFile(a:method_name,a:new_name,1,0,a:is_global)
+
+    let a:keyword = a:is_global == 1 ? a:method_name : '\(' . a:class_name . '\|' . a:method_name . '\)'
+    let a:period = a:is_global == 1 ? '\([^.]\)\{0,1\}' : '\(\.\)'
+
+    let a:file_name = expand('%:p')
+    let a:temp_file = '.Factorus' . a:method_name
+    call s:findTags(a:temp_file,'\<' . a:method_name . '\>','no')
+    call s:addQuickFix(a:temp_file,'\<' . a:method_name . '\>')
+    call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:period . '\<' . a:method_name . '\>/\1' . a:new_name . '/g"')
+
+    call s:findTags(a:temp_file,'\<' . a:method_name . '\>','no')
+    for file in readfile(a:temp_file)
+        execute 'silent tabedit ' . file
+        let a:find =  searchpos('from.*import\_[^:)]\{-\}\<' . a:keyword. '\>','Wc')
+        let a:end = searchpos('\<' . a:method_name . '\>','Wne')
+        while  a:find != [0,0]
+            call add(s:qf,{'filename' : expand('%:p'), 'lnum' : line('.'), 'text' : s:trim(join(getline(a:find[0],a:end[0])))})
+            execute 'silent ' . a:find[0] . ',' . a:end[0] . 's/\<' . a:method_name . '\>/' . a:new_name . '/e'
+            let a:find = searchpos('from.*import\_[^:)]\{-\}\<' . a:keyword . '\>','W')
+            let a:end = searchpos('\<' . a:method_name . '\>','Wne')
+        endwhile
+        silent write
+        call s:safeClose()
+    endfor
+    call system('rm -rf ' . a:temp_file)
+
+    redraw
+    let a:keyword = a:is_global == 1 ? ' global' : ''
+    echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
+    return a:method_name
 endfunction
 
-function! s:getLocalDecs(close)
-    let a:orig = [line('.'),col('.')]
-    let a:here = [line('.'),col('.')]
-    let a:search = '.*\<\(' . s:python_identifier . '\)\>\s*=.*'
-    let a:next = searchpos(a:search,'Wn')
-
-    let a:vars = s:getArgs()
-    let a:names = map(deepcopy(a:vars),{n,val -> val[0]})
-    while s:isBefore(a:next,a:close)
-        if a:next == [0,0]
-            break
+" Extraction {{{2
+" getContainingBlock {{{3
+function! s:getContainingBlock(line,ranges,exclude)
+    for range in a:ranges
+        if range[0] > a:line
+            return [a:line,a:line]
         endif
-        
-        let a:name = substitute(getline(a:next[0]),a:search,'\1','')
-        call add(a:vars,[a:name,a:next[0]])
-        call add(a:names,a:name)
 
-        call cursor(a:next[0],a:next[1])
-        let a:next = searchpos(a:search,'Wn')
-    endwhile
-    call cursor(a:orig[0],a:orig[1])
-
-    let i = 0
-    while i < len(a:names)
-        let a:ind = index(a:names,a:names[i],i+1)
-        if a:ind >= 0
-            call remove(a:names,a:ind)
-            call remove(a:vars,a:ind)
-            continue
+        if range[1] >= a:line && range[0] > a:exclude[0]
+            return range
         endif
-        let i += 1
-    endwhile
-
-    return a:vars
+    endfor
+    return [a:line,a:line]
 endfunction
 
-function! s:compare(x,y)
-    if a:x[0] < a:y[0]
-        return -1
-    elseif a:x[0] > a:y[0]
-        return 1
-    else
-        if a:x[1] > a:y[1]
-            return -1
-        elseif a:x[1] < a:y[1]
-            return 1
-        else
-            return 0
-        endif
-    endif
-endfunction
-
+" getAllBlocks {{{3
 function! s:getAllBlocks(close)
     let a:if = '\<if\>.*:'
     let a:for = '\<for\>.*:'
@@ -333,86 +532,7 @@ function! s:getAllBlocks(close)
     return uniq(sort(a:blocks,'s:compare'))
 endfunction
 
-function! s:getNextReference(var,type,...)
-    if a:type == 'right'
-        let a:search = '^\s*\(' . s:python_identifier . '\)\s*[(.=].*\<\(' . a:var . '\)\>.*$'
-        let a:index = '\1'
-        let a:alt_index = '\2'
-    elseif a:type == 'left'
-        let a:search = '^\s*\<\(' . a:var . '\)\>\s*[-+*/]\=[.=][^=].*$'
-        let a:index = '\1'
-        let a:alt_index = '\1'
-    elseif a:type == 'cond'
-        let a:search = '^\s*\(for\|while\|if\|elif\).*\<\(' . a:var . '\)\>.*:'
-        let a:index = '\1'
-        let a:alt_index = '\2'
-    elseif a:type == 'return'
-        let a:search = '^\s*\<return\>.*\<\(' . a:var . '\)\>.*'
-        let a:index = '\1'
-        let a:alt_index = '\1'
-    endif
-
-    let a:line = searchpos(a:search,'Wn')
-
-    if a:line[0] > line('.')
-        let a:state = getline(a:line[0])
-        let a:loc = substitute(a:state,a:search,a:index,'')
-        if a:0 > 0 && a:1 == 1
-            let a:name = substitute(a:state,a:search,a:alt_index,'')
-            return [a:loc,a:line,a:name]
-        endif
-        return [a:loc,a:line]
-    endif
-        
-    return (a:0 > 0 && a:1 == 1) ? ['none',[0,0],'none'] : ['none',[0,0]]
-endfunction
-
-function! s:getNextUse(var,...)
-    let a:right = s:getNextReference(a:var,'right',a:0)
-    let a:left = s:getNextReference(a:var,'left',a:0)
-    let a:cond = s:getNextReference(a:var,'cond',a:0)
-    let a:return = s:getNextReference(a:var,'return',a:0)
-
-    let a:min = [a:right[0],copy(a:right[1]),'right']
-    let a:min_name = a:0 > 0 ? a:right[2] : ''
-
-    let a:poss = [a:right,a:left,a:cond,a:return]
-    let a:idents = ['right','left','cond','return']
-    for i in range(4)
-        let temp = a:poss[i]
-        if temp[1] != [0,0] && (s:isBefore(temp[1],a:min[1]) == 1 || a:min[1] == [0,0])
-            let a:min = [temp[0],copy(temp[1]),a:idents[i]]
-            if a:0 > 0
-                let a:min_name = temp[2]
-            endif
-        endif
-    endfor
-
-    if a:0 > 0
-        call add(a:min,a:min_name)
-    endif
-
-    return a:min
-endfunction
-
-function! s:isQuoted(pat,state)
-    let a:temp = a:state
-    let a:mat = match(a:temp,a:pat)
-    let a:res = 1
-    while a:mat >= 0 && a:res == 1
-        let a:begin = strpart(a:temp,0,a:mat)
-        let a:quotes = len(a:begin) - len(substitute(a:begin,'["'']','','g'))
-        if a:quotes % 2 == 1
-            let a:res = 1
-        else
-            let a:res = 0
-        endif
-        let a:temp = substitute(a:temp,a:pat,'','')
-        let a:mat = match(a:temp,a:pat)
-    endwhile
-    return a:res
-endfunction
-
+" getAllRelevantLines {{{3
 function! s:getAllRelevantLines(vars,names,close)
     let a:orig = [line('.'),col('.')]
     let a:begin = s:getAdjacentTag('b')
@@ -474,207 +594,7 @@ function! s:getAllRelevantLines(vars,names,close)
     return [a:lines,a:isos]
 endfunction
 
-" Global Functions {{{1
-
-" Insertion Functions {{{2
-
-function! python#factorus#addParam(param_name,...)
-    if a:0 > 0 && a:000[-1] == 'factorusRollback'
-        call s:gotoTag(0)
-        execute 'silent s/,\=\s\=\<' . a:param_name . '\>[^)]*)/)/e'
-        execute 'silent s/(\<' . a:param_name . '\>,\=\s\=/(/e'
-        silent write
-        return 'Removed new parameter ' . a:param_name
-    endif
-
-    let a:orig = [line('.'),col('.')]
-    call s:gotoTag(0)
-
-    if a:0 == 0
-        let a:next = searchpos('(','Wn')
-        let a:line = substitute(getline(a:next[0]), '(', '(' . a:param_name . ', ', '')
-    else
-        let a:next = searchpos(')','Wn')
-        let a:line = substitute(getline(a:next[0]), ')', ', ' . a:param_name . '=' . a:1 . ')', '')
-    endif
-
-    execute 'silent ' .  a:next[0] . 'd'
-    call append(a:next[0] - 1,a:line)
-
-    silent write
-    silent edit
-    call cursor(a:orig[0],a:orig[1])
-
-    echo 'Added parameter ' . a:param_name . ' to method'
-    return a:param_name
-endfunction
-
-" Renaming Functions {{{2
-
-function! s:renameArg(new_name)
-    let a:var = expand('<cword>')
-    call s:updateFile(a:var,a:new_name,0,1,0)
-
-    echo 'Re-named ' . a:var . ' to ' . a:new_name
-    return a:var
-endfunction
-
-function! s:renameClass(new_name) abort
-    let a:class_line = s:getClassTag()[0]
-    let a:class_name = substitute(getline(a:class_line),s:class_def,'\1','')
-    if a:class_name == a:new_name
-        throw 'Factorus:Duplicate'
-    endif    
-
-    let a:module_name = s:getModule(expand('%:p'))
-
-    let a:temp_file = '.Factorus' . a:class_name
-    let a:module_name = substitute(a:module_name,'\.','\\.','g')
-    let a:module_name = substitute(a:module_name,'\(.*\)\(\\\..*\)','\\(\1\\)\\{0,1\\}\2','')
-    call s:findTags(a:temp_file,'\<' . a:class_name . '\>','no')
-    call s:addQuickFix(a:temp_file,'\<' . a:class_name . '\>')
-
-    call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:class_name . '\>/' . a:new_name . '/g"') 
-    call system('rm -rf ' . a:temp_file
-    silent edit
-
-    echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
-    return a:class_name
-endfunction
-
-function! s:renameMethod(new_name)
-    call s:gotoTag(0)
-    let a:class = s:getClassTag()
-
-    let a:method_name = substitute(getline('.'),s:function_def,'\1','')
-    if a:method_name == a:new_name
-        throw 'Factorus:Duplicate'
-    endif
-
-    let a:is_global = a:class == [0,0] ? 1 : 0
-    let a:class_name = a:class == [0,0] ? '' : substitute(getline(a:class[0]),s:class_def,'\1','')
-
-    call s:updateFile(a:method_name,a:new_name,1,0,a:is_global)
-
-    let a:keyword = a:is_global == 1 ? a:method_name : '\(' . a:class_name . '\|' . a:method_name . '\)'
-    let a:period = a:is_global == 1 ? '\([^.]\)\{0,1\}' : '\(\.\)'
-
-    let a:file_name = expand('%:p')
-    let a:temp_file = '.Factorus' . a:method_name
-    call s:findTags(a:temp_file,'\<' . a:method_name . '\>','no')
-    call s:addQuickFix(a:temp_file,'\<' . a:method_name . '\>')
-    call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:period . '\<' . a:method_name . '\>/\1' . a:new_name . '/g"')
-
-    call s:findTags(a:temp_file,'\<' . a:method_name . '\>','no')
-    for file in readfile(a:temp_file)
-        execute 'silent tabedit ' . file
-        let a:find =  searchpos('from.*import\_[^:)]\{-\}\<' . a:keyword. '\>','Wc')
-        let a:end = searchpos('\<' . a:method_name . '\>','Wne')
-        while  a:find != [0,0]
-            call add(s:qf,{'filename' : expand('%:p'), 'lnum' : line('.'), 'text' : s:trim(join(getline(a:find[0],a:end[0])))})
-            execute 'silent ' . a:find[0] . ',' . a:end[0] . 's/\<' . a:method_name . '\>/' . a:new_name . '/e'
-            let a:find = searchpos('from.*import\_[^:)]\{-\}\<' . a:keyword . '\>','W')
-            let a:end = searchpos('\<' . a:method_name . '\>','Wne')
-        endwhile
-        silent write
-        call s:safeClose()
-    endfor
-    call system('rm -rf ' . a:temp_file)
-
-    redraw
-    let a:keyword = a:is_global == 1 ? ' global' : ''
-    echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
-    return a:method_name
-endfunction
-
-function! python#factorus#renameSomething(new_name,type,...)
-    let s:open_bufs = []
-    let s:qf = []
-
-    let a:prev_dir = getcwd()
-    let a:buf_nrs = []
-    for buf in getbufinfo()
-        call add(s:open_bufs,buf['name'])
-        call add(a:buf_nrs,buf['bufnr'])
-    endfor
-    let a:curr_buf = a:buf_nrs[index(s:open_bufs,expand('%:p'))]
-    let a:buf_setting = &switchbuf
-
-    execute 'silent cd ' . expand('%:p:h')
-    let a:project_dir = system('git rev-parse --show-toplevel')
-    execute 'silent cd ' a:project_dir
-
-    let a:res = ''
-    try
-        let Rename = function('s:rename' . a:type)
-        let a:res = Rename(a:new_name)
-        execute 'silent cd ' a:prev_dir
-        if a:type != 'Class'
-            let &switchbuf = 'useopen,usetab'
-            execute 'silent sbuffer ' . a:curr_buf
-            let &switchbuf = a:buf_setting
-        endif
-                                                   
-        call setqflist(s:qf)                              
-        return a:res
-    catch /.*/
-        call system('rm -rf .Factorus*')
-        execute 'silent cd ' a:prev_dir
-        if a:type != 'Class'
-            let &switchbuf = 'useopen,usetab'
-            execute 'silent sbuffer ' . a:curr_buf
-            let &switchbuf = a:buf_setting
-        endif
-        throw v:exception
-    endtry
-endfunction
-
-" Extraction Functions {{{2
-
-function! s:rollbackExtraction()
-    let a:open = search('def ' . g:factorus_method_name . '(')
-    let a:close = s:getClosingIndent(1)[0] - 1
-
-    if match(getline(a:open - 1),'^\s*$') >= 0
-        let a:open -= 1
-    endif
-    if match(getline(a:close + 1),'^\s*$') >= 0
-        let a:close += 1
-    endif
-
-    execute 'silent ' . a:open . ',' . a:close . 'delete'
-
-    call search('\<' . g:factorus_method_name . '\>(')
-    call s:gotoTag(0)
-    let a:open = line('.')
-    let a:close = s:getClosingIndent(1)[0] - 1
-
-    execute 'silent ' . a:open . ',' . a:close . 'delete'
-    call append(line('.')-1,g:factorus_history['old'][1])
-    call cursor(a:open,1)
-    silent write
-endfunction
-
-function! s:getContainingBlock(line,ranges,exclude)
-    for range in a:ranges
-        if range[0] > a:line
-            return [a:line,a:line]
-        endif
-
-        if range[1] >= a:line && range[0] > a:exclude[0]
-            return range
-        endif
-    endfor
-    return [a:line,a:line]
-endfunction
-
-function! s:contains(range,line)
-    if a:line >= a:range[0] && a:line <= a:range[1]
-        return 1
-    endif
-    return 0
-endfunction
-
+" isIsolatedBlock {{{3
 function! s:isIsolatedBlock(block,var,rels,close)
     let a:orig = [line('.'),col('.')]
     call cursor(a:block[0],1)
@@ -710,6 +630,7 @@ function! s:isIsolatedBlock(block,var,rels,close)
     return a:res
 endfunction
 
+" getIsolatedLines {{{3
 function! s:getIsolatedLines(var,names,rels,blocks,close)
     let a:refs = a:rels[a:var[0]]
 
@@ -783,6 +704,8 @@ function! s:getIsolatedLines(var,names,rels,blocks,close)
     return a:usable
 endfunction
 
+" Method-Building {{{2
+" getNewArgs {{{3
 function! s:getNewArgs(lines,vars,rels,var)
     let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
     let a:search = '\(' . join(a:names,'\|') . '\)'
@@ -809,38 +732,7 @@ function! s:getNewArgs(lines,vars,rels,var)
     return a:args
 endfunction
 
-function! s:buildArgs(args)
-    let a:defs = map(deepcopy(a:args),{n,arg -> arg[0]})
-    return join(a:defs,',')
-endfunction
-
-function! s:formatMethod(def,body,return,lines,spaces)
-    let a:paren = stridx(a:def[0],'(')
-    let a:def_space = repeat(' ',a:paren+1)
-    call map(a:def,{n,line -> a:spaces[0] . (n > 0 ? a:def_space : '') . substitute(line,'^\s*\(.*\)','\1','')})
-
-    let a:dspaces = join(a:spaces,'')
-    let a:i = 0
-
-    call map(a:body,{n,line -> substitute(line,'^\s*\(.*\)','\1','')})
-    let a:next_closes = []
-    while a:i < len(a:lines)
-        if len(a:next_closes) > 0 && s:isBefore(a:next_closes[-1],[a:lines[a:i],1])
-            call remove(a:next_closes,len(a:next_closes)-1)
-        endif
-
-        let a:tspaces = a:dspaces . repeat(a:spaces[1],len(a:next_closes))
-        let a:body[a:i] = a:tspaces . a:body[a:i]
-
-        if match(a:body[a:i],':\s*$') >= 0
-            call add(a:next_closes,s:getClosingIndent(1,[a:lines[a:i],1]))
-        endif
-
-        let a:i += 1
-    endwhile
-    call add(a:body,a:dspaces . substitute(a:return,'^\s*\(.*\)','\1',''))
-endfunction
-
+" wrapDecs {{{3
 function! s:wrapDecs(var,lines,vars,rels,isos,args,close)
     let a:head = s:getAdjacentTag('b')
     let a:orig = [line('.'),col('.')]
@@ -903,8 +795,42 @@ function! s:wrapDecs(var,lines,vars,rels,isos,args,close)
     return [a:fin,a:fin_args]
 endfunction
 
-function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
+" buildArgs {{{3
+function! s:buildArgs(args)
+    let a:defs = map(deepcopy(a:args),{n,arg -> arg[0]})
+    return join(a:defs,',')
+endfunction
 
+" formatMethod {{{3
+function! s:formatMethod(def,body,return,lines,spaces)
+    let a:paren = stridx(a:def[0],'(')
+    let a:def_space = repeat(' ',a:paren+1)
+    call map(a:def,{n,line -> a:spaces[0] . (n > 0 ? a:def_space : '') . substitute(line,'^\s*\(.*\)','\1','')})
+
+    let a:dspaces = join(a:spaces,'')
+    let a:i = 0
+
+    call map(a:body,{n,line -> substitute(line,'^\s*\(.*\)','\1','')})
+    let a:next_closes = []
+    while a:i < len(a:lines)
+        if len(a:next_closes) > 0 && s:isBefore(a:next_closes[-1],[a:lines[a:i],1])
+            call remove(a:next_closes,len(a:next_closes)-1)
+        endif
+
+        let a:tspaces = a:dspaces . repeat(a:spaces[1],len(a:next_closes))
+        let a:body[a:i] = a:tspaces . a:body[a:i]
+
+        if match(a:body[a:i],':\s*$') >= 0
+            call add(a:next_closes,s:getClosingIndent(1,[a:lines[a:i],1]))
+        endif
+
+        let a:i += 1
+    endwhile
+    call add(a:body,a:dspaces . substitute(a:return,'^\s*\(.*\)','\1',''))
+endfunction
+
+" buildNewMethod {{{3
+function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
     call cursor(a:lines[-1],1)
     let a:return = ''
     let a:call = ''
@@ -954,7 +880,6 @@ function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
     endfor
     let a:body = map(copy(a:lines),{n,line -> getline(line)})
 
-
     let a:arg_string = s:buildArgs(a:args)
     let a:build_string = 'def ' .  g:factorus_method_name . '(' . a:arg_string . '):'
     let a:temp = join(reverse(split(a:build_string, '.\zs')), '')
@@ -988,6 +913,109 @@ function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
     return [a:final,a:rep]
 endfunction
 
+" Rollback {{{2
+" rollbackExtraction {{{3
+function! s:rollbackExtraction()
+    let a:open = search('def ' . g:factorus_method_name . '(')
+    let a:close = s:getClosingIndent(1)[0] - 1
+
+    if match(getline(a:open - 1),'^\s*$') >= 0
+        let a:open -= 1
+    endif
+    if match(getline(a:close + 1),'^\s*$') >= 0
+        let a:close += 1
+    endif
+
+    execute 'silent ' . a:open . ',' . a:close . 'delete'
+
+    call search('\<' . g:factorus_method_name . '\>(')
+    call s:gotoTag(0)
+    let a:open = line('.')
+    let a:close = s:getClosingIndent(1)[0] - 1
+
+    execute 'silent ' . a:open . ',' . a:close . 'delete'
+    call append(line('.')-1,g:factorus_history['old'][1])
+    call cursor(a:open,1)
+    silent write
+endfunction
+
+" Global Functions {{{1
+" addParam {{{2
+function! python#factorus#addParam(param_name,...)
+    if a:0 > 0 && a:000[-1] == 'factorusRollback'
+        call s:gotoTag(0)
+        execute 'silent s/,\=\s\=\<' . a:param_name . '\>[^)]*)/)/e'
+        execute 'silent s/(\<' . a:param_name . '\>,\=\s\=/(/e'
+        silent write
+        return 'Removed new parameter ' . a:param_name
+    endif
+
+    let a:orig = [line('.'),col('.')]
+    call s:gotoTag(0)
+
+    if a:0 == 0
+        let a:next = searchpos('(','Wn')
+        let a:line = substitute(getline(a:next[0]), '(', '(' . a:param_name . ', ', '')
+    else
+        let a:next = searchpos(')','Wn')
+        let a:line = substitute(getline(a:next[0]), ')', ', ' . a:param_name . '=' . a:1 . ')', '')
+    endif
+
+    execute 'silent ' .  a:next[0] . 'd'
+    call append(a:next[0] - 1,a:line)
+
+    silent write
+    silent edit
+    call cursor(a:orig[0],a:orig[1])
+
+    echo 'Added parameter ' . a:param_name . ' to method'
+    return a:param_name
+endfunction
+
+" renameSomething {{{2
+function! python#factorus#renameSomething(new_name,type,...)
+    let s:open_bufs = []
+    let s:qf = []
+
+    let a:prev_dir = getcwd()
+    let a:buf_nrs = []
+    for buf in getbufinfo()
+        call add(s:open_bufs,buf['name'])
+        call add(a:buf_nrs,buf['bufnr'])
+    endfor
+    let a:curr_buf = a:buf_nrs[index(s:open_bufs,expand('%:p'))]
+    let a:buf_setting = &switchbuf
+
+    execute 'silent cd ' . expand('%:p:h')
+    let a:project_dir = system('git rev-parse --show-toplevel')
+    execute 'silent cd ' a:project_dir
+
+    let a:res = ''
+    try
+        let Rename = function('s:rename' . a:type)
+        let a:res = Rename(a:new_name)
+        execute 'silent cd ' a:prev_dir
+        if a:type != 'Class'
+            let &switchbuf = 'useopen,usetab'
+            execute 'silent sbuffer ' . a:curr_buf
+            let &switchbuf = a:buf_setting
+        endif
+                                                   
+        call setqflist(s:qf)                              
+        return a:res
+    catch /.*/
+        call system('rm -rf .Factorus*')
+        execute 'silent cd ' a:prev_dir
+        if a:type != 'Class'
+            let &switchbuf = 'useopen,usetab'
+            execute 'silent sbuffer ' . a:curr_buf
+            let &switchbuf = a:buf_setting
+        endif
+        throw v:exception
+    endtry
+endfunction
+
+" extractMethod {{{2
 function! python#factorus#extractMethod(...)
     if a:0 > 0 && a:1 == 'factorusRollback'
         call s:rollbackExtraction()

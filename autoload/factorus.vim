@@ -4,29 +4,38 @@ scriptencoding utf-8
 
 " Initialization {{{1
 
-" Dictionary of filetypes to languages for messaging
-let s:langs = { 'java'  : 'Java',
-            \   'python'    : 'Python',
-            \   'cpp'   : 'C++',
-            \   'ruby'    : 'Ruby',
-            \   'cs'    : 'C#',
-            \   'c'     : 'C',
-            \   'vim'   : 'Vimscript'
-            \ }
-
-let s:errors = {'Invalid' : 'Invalid expression under cursor.',
-            \   'Duplicate' : 'New name is same as old name.'
-            \  }
-
 if exists(':Factorus') == 0
     runtime plugin/factorus.vim
 endif
+let g:loaded_factorus = 1
 
+" Dictionaries {{{1
+" Language Dictionary {{{2
+let s:langs = { 'java'      : 'Java',
+            \   'python'    : 'Python',
+            \   'cpp'       : 'C++',
+            \   'ruby'      : 'Ruby',
+            \   'cs'        : 'C#',
+            \   'c'         : 'C',
+            \   'vim'       : 'Vimscript'
+            \ }
+
+" Error Dictionary {{{2
+let s:errors = {'Invalid'       : 'Invalid expression under cursor.',
+            \   'Duplicate'     : 'New name is same as old name.',
+            \   'NoLines'       : 'Nothing to extract.',
+            \   'EncapStatic'   : 'Cannot encapsulate a static variable.',
+            \   'EncapLocal'    : 'Cannot encapsulate a local variable.'
+            \  }
+
+" Commands {{{1
+" factorus#command {{{2
 function! factorus#command(func,...)
     let a:ext = &filetype
     let [a:res,a:err] = ['','']
     let a:file = expand('%:p')
 
+    let a:pos = [line('.'),col('.')]
     try
         let Func = function(a:ext . '#factorus#' . a:func,a:000)
         let a:res = Func()
@@ -47,20 +56,21 @@ function! factorus#command(func,...)
         if a:custom >= 0
             let a:err = 'Factorus: ' . s:errors[split(v:exception,':')[1]]
         else
-            let a:err = v:exception
+            let a:err = 'Factorus: ' . v:exception
         endif
     catch /.*/
-        let a:err = 'Factorus: an unexpected error has occurred: ' . v:exception . ', at ' . v:throwpoint
+        let a:err = 'An unexpected error has occurred: ' . v:exception . ', at ' . v:throwpoint
     endtry
 
     redraw
     if a:err != ''
         echo a:err
     endif
-    let g:factorus_history = {'file' : a:file, 'function' : a:func, 'pos' : [line('.'),col('.')], 'args' : a:000, 'old' : a:res}
+    let g:factorus_history = {'file' : a:file, 'function' : a:func, 'pos' : copy(a:pos), 'args' : a:000, 'old' : a:res}
     return a:res
 endfunction
 
+" factorus#rollback {{{2
 function! factorus#rollback()
     if !exists('g:factorus_history') || len(g:factorus_history['old']) == 0
         echo 'Nothing to roll back.'
@@ -76,15 +86,16 @@ function! factorus#rollback()
 
     let a:func = g:factorus_history['function']
     let a:old = g:factorus_history['old']
+
     if a:func == 'addParam'
         let a:echo = factorus#command('addParam',a:old,a:old,'factorusRollback')
     elseif a:func == 'renameSomething'
-        let g:factorus_history['old'] = 0
         call factorus#command('renameSomething',a:old,g:factorus_history['args'][-1],'factorusRollback')
         let a:echo = 'Rolled back renaming of ' . substitute(g:factorus_history['args'][-2],'\(.\)\(.*\)','\L\1\E\2','') . ' ' . a:old
     else
         let a:echo = factorus#command(a:func,'factorusRollback')
     endif
+    let g:factorus_history['old'] = ''
 
     if a:curr != g:factorus_history['file'] && (g:factorus_history['function'] != 'renameSomething' || g:factorus_history['args'][-2] != 'Class')
         if winnr("$") == 1 && tabpagenr("$") > 1 && tabpagenr() > 1 && tabpagenr() < tabpagenr("$")

@@ -3,26 +3,29 @@
 " Description: Vim plugin for automated refactoring
 " =============================================================================
 
-function! s:init(var,val)
+" Helper Functions {{{1
+
+let s:opts = {
+            \   'version'               : 1.875,
+            \   'project_dir'           : '',
+            \   'min_extracted_lines'   : 2,
+            \   'method_name'           : 'newFactorusMethod',
+            \   'method_threshold'      : 0.9,
+            \   'extract_heuristic'     : 'longest',
+            \   'split_lines'           : 1,
+            \   'line_length'           : 125,
+            \   'show_changes'          : 0
+            \ }
+
+function! s:init_var(var,val)
     if !exists('g:factorus_' . a:var)
         execute 'let g:factorus_' . a:var . ' = ' . string(a:val)
     endif
 endfunction
 
 function! s:init_vars()
-    let a:vars = [
-        \ [ 'project_dir' , '' ],
-        \ [ 'min_extracted_lines' , 2 ],
-        \ [ 'method_name' , 'newFactorusMethod' ],
-        \ [ 'method_threshold' , 0.9 ],
-        \ [ 'extract_heuristic' , 'longest' ],
-        \ [ 'split_lines' , 1 ],
-        \ [ 'line_length' , 125 ],
-        \ [ 'show_changes' , 0 ]
-    \ ]
-
-    for [var,val] in a:vars
-        call s:init(var,val)
+    for var in keys(s:opts)
+        call s:init_var(var,s:opts[var])
     endfor
 
     let a:ignore_defaults = ['.Factorus*', 'tags', 'cscope.out', '.*.sw*', '*.pyc']
@@ -52,7 +55,23 @@ function! s:init_vars()
     endfor
     let g:factorus_ignore_string = substitute(g:factorus_ignore_string,'\/\/','/','g')
 endfunction
+
+" Initialization {{{1
+
+if &cp || exists('g:loaded_factorus')
+    finish
+endif
+
+if v:version < 700
+    echohl WarningMsg
+    echomsg 'Factorus: Vim version is too old, please upgrade to 7.0 or later.'
+    echohl None
+    finish
+endif
+
 call s:init_vars()
+
+" Commands {{{1
 
 command! -nargs=0 FExtractMethod    call factorus#command('extractMethod')
 
@@ -65,3 +84,6 @@ command! -nargs=0 FEncapsulate      call factorus#command('encapsulateField')
 command! -nargs=+ FAddParam         call factorus#command('addParam', <f-args>)  
 
 command! -nargs=0 FRollback         call factorus#rollback()
+
+" Modeline {{{1
+" vim: ts=8 sw=4 sts=4 et foldenable foldmethod=marker foldcolumn=1

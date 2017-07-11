@@ -2,6 +2,10 @@
 GENERAL
 =======
 
+Bugs
+----
+- FRollback doesn't work properly if quickfix file gets opened (FIXED 07-11-2017)
+
 Tasks
 -----
 - Create TestChanges command to validate code changes (ant/maven builds)
@@ -12,6 +16,7 @@ Tasks
 - Addendum to above: provide list of all changes NOT made after a rename (did we miss anything)
 - Manual extraction (methods, types, etc.)
 - Find repeated/duplicate code
+- Add default argument to function with added parameter
 
 ====
 JAVA
@@ -24,6 +29,7 @@ Bugs
 - End message doesn't display when running FRollback from other tab (FIXED 07-10-2017)
 - Multiple declarations on the same line (int i,j) don't get noticed (FIXED 07-11-2017)
 - When constructed type contains question mark (Foo<? extends Bar>), declarations don't get noticed (FIXED 07-11-2017)
+- extractMethod still sometimes not noticing conditionals (TESTING 07-11-2017)
 
 Tasks
 -----

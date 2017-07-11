@@ -12,9 +12,10 @@ which languages:
 |              |Add  Parameter|Encapsulate Variable|Extract Method|Rename  Argument|Rename Class|Rename Method |Rename Field|
 |:------------:|:------------:|:------------------:|:------------:|:-------------: |:----------:|:------------:|:----------:|
 |     Java     |   &#10003;   |      &#10003;      |   &#10003;   |    &#10003;    |  &#10003;  |   &#10003;   |  &#10003;  |
-|    Python    |   &#10003;   |      &#10007;      |   &#10007;   |    &#10003;    |  &#10003;  |   &#10003;   |  &#10007;  |
+|    Python    |   &#10003;   |         N/A        |   &#10003;   |    &#10003;    |  &#10003;  |   &#10003;   |     N/A    |
 
-Factorus also has a function for reverting changes, in case of bugs or other unwanted behavior.
+
+Factorus also has a command for reverting changes, in case of bugs or other unwanted behavior.
 
 ## Installation
 
