@@ -856,6 +856,46 @@ function! s:getNextUse(var,...)
 endfunction
 
 " File-Updating {{{2
+
+" updateFile {{{3
+function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
+    let a:orig = line('.')
+
+    if a:is_local == 1
+        let a:query = '\([^.]\)\<' . a:old_name . '\>'
+        call add(s:qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+        execute 'silent s/' . a:query . '/\1' . a:new_name . '/g'
+
+        call s:gotoTag(0)
+        let a:closing = s:getClosingBracket(1)
+
+        let a:next = searchpos(a:query,'Wn')
+        while s:isBefore(a:next,a:closing)
+            if a:next == [0,0]
+                break
+            endif
+            call cursor(a:next[0],a:next[1])
+            call add(s:qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+            execute 'silent s/' . a:query . '/\1' . a:new_name . '/g'
+
+            let a:next = searchpos(a:query,'Wn')
+        endwhile
+    else
+        let a:paren = a:is_method == 1 ? '(' : ''
+        try
+            execute 'silent lvimgrep /\(\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/j %:p'
+            let s:qf += map(getloclist(0),{n,val -> {'filename' : expand('%:p'), 'lnum' : val['lnum'], 'text' : s:trim(val['text'])}})
+        catch /.*/
+        endtry
+        call setloclist(0,[])
+
+        execute 'silent %s/\(\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
+    endif
+
+    call cursor(a:orig,1)
+    silent write
+endfunction
+
 " updateClassFile {{{3
 function! s:updateClassFile(class_name,old_name,new_name) abort
     let a:prev = [line('.'),col('.')]
@@ -1022,6 +1062,23 @@ function! s:updateReferences(packages,old_name,new_name,paren,is_static)
     call system('rm -rf ' . a:temp_file)
 endfunction
 
+" getUnchanged {{{3
+function! s:getUnchanged(search)
+    let s:qf = []
+    let a:temp_file = '.FactorusUnchanged'
+    call s:findTags(a:temp_file,a:search,'no')
+
+    for file in readfile(a:temp_file)
+        let a:lines = split(system('grep -n "' . a:search . '" ' . file),'\n')  
+        for line in a:lines
+            let a:un = split(line,':')
+            call add(s:qf,{'lnum' : a:un[0], 'filename' : file, 'text' : s:trim(join(a:un[1:],''))})
+        endfor
+    endfor
+
+    call system('rm -rf ' . a:temp_file)
+endfunction
+
 " Renaming {{{2
 " renameArg {{{3
 function! s:renameArg(new_name) abort
@@ -1056,6 +1113,10 @@ function! s:renameClass(new_name) abort
     let a:bufnr = bufnr('.')
     execute 'silent edit ' . a:new_file
     execute 'silent! bwipeout ' . a:bufnr
+
+    if g:factorus_show_changes == 2
+        call s:getUnchanged('\<' . a:class_name . '\>')
+    endif
 
     redraw
     echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
@@ -1113,6 +1174,10 @@ function! s:renameField(new_name) abort
         call s:updateReferences(a:packages,a:var,a:new_name,'',a:is_static)
     endif
 
+    if g:factorus_show_changes == 2
+        call s:getUnchanged('\<' . var . '\>')
+    endif
+
     if a:top > 0
         call s:safeClose()
     endif
@@ -1122,7 +1187,6 @@ function! s:renameField(new_name) abort
     return a:var
 endfunction
 
-" renameMethod {{{3
 " renameMethod {{{3
 function! s:renameMethod(new_name) abort
     call s:gotoTag(0)
@@ -1161,6 +1225,10 @@ function! s:renameMethod(new_name) abort
     redraw
     echo 'Updating references...'
     call s:updateReferences(a:packages,a:method_name,a:new_name,'(',a:is_static)
+
+    if g:factorus_show_changes == 2
+        call s:getUnchanged('\<' . a:method_name . '\>(')
+    endif
 
     if a:top > 0
         call s:safeClose()

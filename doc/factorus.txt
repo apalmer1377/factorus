@@ -236,8 +236,20 @@ Example:
 g:factorus_show_changes~
 Default: 0
 
-If this is set to 1 then, at the end of a rename, the quickfix window will open
-with a list of all changes made. The quickfix list will show the line as it 
+The behavior of |:FRenameMethod| changes based on the value of this variable.
+If
+    |g:factorus_show_changes| == 0:
+        The quickfix list is not updated after a rename.
+    |g:factorus_show_changes| == 1:
+        The quickfix list is set to a list of all changes made, 
+    |g:factorus_show_changes| == 2:
+        The quickfix list is set to a list of all changes NOT made, to 
+        values with the same pattern as what was updated.  This option is 
+        useful to check if |:FRenameMethod| made any changes that shouldn't 
+        have been made.
+
+If |g:factorus_show_changes| > 0, the quickfix list will show the file, the
+line number, and the line text. The quickfix list will show the line as it 
 was before the change, not after.
 
 Example:

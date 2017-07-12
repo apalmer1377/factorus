@@ -382,6 +382,23 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_global)
     silent write
 endfunction
 
+" getUnchanged {{{3
+function! s:getUnchanged(search)
+    let s:qf = []
+    let a:temp_file = '.FactorusUnchanged'
+    call s:findTags(a:temp_file,a:search,'no')
+
+    for file in readfile(a:temp_file)
+        let a:lines = split(system('grep -n "' . a:search . '" ' . file),'\n')  
+        for line in a:lines
+            let a:un = split(line,':')
+            call add(s:qf,{'lnum' : a:un[0], 'filename' : file, 'text' : s:trim(join(a:un[1:],''))})
+        endfor
+    endfor
+
+    call system('rm -rf ' . a:temp_file)
+endfunction
+
 " Renaming {{{2
 " renameArg {{{3
 function! s:renameArg(new_name)
@@ -411,6 +428,10 @@ function! s:renameClass(new_name) abort
     call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:class_name . '\>/' . a:new_name . '/g"') 
     call system('rm -rf ' . a:temp_file)
     silent edit
+
+    if g:factorus_show_changes == 2
+        call s:getUnchanged('\<' . a:class_name . '\>')
+    endif
 
     echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
     return a:class_name
@@ -455,6 +476,10 @@ function! s:renameMethod(new_name)
         call s:safeClose()
     endfor
     call system('rm -rf ' . a:temp_file)
+
+    if g:factorus_show_changes == 2
+        call s:getUnchanged('\<' . a:method_name . '\>')
+    endif
 
     redraw
     let a:keyword = a:is_global == 1 ? ' global' : ''

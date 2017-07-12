@@ -40,7 +40,7 @@ function! factorus#command(func,...)
         let Func = function(a:ext . '#factorus#' . a:func,a:000)
         let a:res = Func()
         let a:file = expand('%:p')
-        if g:factorus_show_changes == 1 && a:func == 'renameSomething' && index(a:000,'factorusRollback') < 0 && a:000[-1] != 'Arg'
+        if g:factorus_show_changes > 0 && a:func == 'renameSomething' && index(a:000,'factorusRollback') < 0 && a:000[-1] != 'Arg'
             copen
         endif
     catch /^Vim(\a\+):E117:/
