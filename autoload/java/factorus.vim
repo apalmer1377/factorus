@@ -104,8 +104,8 @@ endfunction
 
 " File Navigation {{{3
 
-function! s:isAlone()
-    let a:file = expand('%:p')
+function! s:isAlone(...)
+    let a:file = a:0 > 0 ? a:1 : expand('%:p')
     let a:count = 0
     for buf in getbufinfo()
         if buf['name'] == a:file
@@ -118,15 +118,16 @@ function! s:isAlone()
     return 1
 endfunction
 
-function! s:safeClose()
+function! s:safeClose(...)
     let a:prev = 0
-    if winnr("$") == 1 && tabpagenr("$") > 1 && tabpagenr() > 1 && tabpagenr() < tabpagenr("$")
+    let a:file = a:0 > 0 ? a:1 : expand('%:p')
+    if getbufinfo(a:file)[0]['loaded'] == 1 && winnr("$") == 1 && tabpagenr("$") > 1 && tabpagenr() > 1 && tabpagenr() < tabpagenr("$")
         let a:prev = 1
     endif
 
-    if index(s:open_bufs,expand('%:p')) < 0 && s:isAlone() == 1
-        bwipeout
-    else
+    if index(s:open_bufs,a:file) < 0 && s:isAlone(a:file) == 1
+        execute 'bwipeout ' a:file
+    elseif a:file == expand('%:p')
         q
     endif
 
@@ -375,8 +376,10 @@ function! s:getSubClasses(class_name)
 
     while a:sub != []
         let a:sub_classes = '\<\(' . join(map(a:sub,{n,file -> substitute(file,s:strip_dir . '\.java','\2','')}),'\|') . '\)\>'
+        let a:exclude = '[^\;}()=+\-\*/|&~!''\"]*'
+        let a:fsearch = '^' . a:exclude . a:sub_classes . a:exclude . '$'
         let a:search = s:class . '\_[^{]\{-\}' . s:sub_class . '\_[^{]\+' . a:sub_classes . '\_[^{]\{-\}{'
-        call s:findTags(a:temp_file,a:sub_classes,'no')
+        call s:findTags(a:temp_file,a:fsearch,'no')
 
         let a:sub = []
         for file in readfile(a:temp_file)
@@ -384,6 +387,7 @@ function! s:getSubClasses(class_name)
                 try
                     execute 'silent lvimgrep /' . a:search . '/j ' . file
                     call add(a:sub,file)
+                    call s:safeClose(file)
                 catch /.*/
                 endtry
             endif
@@ -1003,17 +1007,23 @@ function! s:updateDeclaration(method_name,new_name)
     call cursor(1,1)
 
     let a:prev = [line('.'),col('.')]
-    let a:next = s:getNextTag()
+    let a:next = searchpos('^\s*' . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+' . a:method_name . '\_s*(','Wn')
 
     while a:next[0] != a:prev[0] && a:next[0] != 0
         call cursor(a:next[0],a:next[1])
-        let a:prev = [line('.'),col('.')]
-        let a:next = s:getNextTag()
-        let a:match = match(getline('.'),'\<' . a:method_name . '\>')
-        if a:match >= 0
-            call add(s:qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-            execute 'silent s/\<' . a:method_name . '\>/' . a:new_name . '/e'
+
+        if s:isValidTag(a:next[0])
+            let a:prev = [line('.'),col('.')]
+            let a:next = s:getNextTag()
+            let a:match = match(getline('.'),'\<' . a:method_name . '\>')
+            if a:match >= 0
+                call add(s:qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+                execute 'silent s/\<' . a:method_name . '\>/' . a:new_name . '/e'
+            endif
         endif
+
+        let a:prev = [line('.'),col('.')]
+        let a:next = searchpos('^\s*' . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+' . a:method_name . '\_s*(','Wn')
     endwhile
     silent write
 
@@ -1038,10 +1048,11 @@ function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
         execute 'silent tabedit ' . file
         call cursor(1,1)
         if a:is_static == 1 || a:paren == '('
-            call s:updateFile(a:old_name,a:new_name,a:is_method,0,a:is_static)
             if a:paren == '('
                 call s:updateDeclaration(a:old_name,a:new_name)
             endif
+
+            call s:updateFile(a:old_name,a:new_name,a:is_method,0,a:is_static)
         else
             call s:updateClassFile(a:sub_class,a:old_name,a:new_name)
         endif
