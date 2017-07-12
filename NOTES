@@ -14,6 +14,8 @@ Tasks
     * Java: 07-10-2017
     * Python: 07-10-2017
 - Addendum to above: provide list of all changes NOT made after a rename (did we miss anything)
+    * Java: 07-11-2017
+    * Python: 07-11-2017
 - Manual extraction (methods, types, etc.)
 - Find repeated/duplicate code
 - Add default argument to function with added parameter
