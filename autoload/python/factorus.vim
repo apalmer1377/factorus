@@ -129,11 +129,20 @@ function! s:narrowTags(temp_file,search_string)
     call system('mv ' . a:n_temp_file . ' ' . a:temp_file)
 endfunction
 
-function! s:addQuickFix(temp_file,search_string)
+function! s:updateQuickFix(temp_file,search_string)
     let a:res = split(system('cat ' . a:temp_file . ' | xargs grep -n "' . a:search_string . '"'),'\n')
     call map(a:res,{n,val -> split(val,':')})
     call map(a:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
     let s:qf += a:res
+endfunction
+
+function! s:setQuickFix(type)
+    let a:title = 'rename' . a:type . ' : ' . (g:factorus_show_changes == 1 ? 'ChangedFiles' : 'UnchangedFiles')
+    let a:num = len(s:qf)
+    let a:instance = a:num == 1 ? 'instance' : 'instances'
+    let s:qf = [{'text' : (g:factorus_show_changes == 1 ? a:instance . ' changed.' : a:instance . ' left unchanged.'),'lnum' : a:num}] + s:qf
+    call setqflist(s:qf)
+    call setqflist(s:qf,'r',{'title' : a:title})
 endfunction
 
 " Utilities {{{2
@@ -423,7 +432,7 @@ function! s:renameClass(new_name) abort
     let a:module_name = substitute(a:module_name,'\.','\\.','g')
     let a:module_name = substitute(a:module_name,'\(.*\)\(\\\..*\)','\\(\1\\)\\{0,1\\}\2','')
     call s:findTags(a:temp_file,'\<' . a:class_name . '\>','no')
-    call s:addQuickFix(a:temp_file,'\<' . a:class_name . '\>')
+    call s:updateQuickFix(a:temp_file,'\<' . a:class_name . '\>')
 
     call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:class_name . '\>/' . a:new_name . '/g"') 
     call system('rm -rf ' . a:temp_file)
@@ -458,7 +467,7 @@ function! s:renameMethod(new_name)
     let a:file_name = expand('%:p')
     let a:temp_file = '.Factorus' . a:method_name
     call s:findTags(a:temp_file,'\<' . a:method_name . '\>','no')
-    call s:addQuickFix(a:temp_file,'\<' . a:method_name . '\>')
+    call s:updateQuickFix(a:temp_file,'\<' . a:method_name . '\>')
     call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:period . '\<' . a:method_name . '\>/\1' . a:new_name . '/g"')
 
     call s:findTags(a:temp_file,'\<' . a:method_name . '\>','no')
@@ -999,6 +1008,7 @@ endfunction
 
 " renameSomething {{{2
 function! python#factorus#renameSomething(new_name,type,...)
+    let a:orig = [line('.'),col('.')]
     let s:open_bufs = []
     let s:qf = []
 
@@ -1026,7 +1036,10 @@ function! python#factorus#renameSomething(new_name,type,...)
             let &switchbuf = a:buf_setting
         endif
                                                    
-        call setqflist(s:qf)                              
+        call cursor(a:orig[0],a:orig[1])
+        if g:factorus_show_changes > 0 && (a:0 == 0 || a:000[-1] != 'factorusRollback')
+            call s:setQuickFix(a:type)
+        endif
         return a:res
     catch /.*/
         call system('rm -rf .Factorus*')
