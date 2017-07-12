@@ -137,12 +137,38 @@ function! s:updateQuickFix(temp_file,search_string)
 endfunction
 
 function! s:setQuickFix(type)
-    let a:title = 'rename' . a:type . ' : ' . (g:factorus_show_changes == 1 ? 'ChangedFiles' : 'UnchangedFiles')
-    let a:num = len(s:qf)
-    let a:instance = a:num == 1 ? 'instance' : 'instances'
-    let s:qf = [{'text' : (g:factorus_show_changes == 1 ? a:instance . ' changed.' : a:instance . ' left unchanged.'),'lnum' : a:num}] + s:qf
+    let a:title = a:type . ' : '
+    if g:factorus_show_changes == 1
+        let a:title .= 'ChangedFiles'
+    elseif g:factorus_show_changes == 2
+        let a:title .= 'UnchangedFiles'
+    else
+        let a:title .= 'AllFiles'
+    endif
+
     call setqflist(s:qf)
     call setqflist(s:qf,'r',{'title' : a:title})
+endfunction
+
+function! s:getUnchanged(search)
+    let a:qf = []
+
+    let a:temp_file = '.FactorusUnchanged'
+    call s:findTags(a:temp_file,a:search,'no')
+
+    let a:count = 0
+    for file in readfile(a:temp_file)
+        let a:lines = split(system('grep -n "' . a:search . '" ' . file),'\n')  
+
+        let a:count += len(a:lines)
+        for line in a:lines
+            let a:un = split(line,':')
+            call add(a:qf,{'lnum' : a:un[0], 'filename' : file, 'text' : s:trim(join(a:un[1:],''))})
+        endfor
+    endfor
+
+    call system('rm -rf ' . a:temp_file)
+    return a:qf
 endfunction
 
 " Utilities {{{2
@@ -391,23 +417,6 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_global)
     silent write
 endfunction
 
-" getUnchanged {{{3
-function! s:getUnchanged(search)
-    let s:qf = []
-    let a:temp_file = '.FactorusUnchanged'
-    call s:findTags(a:temp_file,a:search,'no')
-
-    for file in readfile(a:temp_file)
-        let a:lines = split(system('grep -n "' . a:search . '" ' . file),'\n')  
-        for line in a:lines
-            let a:un = split(line,':')
-            call add(s:qf,{'lnum' : a:un[0], 'filename' : file, 'text' : s:trim(join(a:un[1:],''))})
-        endfor
-    endfor
-
-    call system('rm -rf ' . a:temp_file)
-endfunction
-
 " Renaming {{{2
 " renameArg {{{3
 function! s:renameArg(new_name)
@@ -438,10 +447,6 @@ function! s:renameClass(new_name) abort
     call system('rm -rf ' . a:temp_file)
     silent edit
 
-    if g:factorus_show_changes == 2
-        call s:getUnchanged('\<' . a:class_name . '\>')
-    endif
-
     echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
     return a:class_name
 endfunction
@@ -466,10 +471,10 @@ function! s:renameMethod(new_name)
 
     let a:file_name = expand('%:p')
     let a:temp_file = '.Factorus' . a:method_name
-    call s:findTags(a:temp_file,'\<' . a:method_name . '\>','no')
-    call s:updateQuickFix(a:temp_file,'\<' . a:method_name . '\>')
+    call s:findTags(a:temp_file,a:period . '\<' . a:method_name . '\>','no')
+    call s:updateQuickFix(a:temp_file,a:period . '\<' . a:method_name . '\>')
     call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:period . '\<' . a:method_name . '\>/\1' . a:new_name . '/g"')
-
+    
     call s:findTags(a:temp_file,'\<' . a:method_name . '\>','no')
     for file in readfile(a:temp_file)
         execute 'silent tabedit ' . file
@@ -486,11 +491,8 @@ function! s:renameMethod(new_name)
     endfor
     call system('rm -rf ' . a:temp_file)
 
-    if g:factorus_show_changes == 2
-        call s:getUnchanged('\<' . a:method_name . '\>')
-    endif
-
     redraw
+    silent edit
     let a:keyword = a:is_global == 1 ? ' global' : ''
     echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
     return a:method_name
@@ -1022,24 +1024,47 @@ function! python#factorus#renameSomething(new_name,type,...)
     let a:buf_setting = &switchbuf
 
     execute 'silent cd ' . expand('%:p:h')
-    let a:project_dir = system('git rev-parse --show-toplevel')
+    let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
     execute 'silent cd ' a:project_dir
 
     let a:res = ''
     try
         let Rename = function('s:rename' . a:type)
         let a:res = Rename(a:new_name)
+
+        if g:factorus_show_changes > 0 && (a:0 == 0 || a:000[-1] != 'factorusRollback')
+            let a:ch = len(s:qf)
+            let a:ch_i = a:ch == 1 ? ' instance ' : ' instances '
+            let a:un = s:getUnchanged('\<' . a:res . '\>')
+            let a:un_l = len(a:un)
+            let a:un_i = a:un_l == 1 ? ' instance ' : ' instances '
+
+            let a:first_line = a:ch . a:ch_i . 'modified, ' . a:un_l . a:un_i . 'left unmodified.'
+
+            if g:factorus_show_changes > 1
+                let a:un = [{'pattern' : 'Unmodified'}] + a:un
+                if g:factorus_show_changes == 2
+                    let s:qf = []
+                endif
+                let s:qf += a:un
+            endif
+
+            if g:factorus_show_changes % 2 == 1
+                let s:qf = [{'pattern' : 'Modified'}] + s:qf
+            endif
+            let s:qf = [{'text' : a:first_line,'pattern' : 'rename' . a:type}] + s:qf
+
+            call s:setQuickFix(a:type)
+        endif
+
         execute 'silent cd ' a:prev_dir
         if a:type != 'Class'
             let &switchbuf = 'useopen,usetab'
             execute 'silent sbuffer ' . a:curr_buf
             let &switchbuf = a:buf_setting
         endif
-                                                   
         call cursor(a:orig[0],a:orig[1])
-        if g:factorus_show_changes > 0 && (a:0 == 0 || a:000[-1] != 'factorusRollback')
-            call s:setQuickFix(a:type)
-        endif
+
         return a:res
     catch /.*/
         call system('rm -rf .Factorus*')
@@ -1049,7 +1074,8 @@ function! python#factorus#renameSomething(new_name,type,...)
             execute 'silent sbuffer ' . a:curr_buf
             let &switchbuf = a:buf_setting
         endif
-        throw v:exception
+        let a:err = match(v:exception,'^Factorus:') >= 0 ? v:exception : 'Factorus:' . v:exception
+        throw a:err
     endtry
 endfunction
 

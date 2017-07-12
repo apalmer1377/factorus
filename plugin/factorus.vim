@@ -6,7 +6,7 @@
 " Helper Functions {{{1
 
 let s:opts = {
-            \   'version'               : 1.875,
+            \   'version'               : '1.875',
             \   'project_dir'           : '',
             \   'min_extracted_lines'   : 2,
             \   'method_name'           : 'newFactorusMethod',
@@ -64,7 +64,7 @@ endif
 
 if v:version < 700
     echohl WarningMsg
-    echomsg 'Factorus: Vim version is too old, please upgrade to 7.0 or later.'
+    echom 'Factorus: Vim version is too old, please upgrade to 7.0 or later.'
     echohl None
     finish
 endif
@@ -72,6 +72,8 @@ endif
 call s:init_vars()
 
 " Commands {{{1
+
+command! -nargs=0 Factorus          call factorus#version()
 
 command! -nargs=0 FExtractMethod    call factorus#command('extractMethod')
 

@@ -27,4 +27,4 @@ There are many ways to install Factorus. You can:
 
 ## Dependencies
 
-[Vim 8.0](http://www.vim.org/)
+[Vim 7.0](http://www.vim.org/)

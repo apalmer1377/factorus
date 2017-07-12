@@ -29,6 +29,11 @@ let s:errors = {'Invalid'       : 'Invalid expression under cursor.',
             \  }
 
 " Commands {{{1
+" factorus#version {{{2
+function! factorus#version()
+    echo 'Factorus: version ' . g:factorus_version
+endfunction
+
 " factorus#command {{{2
 function! factorus#command(func,...)
     let a:ext = &filetype
@@ -49,7 +54,7 @@ function! factorus#command(func,...)
             let a:name = a:func == 'renameSomething' ? 'rename' . a:000[-1] : a:func
             let a:err = 'Factorus: ' . a:name . ' is not available for ' . a:lang . '.'
         else
-            let a:err = v:exception
+            let a:err = 'Factorus: ' . v:exception
         endif
     catch /^Factorus:/
         let a:custom = index(keys(s:errors),join(split(v:exception,':')[1:]))

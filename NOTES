@@ -16,6 +16,9 @@ Tasks
 - Addendum to above: provide list of all changes NOT made after a rename (did we miss anything)
     * Java: 07-11-2017
     * Python: 07-11-2017
+- Further addendum: Allow both changes and unchanges to be seen (I know that isn't a word)
+    * Java: 07-12-2017
+    * Python: 07-12-2017
 - Manual extraction (methods, types, etc.)
 - Find repeated/duplicate code
 - Add default argument to function with added parameter
@@ -31,10 +34,13 @@ Bugs
 - End message doesn't display when running FRollback from other tab (FIXED 07-10-2017)
 - Multiple declarations on the same line (int i,j) don't get noticed (FIXED 07-11-2017)
 - When constructed type contains question mark (Foo<? extends Bar>), declarations don't get noticed (FIXED 07-11-2017)
-- extractMethod still sometimes not noticing conditionals (TESTING 07-11-2017)
+- extractMethod still sometimes not noticing conditionals (FIXED 07-11-2017)
+- When subclass declaration extends multiple lines, subclass doesn't get noticed (FIXED 07-12-2017, works but slows down execution a lot)
+- Classes with the same name in the same package should be considered the same entity (FIXED 07-12-2017)
 
 Tasks
 -----
+- Speed up renameMethod (again)
 
 ======
 PYTHON
@@ -42,8 +48,10 @@ PYTHON
 
 Bugs
 ----
+- Some changes can't be seen in rename, and so can be overwritten or ignored (FIXED 07-12-2017)
 
 Tasks
 -----
 - Rollback function--when things don't go as expected, provide a rollback to undo the previous action (DONE 07-10-2017)
 - extractMethod function (PRELIM 07-11-2017)
+- make renaming better (currently just a universal find/replace)

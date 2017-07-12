@@ -154,12 +154,38 @@ function! s:updateQuickFix(temp_file,search_string)
 endfunction
 
 function! s:setQuickFix(type)
-    let a:title = 'rename' . a:type . ' : ' . (g:factorus_show_changes == 1 ? 'ChangedFiles' : 'UnchangedFiles')
-    let a:num = len(s:qf)
-    let a:instance = a:num == 1 ? 'instance' : 'instances'
-    let s:qf = [{'text' : (g:factorus_show_changes == 1 ? a:instance . ' changed.' : a:instance . ' left unchanged.'),'lnum' : a:num}] + s:qf
+    let a:title = a:type . ' : '
+    if g:factorus_show_changes == 1
+        let a:title .= 'ChangedFiles'
+    elseif g:factorus_show_changes == 2
+        let a:title .= 'UnchangedFiles'
+    else
+        let a:title .= 'AllFiles'
+    endif
+
     call setqflist(s:qf)
     call setqflist(s:qf,'r',{'title' : a:title})
+endfunction
+
+function! s:getUnchanged(search)
+    let a:qf = []
+
+    let a:temp_file = '.FactorusUnchanged'
+    call s:findTags(a:temp_file,a:search,'no')
+
+    let a:count = 0
+    for file in readfile(a:temp_file)
+        let a:lines = split(system('grep -n "' . a:search . '" ' . file),'\n')  
+
+        let a:count += len(a:lines)
+        for line in a:lines
+            let a:un = split(line,':')
+            call add(a:qf,{'lnum' : a:un[0], 'filename' : file, 'text' : s:trim(join(a:un[1:],''))})
+        endfor
+    endfor
+
+    call system('rm -rf ' . a:temp_file)
+    return a:qf
 endfunction
 
 " Utilities {{{2
@@ -200,11 +226,18 @@ endfunction
 
 function! s:isWrapped(pat,state)
     let a:match = match(a:state,a:pat)
-    let a:begin = split(strpart(a:state,0,a:match),'\zs')
-    if count(a:begin,'>') < count(a:begin,'<')
-        return 1
-    endif
-    return 0
+    let a:temp = a:state
+    let a:res = 1
+    while a:match >= 0
+        let a:begin = split(strpart(a:temp,0,a:match),'\zs')
+        if count(a:begin,'>') >= count(a:begin,'<')
+            let a:res = 0
+            break
+        endif
+        let a:temp = substitute(a:temp,a:pat,'','')
+        let a:match = match(a:temp,a:pat)
+    endwhile
+    return a:res
 endfunction
 
 function! s:isCommented()
@@ -324,30 +357,42 @@ function! s:getPackage(file)
     return a:head
 endfunction
 
+function! s:getPackageClasses(class_name,package_name)
+    let a:temp_file = '.FactorusPackage'
+    call system('find ' . getcwd() . ' -name "' . a:class_name . '.java" -exec grep -l "\<' . a:package_name . '\>" {} + > ' . a:temp_file)
+    let a:res = readfile(a:temp_file)
+    call system('rm -rf ' . a:temp_file)
+    return a:res
+endfunction
+
 " getSubClasses {{{3
 function! s:getSubClasses(class_name)
-    let a:sub_file = '.Factorus' . a:class_name . 'Subs'
     let a:temp_file = '.Factorus' . a:class_name . 'E'
+    call system('> ' . a:temp_file)
 
-    let a:search = s:class . '.*' . s:sub_class . '.*[^<]\<' . a:class_name . '\>[^>]'
-    call s:findTags(a:temp_file, a:search, 'no')
-    call system('> ' . a:sub_file)
-
-    let a:sub = readfile(a:temp_file)
+    let a:sub = [expand('%:p')]
+    let a:all = [expand('%:p')]
 
     while a:sub != []
-        call system('cat ' . a:temp_file . ' >> ' . a:sub_file)
-        let a:sub_classes = '\(' . join(map(a:sub,{n,file -> substitute(file,s:strip_dir . '\.java','\2','')}),'\|') . '\)'
-        let a:search = s:class . '.*' . s:sub_class . '[[:space:]]\+\<' . a:sub_classes . '\>'
-        call s:findTags(a:temp_file, a:search, 'no')
-        let a:sub = readfile(a:temp_file)
+        let a:sub_classes = '\<\(' . join(map(a:sub,{n,file -> substitute(file,s:strip_dir . '\.java','\2','')}),'\|') . '\)\>'
+        let a:search = s:class . '\_[^{]\{-\}' . s:sub_class . '\_[^{]\+' . a:sub_classes . '\_[^{]\{-\}{'
+        call s:findTags(a:temp_file,a:sub_classes,'no')
+
+        let a:sub = []
+        for file in readfile(a:temp_file)
+            if index(a:all,file) < 0
+                try
+                    execute 'silent lvimgrep /' . a:search . '/j ' . file
+                    call add(a:sub,file)
+                catch /.*/
+                endtry
+            endif
+        endfor
+        let a:all += a:sub
     endwhile
 
-    let a:sub = readfile(a:sub_file)
-
-    call system('rm -rf ' . a:sub_file)
     call system('rm -rf ' . a:temp_file)
-    return a:sub
+    return a:all
 endfunction
 
 " getSuperClasses {{{3
@@ -892,13 +937,13 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
     else
         let a:paren = a:is_method == 1 ? '(' : ''
         try
-            execute 'silent lvimgrep /\(\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/j %:p'
+            execute 'silent lvimgrep /\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/j %:p'
             let s:qf += map(getloclist(0),{n,val -> {'filename' : expand('%:p'), 'lnum' : val['lnum'], 'text' : s:trim(val['text'])}})
         catch /.*/
         endtry
         call setloclist(0,[])
 
-        execute 'silent %s/\(\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
+        execute 'silent %s/\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
     endif
 
     call cursor(a:orig,1)
@@ -955,7 +1000,6 @@ endfunction
 " updateDeclaration {{{3
 function! s:updateDeclaration(method_name,new_name)
     let a:orig = [line('.'),col('.')]
-
     call cursor(1,1)
 
     let a:prev = [line('.'),col('.')]
@@ -978,25 +1022,21 @@ endfunction
 
 " updateSubClassFiles {{{3
 function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
-    let a:subs = s:getSubClasses(a:class_name)
+    let a:pc = s:getPackageClasses(a:class_name,s:getPackage(expand('%:p')))
+    let a:sub_files = a:pc +  s:getSubClasses(a:class_name)
     let a:is_method = a:paren == '(' ? 1 : 0
-    let a:packages = {s:getPackage(expand('%:p')) : [a:class_name]}
+    let a:sub_classes = map(copy(a:sub_files),{n,val -> substitute(substitute(val,s:strip_dir,'\2',''),'\.java','','')})
 
-    for file in a:subs
-        let a:sub_class = substitute(substitute(file,s:strip_dir,'\2',''),'\.java','','')
+    try
+        execute 'silent lvimgrep /\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/j ' . join(a:sub_files)
+    catch /.*/
+        return [a:class_name]
+    endtry
 
-        if index(g:factorus_ignored_files,a:sub_class) >= 0
-            continue
-        endif
-
-        let a:sub_package = s:getPackage(file)
-        if index(keys(a:packages), a:sub_package) < 0
-            let a:packages[a:sub_package] = [a:sub_class]
-        else
-            let a:packages[a:sub_package] = a:packages[a:sub_package] + [a:sub_class]
-        endif
-
+    let a:use_subs = map(getloclist(0),{key,val -> getbufinfo(val['bufnr'])[0]['name']})
+    for file in a:use_subs
         execute 'silent tabedit ' . file
+        call cursor(1,1)
         if a:is_static == 1 || a:paren == '('
             call s:updateFile(a:old_name,a:new_name,a:is_method,0,a:is_static)
             if a:paren == '('
@@ -1010,7 +1050,8 @@ function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
     endfor
     silent edit
 
-    return a:packages
+    call add(a:sub_classes,a:class_name)
+    return a:sub_classes
 endfunction
 
 " updateMethodFile {{{3
@@ -1054,9 +1095,9 @@ function! s:updateMethodFiles(files,class_name,method_name,new_name,paren) abort
 endfunction 
 
 " updateReferences {{{3
-function! s:updateReferences(packages,old_name,new_name,paren,is_static)
+function! s:updateReferences(classes,old_name,new_name,paren,is_static)
     let a:temp_file = '.Factorus' . a:new_name . 'References'
-    let a:class_names = join(map(values(a:packages),{n,val -> join(val,'\|')}),'\|')
+    let a:class_names = join(a:classes,'\|')
     if a:is_static == 1
         let a:search = '\<\(' . a:class_names . '\)\>\.\<' . a:old_name . '\>' . a:paren
         call s:findTags(a:temp_file,a:search,'no')
@@ -1065,26 +1106,9 @@ function! s:updateReferences(packages,old_name,new_name,paren,is_static)
     else
         call s:findTags(a:temp_file,'\.' . a:old_name . a:paren,'no')
         call s:narrowTags(a:temp_file,'\(' . a:class_names . '\)')
-        let a:files = split(system('cat ' . a:temp_file),'\n')
+        let a:files = readfile(a:temp_file)
         call s:updateMethodFiles(a:files,a:class_names,a:old_name,a:new_name,a:paren)
     endif
-    call system('rm -rf ' . a:temp_file)
-endfunction
-
-" getUnchanged {{{3
-function! s:getUnchanged(search)
-    let s:qf = []
-    let a:temp_file = '.FactorusUnchanged'
-    call s:findTags(a:temp_file,a:search,'no')
-
-    for file in readfile(a:temp_file)
-        let a:lines = split(system('grep -n "' . a:search . '" ' . file),'\n')  
-        for line in a:lines
-            let a:un = split(line,':')
-            call add(s:qf,{'lnum' : a:un[0], 'filename' : file, 'text' : s:trim(join(a:un[1:],''))})
-        endfor
-    endfor
-
     call system('rm -rf ' . a:temp_file)
 endfunction
 
@@ -1122,10 +1146,6 @@ function! s:renameClass(new_name) abort
     let a:bufnr = bufnr('.')
     execute 'silent edit ' . a:new_file
     execute 'silent! bwipeout ' . a:bufnr
-
-    if g:factorus_show_changes == 2
-        call s:getUnchanged('\<' . a:class_name . '\>')
-    endif
 
     redraw
     echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
@@ -1170,21 +1190,15 @@ function! s:renameField(new_name) abort
             call add(s:qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
             execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/e'
             call s:updateClassFile(a:type,a:var,a:new_name)
-        else
-            call s:updateFile(a:var,a:new_name,0,a:is_local,a:is_static)
         endif
 
         redraw
         echo 'Updating sub-classes...'
-        let a:packages = s:updateSubClassFiles(expand('%:t:r'),a:var,a:new_name,'',a:is_static)
+        let a:classes = s:updateSubClassFiles(expand('%:t:r'),a:var,a:new_name,'',a:is_static)
 
         redraw
         echo 'Updating references...'
-        call s:updateReferences(a:packages,a:var,a:new_name,'',a:is_static)
-    endif
-
-    if g:factorus_show_changes == 2
-        call s:getUnchanged('\<' . var . '\>')
+        call s:updateReferences(a:classes,a:var,a:new_name,'',a:is_static)
     endif
 
     if a:top > 0
@@ -1222,22 +1236,16 @@ function! s:renameMethod(new_name) abort
         let a:top -= 1
     endwhile
 
+    let s:all_funcs = {}
     let a:is_static = match(getline('.'),'\s\+static\s\+[^)]\+(') >= 0 ? 1 : 0
 
-    let s:all_funcs = {}
-    call s:updateFile(a:method_name,a:new_name,1,0,a:is_static)
-
     redraw
-    echo 'Updating sub-classes...'
-    let a:packages = s:updateSubClassFiles(expand('%:t:r'),a:method_name,a:new_name,'(',a:is_static)
+    echo 'Updating hierarchy...'
+    let a:classes = s:updateSubClassFiles(expand('%:t:r'),a:method_name,a:new_name,'(',a:is_static)
 
     redraw
     echo 'Updating references...'
-    call s:updateReferences(a:packages,a:method_name,a:new_name,'(',a:is_static)
-
-    if g:factorus_show_changes == 2
-        call s:getUnchanged('\<' . a:method_name . '\>(')
-    endif
+    call s:updateReferences(a:classes,a:method_name,a:new_name,'(',a:is_static)
 
     if a:top > 0
         call s:safeClose()
@@ -1943,17 +1951,40 @@ function! java#factorus#renameSomething(new_name,type,...)
     try
         let Rename = function('s:rename' . a:type)
         let a:res = Rename(a:new_name)
+                                                 
+        if g:factorus_show_changes > 0 && (a:0 == 0 || a:000[-1] != 'factorusRollback')
+            let a:ch = len(s:qf)
+            let a:ch_i = a:ch == 1 ? ' instance ' : ' instances '
+            let a:un = s:getUnchanged('\<' . a:res . '\>')
+            let a:un_l = len(a:un)
+            let a:un_i = a:un_l == 1 ? ' instance ' : ' instances '
+
+            let a:first_line = a:ch . a:ch_i . 'modified, ' . a:un_l . a:un_i . 'left unmodified.'
+
+            if g:factorus_show_changes > 1
+                let a:un = [{'pattern' : 'Unmodified'}] + a:un
+                if g:factorus_show_changes == 2
+                    let s:qf = []
+                endif
+                let s:qf += a:un
+            endif
+
+            if g:factorus_show_changes % 2 == 1
+                let s:qf = [{'pattern' : 'Modified'}] + s:qf
+            endif
+            let s:qf = [{'text' : a:first_line,'pattern' : 'rename' . a:type}] + s:qf
+
+            call s:setQuickFix(a:type)
+        endif
+
         execute 'silent cd ' a:prev_dir
         if a:type != 'Class'
             let &switchbuf = 'useopen,usetab'
             execute 'silent sbuffer ' . a:curr_buf
             let &switchbuf = a:buf_setting
         endif
-                                                   
         call cursor(a:orig[0],a:orig[1])
-        if g:factorus_show_changes > 0 && (a:0 == 0 || a:000[-1] != 'factorusRollback')
-            call s:setQuickFix(a:type)
-        endif
+ 
         return a:res
     catch /.*/
         call system('rm -rf .Factorus*')
