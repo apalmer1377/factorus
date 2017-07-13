@@ -15,7 +15,7 @@ which languages:
 |    Python    |   &#10003;   |         N/A        |   &#10003;   |    &#10003;    |  &#10003;  |   &#10003;   |     N/A    |
 
 
-Factorus also has a command for reverting changes, in case of bugs or other unwanted behavior.
+Factorus also has commands for reverting changes and rebuilding projects, for stability and sanity testing.
 
 ## Installation
 
