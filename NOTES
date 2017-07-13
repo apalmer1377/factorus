@@ -31,3 +31,8 @@ Bugs
 Tasks
 -----
 - make renaming better (currently just a universal find/replace)
+
+=====
+C/C++
+=====
+- Add functionality for C/C++
