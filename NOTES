@@ -10,6 +10,8 @@ Tasks
 -----
 - Create Rebuild command to validate code changes (ant/maven builds) (DONE 07-12-2017, rudimentary but functional)
 - Make all methods atomic--if an error is thrown or the function is interrupted, roll back the changes
+    * Java: 07-13-2017
+    * Python: 07-13-2017
 - Provide list of all files/ all changes made after a rename
     * Java: 07-10-2017
     * Python: 07-10-2017
@@ -49,7 +51,7 @@ PYTHON
 
 Bugs
 ----
-- Some changes can't be seen in rename, and so can be overwritten or ignored (FIXED 07-12-2017)
+- Some changes can't be seen in rename, and so are overwritten or ignored (FIXED 07-12-2017)
 
 Tasks
 -----

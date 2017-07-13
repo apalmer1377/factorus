@@ -89,6 +89,19 @@ function! factorus#command(func,...)
     let a:file = expand('%:p')
 
     let a:pos = [line('.'),col('.')]
+    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        let g:factorus_history = {'file' : a:file, 'function' : a:func, 'pos' : copy(a:pos), 'args' : a:000}
+    endif
+
+    let a:open_bufs = []
+    let a:buf_nrs = []
+    for buf in getbufinfo()
+        call add(a:open_bufs,buf['name'])
+        call add(a:buf_nrs,buf['bufnr'])
+    endfor
+    let a:curr_buf = a:buf_nrs[index(a:open_bufs,expand('%:p'))]
+    let a:buf_setting = &switchbuf
+
     try
         let Func = function(a:ext . '#factorus#' . a:func,a:000)
         let a:res = Func()
@@ -104,23 +117,35 @@ function! factorus#command(func,...)
                 call factorus#rebuild()
             endif
         endif
-    catch /^Vim(\a\+):E117:/
-        if match(v:exception,'\<' . a:func . '\>') >= 0
-            let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
-            let a:name = a:func == 'renameSomething' ? 'rename' . a:000[-1] : a:func
-            let a:err = 'Factorus: ' . a:name . ' is not available for ' . a:lang . '.'
-        else
-            let a:err = 'Factorus: ' . v:exception
-        endif
-    catch /^Factorus:/
-        let a:custom = index(keys(s:errors),join(split(v:exception,':')[1:]))
-        if a:custom >= 0
-            let a:err = 'Factorus: ' . s:errors[split(v:exception,':')[1]]
-        else
-            let a:err = 'Factorus: ' . v:exception
-        endif
     catch /.*/
-        let a:err = 'An unexpected error has occurred: ' . v:exception . ', at ' . v:throwpoint
+        for buf in getbufinfo()
+            if index(a:open_bufs,buf['name']) < 0
+                execute 'bwipeout ' . buf['bufnr']
+            endif
+        endfor
+
+        if a:func == 'renameSomething' && (a:0 == 0 || a:000[-1] != 'factorusRollback')
+            call factorus#rollback()
+        endif
+
+        if match(v:exception,'^Vim(\a\+):E117:') >= 0
+            if match(v:exception,'\<' . a:func . '\>') >= 0
+                let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
+                let a:name = a:func == 'renameSomething' ? 'rename' . a:000[-1] : a:func
+                let a:err = 'Factorus: ' . a:name . ' is not available for ' . a:lang . '.'
+            else
+                let a:err = 'Factorus: ' . v:exception
+            endif
+        elseif match(v:exception,'^Factorus:') >= 0
+            let a:custom = index(keys(s:errors),join(split(v:exception,':')[1:]))
+            if a:custom >= 0
+                let a:err = 'Factorus: ' . s:errors[split(v:exception,':')[1]]
+            else
+                let a:err = 'Factorus: ' . v:exception
+            endif
+        else
+            let a:err = 'An unexpected error has occurred: ' . v:exception . ', at ' . v:throwpoint
+        endif
     endtry
 
     redraw
@@ -130,6 +155,7 @@ function! factorus#command(func,...)
             echo a:err
         endif
     endif
+
     let g:factorus_history = {'file' : a:file, 'function' : a:func, 'pos' : copy(a:pos), 'args' : a:000, 'old' : a:res}
     return a:res
 endfunction

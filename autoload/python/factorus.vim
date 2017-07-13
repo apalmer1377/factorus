@@ -421,6 +421,8 @@ endfunction
 " renameArg {{{3
 function! s:renameArg(new_name,...) abort
     let a:var = expand('<cword>')
+    let g:factorus_history['old'] = a:var
+
     call s:updateFile(a:var,a:new_name,0,1,0)
 
     if a:0 == 0 || a:000[-1] != 'factorusRollback'
@@ -437,6 +439,7 @@ function! s:renameClass(new_name,...) abort
     if a:class_name == a:new_name
         throw 'Factorus:Duplicate'
     endif    
+    let g:factorus_history['old'] = a:class_name
 
     let a:module_name = s:getModule(expand('%:p'))
 
@@ -446,8 +449,15 @@ function! s:renameClass(new_name,...) abort
     call s:findTags(a:temp_file,'\<' . a:class_name . '\>','no')
     call s:updateQuickFix(a:temp_file,'\<' . a:class_name . '\>')
 
-    call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:class_name . '\>/' . a:new_name . '/g"') 
-    call system('rm -rf ' . a:temp_file)
+    try
+        call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:class_name . '\>/' . a:new_name . '/g"') 
+        call system('rm -rf ' . a:temp_file)
+    catch /.*/
+        call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:period . '\<' . a:method_name . '\>/\1' . a:new_name . '/g"')
+        call system('rm -rf ' . a:temp_file)
+        throw 'Factorus: ' . v:exception . ', at ' . v:throwpoint
+    endtry
+
     silent edit
 
     if a:0 == 0 || a:000[-1] != 'factorusRollback'
@@ -466,6 +476,7 @@ function! s:renameMethod(new_name,...) abort
     if a:method_name == a:new_name
         throw 'Factorus:Duplicate'
     endif
+    let g:factorus_history['old'] = a:method_name
 
     let a:is_global = a:class == [0,0] ? 1 : 0
     let a:class_name = a:class == [0,0] ? '' : substitute(getline(a:class[0]),s:class_def,'\1','')
@@ -479,8 +490,15 @@ function! s:renameMethod(new_name,...) abort
     let a:temp_file = '.Factorus' . a:method_name
     call s:findTags(a:temp_file,a:period . '\<' . a:method_name . '\>','no')
     call s:updateQuickFix(a:temp_file,a:period . '\<' . a:method_name . '\>')
-    call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:period . '\<' . a:method_name . '\>/\1' . a:new_name . '/g"')
-    call system('rm -rf ' . a:temp_file)
+    try
+        call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:period . '\<' . a:method_name . '\>/\1' . a:new_name . '/g"')
+        call system('rm -rf ' . a:temp_file)
+    catch /.*/
+        call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:period . '\<' . a:method_name . '\>/\1' . a:new_name . '/g"')
+        call system('rm -rf ' . a:temp_file)
+        throw 'Factorus: ' . v:exception . ', at ' . v:throwpoint
+    endtry
+
     silent edit
 
     if a:0 == 0 || a:000[-1] != 'factorusRollback'
@@ -1027,7 +1045,7 @@ function! python#factorus#renameSomething(new_name,type,...)
         let a:res = Rename(a:new_name)
 
         if a:0 > 0 && a:000[-1] == 'factorusRollback'
-            let a:res = 'Rolled back renaming of ' . substitute(g:factorus_history['args'][-2],'\(.\)\(.*\)','\L\1\E\2','') . ' ' . g:factorus_history['old']
+            let a:res = 'Rolled back renaming of ' . substitute(g:factorus_history['args'][-1],'\(.\)\(.*\)','\L\1\E\2','') . ' ' . g:factorus_history['old']
         else
             if g:factorus_show_changes > 0
                 let a:ch = len(s:qf)
@@ -1036,9 +1054,10 @@ function! python#factorus#renameSomething(new_name,type,...)
                 let a:un_l = len(a:un)
                 let a:un_i = a:un_l == 1 ? ' instance ' : ' instances '
 
-                let a:first_line = a:ch . a:ch_i . 'modified, ' . a:un_l . a:un_i . 'left unmodified.'
+                let a:first_line = a:ch . a:ch_i . 'modified' 
+                let a:first_line .= a:type == 'Arg' ? '.' : ', ' . a:un_l . a:un_i . 'left unmodified.'
 
-                if g:factorus_show_changes > 1
+                if g:factorus_show_changes > 1 && a:type != 'Arg'
                     let a:un = [{'pattern' : 'Unmodified'}] + a:un
                     if g:factorus_show_changes == 2
                         let s:qf = []
@@ -1073,7 +1092,7 @@ function! python#factorus#renameSomething(new_name,type,...)
             let &switchbuf = a:buf_setting
         endif
         let a:err = match(v:exception,'^Factorus:') >= 0 ? v:exception : 'Factorus:' . v:exception
-        throw a:err
+        throw a:err . ', at ' . v:throwpoint
     endtry
 endfunction
 

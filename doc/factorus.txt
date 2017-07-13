@@ -102,6 +102,9 @@ modification, and miscellaneous.
     to set everything back to normal.  This only works for the most recent
     command, so changes made before then are permanent.
 
+    If a rename command throws an error or is interrupted, changes are rolled
+    back automatically.
+
 :FRebuild [{build_task}]                                           *:FRebuild*
     Rebuilds the current project. If {build_task} is given, the projects is
     build according to that task; otherwise, |g:factorus_build_task| is used.
