@@ -419,16 +419,19 @@ endfunction
 
 " Renaming {{{2
 " renameArg {{{3
-function! s:renameArg(new_name)
+function! s:renameArg(new_name,...) abort
     let a:var = expand('<cword>')
     call s:updateFile(a:var,a:new_name,0,1,0)
 
-    echo 'Re-named ' . a:var . ' to ' . a:new_name
+    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        redraw
+        echo 'Re-named ' . a:var . ' to ' . a:new_name
+    endif
     return a:var
 endfunction
 
 " renameClass {{{3
-function! s:renameClass(new_name) abort
+function! s:renameClass(new_name,...) abort
     let a:class_line = s:getClassTag()[0]
     let a:class_name = substitute(getline(a:class_line),s:class_def,'\1','')
     if a:class_name == a:new_name
@@ -447,12 +450,15 @@ function! s:renameClass(new_name) abort
     call system('rm -rf ' . a:temp_file)
     silent edit
 
-    echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
+    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        redraw
+        echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
+    endif
     return a:class_name
 endfunction
 
 " renameMethod {{{3
-function! s:renameMethod(new_name)
+function! s:renameMethod(new_name,...) abort
     call s:gotoTag(0)
     let a:class = s:getClassTag()
 
@@ -474,27 +480,14 @@ function! s:renameMethod(new_name)
     call s:findTags(a:temp_file,a:period . '\<' . a:method_name . '\>','no')
     call s:updateQuickFix(a:temp_file,a:period . '\<' . a:method_name . '\>')
     call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:period . '\<' . a:method_name . '\>/\1' . a:new_name . '/g"')
-    
-    call s:findTags(a:temp_file,'\<' . a:method_name . '\>','no')
-    for file in readfile(a:temp_file)
-        execute 'silent tabedit ' . file
-        let a:find =  searchpos('from.*import\_[^:)]\{-\}\<' . a:keyword. '\>','Wc')
-        let a:end = searchpos('\<' . a:method_name . '\>','Wne')
-        while  a:find != [0,0]
-            call add(s:qf,{'filename' : expand('%:p'), 'lnum' : line('.'), 'text' : s:trim(join(getline(a:find[0],a:end[0])))})
-            execute 'silent ' . a:find[0] . ',' . a:end[0] . 's/\<' . a:method_name . '\>/' . a:new_name . '/e'
-            let a:find = searchpos('from.*import\_[^:)]\{-\}\<' . a:keyword . '\>','W')
-            let a:end = searchpos('\<' . a:method_name . '\>','Wne')
-        endwhile
-        silent write
-        call s:safeClose()
-    endfor
     call system('rm -rf ' . a:temp_file)
-
-    redraw
     silent edit
-    let a:keyword = a:is_global == 1 ? ' global' : ''
-    echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
+
+    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        redraw
+        let a:keyword = a:is_global == 1 ? ' global' : ''
+        echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
+    endif
     return a:method_name
 endfunction
 
@@ -1004,6 +997,7 @@ function! python#factorus#addParam(param_name,...)
     silent edit
     call cursor(a:orig[0],a:orig[1])
 
+    redraw
     echo 'Added parameter ' . a:param_name . ' to method'
     return a:param_name
 endfunction
@@ -1089,6 +1083,7 @@ function! python#factorus#extractMethod(...)
         call s:rollbackExtraction()
         return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
     endif
+
     echo 'Extracting new method...'
     call s:gotoTag(0)
     let a:tab = [substitute(getline('.'),'\(\s*\).*','\1',''),substitute(getline(line('.')+1),'\(\s*\).*','\1','')]
