@@ -41,6 +41,7 @@ Bugs
 Tasks
 -----
 - Speed up renameMethod (again) (Down to normal speeds 07-12-2017)
+- Speed up Rollback for renaming (DONE 07-12-2017)
 
 ======
 PYTHON

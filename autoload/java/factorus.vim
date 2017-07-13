@@ -917,7 +917,7 @@ endfunction
 
 " updateFile {{{3
 function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
-    let a:orig = line('.')
+    let a:orig = [line('.'),col('.')]
 
     if a:is_local == 1
         let a:query = '\([^.]\)\<' . a:old_name . '\>'
@@ -950,7 +950,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
         execute 'silent %s/\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
     endif
 
-    call cursor(a:orig,1)
+    call cursor(a:orig[0],a:orig[1])
     silent write
 endfunction
 
@@ -1125,16 +1125,19 @@ endfunction
 
 " Renaming {{{2
 " renameArg {{{3
-function! s:renameArg(new_name) abort
+function! s:renameArg(new_name,...) abort
     let a:var = expand('<cword>')
     call s:updateFile(a:var,a:new_name,0,1,0)
 
-    echo 'Re-named ' . a:var . ' to ' . a:new_name
+    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        redraw
+        echo 'Re-named ' . a:var . ' to ' . a:new_name
+    endif
     return a:var
 endfunction
 
 " renameClass {{{3
-function! s:renameClass(new_name) abort
+function! s:renameClass(new_name,...) abort
     let a:class_name = expand('%:t:r')
     let a:class_tag = s:getClassTag()
     if a:class_name == a:new_name
@@ -1158,13 +1161,15 @@ function! s:renameClass(new_name) abort
     execute 'silent edit ' . a:new_file
     execute 'silent! bwipeout ' . a:bufnr
 
-    redraw
-    echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
+    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        redraw
+        echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
+    endif
     return a:class_name
 endfunction
 
 " renameField {{{3
-function! s:renameField(new_name) abort
+function! s:renameField(new_name,...) abort
     let a:search = '^\s*' . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\=\s*\(' . s:java_identifier . '\)\s*[;=].*'
 
     let a:line = getline('.')
@@ -1203,12 +1208,16 @@ function! s:renameField(new_name) abort
             call s:updateClassFile(a:type,a:var,a:new_name)
         endif
 
-        redraw
-        echo 'Updating sub-classes...'
+        if a:0 == 0 || a:000[-1] != 'factorusRollback'
+            redraw
+            echo 'Updating sub-classes...'
+        endif
         let a:classes = s:updateSubClassFiles(expand('%:t:r'),a:var,a:new_name,'',a:is_static)
 
-        redraw
-        echo 'Updating references...'
+        if a:0 == 0 || a:000[-1] != 'factorusRollback'
+            redraw
+            echo 'Updating references...'
+        endif
         call s:updateReferences(a:classes,a:var,a:new_name,'',a:is_static)
     endif
 
@@ -1216,13 +1225,15 @@ function! s:renameField(new_name) abort
         call s:safeClose()
     endif
 
-    redraw
-    echo 'Re-named ' . a:var . ' to ' . a:new_name
+    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        redraw
+        echo 'Re-named ' . a:var . ' to ' . a:new_name
+    endif
     return a:var
 endfunction
 
 " renameMethod {{{3
-function! s:renameMethod(new_name) abort
+function! s:renameMethod(new_name,...) abort
     call s:gotoTag(0)
 
     let a:method_name = matchstr(getline('.'),'\s\+' . s:java_identifier . '\s*(')
@@ -1250,21 +1261,27 @@ function! s:renameMethod(new_name) abort
     let s:all_funcs = {}
     let a:is_static = match(getline('.'),'\s\+static\s\+[^)]\+(') >= 0 ? 1 : 0
 
-    redraw
-    echo 'Updating hierarchy...'
+    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        redraw
+        echo 'Updating hierarchy...'
+    endif
     let a:classes = s:updateSubClassFiles(expand('%:t:r'),a:method_name,a:new_name,'(',a:is_static)
 
-    redraw
-    echo 'Updating references...'
+    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        redraw
+        echo 'Updating references...'
+    endif
     call s:updateReferences(a:classes,a:method_name,a:new_name,'(',a:is_static)
 
     if a:top > 0
         call s:safeClose()
     endif
 
-    redraw
-    let a:keyword = a:is_static == 1 ? ' static' : ''
-    echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
+    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        redraw
+        let a:keyword = a:is_static == 1 ? ' static' : ''
+        echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
+    endif
     return a:method_name
 endfunction
 
@@ -1847,6 +1864,40 @@ function! s:rollbackEncapsulation()
         silent write
 endfunction
 
+" rollbackRename {{{3
+function! s:rollbackRename()
+    let a:files = {}
+
+    for line in g:factorus_qf
+        if index(keys(line),'filename') < 0
+            if line['pattern'] == 'Unmodified'
+                break
+            endif
+            continue
+        endif
+
+        if index(keys(a:files),line['filename']) < 0
+            let a:files[line['filename']] = [line['lnum']]
+        else
+            call add(a:files[line['filename']],line['lnum'])
+        endif
+    endfor
+
+    let a:old = g:factorus_history['old']
+    let a:new = g:factorus_history['args'][0]
+
+    for file in keys(a:files)
+        execute 'silent tabedit ' . file
+        for line in a:files[file]
+            call cursor(line,1)
+            execute 's/\<' . a:new . '\>/' . a:old . '/g'
+        endfor
+        silent write
+        call s:safeClose()
+    endfor
+    return 'Rolled back renaming of ' . substitute(g:factorus_history['args'][-2],'\(.\)\(.*\)','\L\1\E\2','') . ' ' . a:old
+endfunction
+
 " rollbackExtraction {{{3
 function! s:rollbackExtraction()
     let a:open = search('public .*' . g:factorus_method_name . '(')
@@ -1960,32 +2011,38 @@ function! java#factorus#renameSomething(new_name,type,...)
 
     let a:res = ''
     try
-        let Rename = function('s:rename' . a:type)
-        let a:res = Rename(a:new_name)
-                                                 
-        if g:factorus_show_changes > 0 && (a:0 == 0 || a:000[-1] != 'factorusRollback')
-            let a:ch = len(s:qf)
-            let a:ch_i = a:ch == 1 ? ' instance ' : ' instances '
-            let a:un = s:getUnchanged('\<' . a:res . '\>')
-            let a:un_l = len(a:un)
-            let a:un_i = a:un_l == 1 ? ' instance ' : ' instances '
+        if a:0 > 0 && a:000[-1] == 'factorusRollback'
+            let a:res = s:rollbackRename()
+            let g:factorus_qf = []
+        else
+            let Rename = function('s:rename' . a:type)
+            let a:res = Rename(a:new_name)
 
-            let a:first_line = a:ch . a:ch_i . 'modified, ' . a:un_l . a:un_i . 'left unmodified.'
+            if g:factorus_show_changes > 0
+                let a:ch = len(s:qf)
+                let a:ch_i = a:ch == 1 ? ' instance ' : ' instances '
+                let a:un = s:getUnchanged('\<' . a:res . '\>')
+                let a:un_l = len(a:un)
+                let a:un_i = a:un_l == 1 ? ' instance ' : ' instances '
 
-            if g:factorus_show_changes > 1
-                let a:un = [{'pattern' : 'Unmodified'}] + a:un
-                if g:factorus_show_changes == 2
-                    let s:qf = []
+                let a:first_line = a:ch . a:ch_i . 'modified, ' . a:un_l . a:un_i . 'left unmodified.'
+
+                if g:factorus_show_changes > 1
+                    let a:un = [{'pattern' : 'Unmodified'}] + a:un
+                    if g:factorus_show_changes == 2
+                        let s:qf = []
+                    endif
+                    let s:qf += a:un
                 endif
-                let s:qf += a:un
-            endif
 
-            if g:factorus_show_changes % 2 == 1
-                let s:qf = [{'pattern' : 'Modified'}] + s:qf
-            endif
-            let s:qf = [{'text' : a:first_line,'pattern' : 'rename' . a:type}] + s:qf
+                if g:factorus_show_changes % 2 == 1
+                    let s:qf = [{'pattern' : 'Modified'}] + s:qf
+                endif
+                let s:qf = [{'text' : a:first_line,'pattern' : 'rename' . a:type}] + s:qf
 
-            call s:setQuickFix(a:type)
+                call s:setQuickFix(a:type)
+            endif
+            let g:factorus_qf = deepcopy(s:qf)
         endif
 
         execute 'silent cd ' a:prev_dir

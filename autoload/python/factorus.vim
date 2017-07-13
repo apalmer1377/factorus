@@ -1032,29 +1032,33 @@ function! python#factorus#renameSomething(new_name,type,...)
         let Rename = function('s:rename' . a:type)
         let a:res = Rename(a:new_name)
 
-        if g:factorus_show_changes > 0 && (a:0 == 0 || a:000[-1] != 'factorusRollback')
-            let a:ch = len(s:qf)
-            let a:ch_i = a:ch == 1 ? ' instance ' : ' instances '
-            let a:un = s:getUnchanged('\<' . a:res . '\>')
-            let a:un_l = len(a:un)
-            let a:un_i = a:un_l == 1 ? ' instance ' : ' instances '
+        if a:0 > 0 && a:000[-1] == 'factorusRollback'
+            let a:res = 'Rolled back renaming of ' . substitute(g:factorus_history['args'][-2],'\(.\)\(.*\)','\L\1\E\2','') . ' ' . g:factorus_history['old']
+        else
+            if g:factorus_show_changes > 0
+                let a:ch = len(s:qf)
+                let a:ch_i = a:ch == 1 ? ' instance ' : ' instances '
+                let a:un = s:getUnchanged('\<' . a:res . '\>')
+                let a:un_l = len(a:un)
+                let a:un_i = a:un_l == 1 ? ' instance ' : ' instances '
 
-            let a:first_line = a:ch . a:ch_i . 'modified, ' . a:un_l . a:un_i . 'left unmodified.'
+                let a:first_line = a:ch . a:ch_i . 'modified, ' . a:un_l . a:un_i . 'left unmodified.'
 
-            if g:factorus_show_changes > 1
-                let a:un = [{'pattern' : 'Unmodified'}] + a:un
-                if g:factorus_show_changes == 2
-                    let s:qf = []
+                if g:factorus_show_changes > 1
+                    let a:un = [{'pattern' : 'Unmodified'}] + a:un
+                    if g:factorus_show_changes == 2
+                        let s:qf = []
+                    endif
+                    let s:qf += a:un
                 endif
-                let s:qf += a:un
-            endif
 
-            if g:factorus_show_changes % 2 == 1
-                let s:qf = [{'pattern' : 'Modified'}] + s:qf
-            endif
-            let s:qf = [{'text' : a:first_line,'pattern' : 'rename' . a:type}] + s:qf
+                if g:factorus_show_changes % 2 == 1
+                    let s:qf = [{'pattern' : 'Modified'}] + s:qf
+                endif
+                let s:qf = [{'text' : a:first_line,'pattern' : 'rename' . a:type}] + s:qf
 
-            call s:setQuickFix(a:type)
+                call s:setQuickFix(a:type)
+            endif
         endif
 
         execute 'silent cd ' a:prev_dir

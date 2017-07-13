@@ -93,13 +93,16 @@ function! factorus#command(func,...)
         let Func = function(a:ext . '#factorus#' . a:func,a:000)
         let a:res = Func()
         let a:file = expand('%:p')
-        if g:factorus_show_changes > 0 && a:func == 'renameSomething' && index(a:000,'factorusRollback') < 0 && a:000[-1] != 'Arg'
-            copen
-        endif
-        if g:factorus_validate == 1
-            redraw
-            echo 'Validating changes...'
-            call factorus#rebuild()
+        if a:0 == 0 || a:000[-1] != 'factorusRollback'
+            if g:factorus_show_changes > 0 && a:func == 'renameSomething'
+                copen
+            endif
+
+            if g:factorus_validate == 1
+                redraw
+                echo 'Validating changes...'
+                call factorus#rebuild()
+            endif
         endif
     catch /^Vim(\a\+):E117:/
         if match(v:exception,'\<' . a:func . '\>') >= 0
@@ -122,7 +125,10 @@ function! factorus#command(func,...)
 
     redraw
     if a:err != ''
-        echo a:err
+        let a:res = a:err
+        if (a:0 == 0 || a:000[-1] != 'factorusRollback')
+            echo a:err
+        endif
     endif
     let g:factorus_history = {'file' : a:file, 'function' : a:func, 'pos' : copy(a:pos), 'args' : a:000, 'old' : a:res}
     return a:res
@@ -148,8 +154,7 @@ function! factorus#rollback()
     if a:func == 'addParam'
         let a:echo = factorus#command('addParam',a:old,a:old,'factorusRollback')
     elseif a:func == 'renameSomething'
-        call factorus#command('renameSomething',a:old,g:factorus_history['args'][-1],'factorusRollback')
-        let a:echo = 'Rolled back renaming of ' . substitute(g:factorus_history['args'][-2],'\(.\)\(.*\)','\L\1\E\2','') . ' ' . a:old
+        let a:echo = factorus#command('renameSomething',a:old,g:factorus_history['args'][-1],'factorusRollback')
     else
         let a:echo = factorus#command(a:func,'factorusRollback')
     endif
@@ -168,4 +173,3 @@ function! factorus#rollback()
         echo a:echo
     endif
 endfunction
-
