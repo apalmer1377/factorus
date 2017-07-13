@@ -21,17 +21,65 @@ let s:langs = { 'java'      : 'Java',
             \ }
 
 " Error Dictionary {{{2
-let s:errors = {'Invalid'       : 'Invalid expression under cursor.',
+let s:errors = {
+            \   'Invalid'       : 'Invalid expression under cursor.',
             \   'Duplicate'     : 'New name is same as old name.',
             \   'NoLines'       : 'Nothing to extract.',
             \   'EncapStatic'   : 'Cannot encapsulate a static variable.',
             \   'EncapLocal'    : 'Cannot encapsulate a local variable.'
-            \  }
+            \}
+
+" Build Dictionary {{{2
+let s:build_files = {   
+            \       'make'      : 'Makefile',
+            \       'ant'       : 'build.xml',
+            \       'mvn'       : 'pom.xml',
+            \       'gradle'    : 'build.gradle'
+            \}
 
 " Commands {{{1
 " factorus#version {{{2
 function! factorus#version()
     echo 'Factorus: version ' . g:factorus_version
+endfunction
+
+" factorus#rebuild {{{2
+function! factorus#rebuild(...)
+    let a:strip_dir = '\(.*\/\)\=\(.*\)'
+    let a:prev_dir = getcwd()
+    let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
+    execute 'cd ' . a:project_dir
+
+    let a:file_find = g:factorus_build_file == '' ? s:build_files[g:factorus_build_program] : g:factorus_build_file
+    try
+        let [a:build_path,a:file_find] = split(substitute(a:file_find,a:strip_dir,'\1|\2',''),'|')
+        let a:path_find = ' -path "' . a:build_path . '" '
+    catch /.*/
+        let a:file_find = substitute(a:file_find,a:strip_dir,'\2','')
+        let a:path_find = ''
+    endtry
+
+    try
+        let a:file = split(system('find ' . getcwd() . a:path_find . ' -name "' . a:file_find . '"'),'\n')[0]
+    catch /.*/
+        execute 'cd ' . a:prev_dir
+        throw 'Factorus:' . v:exception
+    endtry
+
+    let a:build_dir = substitute(a:file,a:strip_dir,'\1','')
+    execute 'cd ' . a:build_dir
+
+    let a:build_task = a:0 > 0 ? a:1 : g:factorus_build_task
+    let a:command = g:factorus_build_program . ' ' . a:build_task . ' ' . g:factorus_build_options
+    echo 'Running ' . a:command
+    let a:res = split(system(a:command),'\n')
+
+    echo 'Build Output:'
+    for line in a:res
+        echo line
+    endfor
+
+    execute 'cd ' . a:prev_dir
 endfunction
 
 " factorus#command {{{2
@@ -47,6 +95,11 @@ function! factorus#command(func,...)
         let a:file = expand('%:p')
         if g:factorus_show_changes > 0 && a:func == 'renameSomething' && index(a:000,'factorusRollback') < 0 && a:000[-1] != 'Arg'
             copen
+        endif
+        if g:factorus_validate == 1
+            redraw
+            echo 'Validating changes...'
+            call factorus#rebuild()
         endif
     catch /^Vim(\a\+):E117:/
         if match(v:exception,'\<' . a:func . '\>') >= 0
@@ -115,3 +168,4 @@ function! factorus#rollback()
         echo a:echo
     endif
 endfunction
+

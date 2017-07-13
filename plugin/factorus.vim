@@ -14,7 +14,12 @@ let s:opts = {
             \   'extract_heuristic'     : 'longest',
             \   'split_lines'           : 1,
             \   'line_length'           : 125,
-            \   'show_changes'          : 0
+            \   'show_changes'          : 0,
+            \   'build_program'         : 'make',
+            \   'build_task'            : '',
+            \   'build_file'            : '',
+            \   'build_options'         : '',
+            \   'validate'              : 0
             \ }
 
 function! s:init_var(var,val)
@@ -86,6 +91,7 @@ command! -nargs=0 FEncapsulate      call factorus#command('encapsulateField')
 command! -nargs=+ FAddParam         call factorus#command('addParam', <f-args>)  
 
 command! -nargs=0 FRollback         call factorus#rollback()
+command! -nargs=? FRebuild          call factorus#rebuild(<f-args>)
 
 " Modeline {{{1
 " vim: ts=8 sw=4 sts=4 et foldenable foldmethod=marker foldcolumn=1

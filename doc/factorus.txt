@@ -10,11 +10,11 @@ Contents                                            *factorus* *factorus-help*
 
         1. Intro ............................ |factorus-intro|
         2. Commands ......................... |factorus-usage|
-            2.1. Extraction ......... ....... |factorus-extract|
-            2.2. Insertion .................. |factorus-insert|
-            2.3. Modification ............... |factorus-modify|
-        3. Reverting Changes ................ |factorus-undo|
-        4. Configuration .................... |factorus-configure|
+            2.1 Extraction .................. |factorus-extract|
+            2.2 Insertion ................... |factorus-insert|
+            2.3 Modification ................ |factorus-modify|
+            2.4 Miscellaneous ............... |factorus_misc|
+        3. Configuration .................... |factorus-configure|
 
 ==============================================================================
 1. Intro                                                      *factorus-intro*
@@ -26,8 +26,8 @@ written entirely in Vimscript, so there is no need for any external packages.
 2. Usage                                                      *factorus-usage*
 
 Factorus provides numerous functions for refactoring your code. The current
-functions are roughly grouped into three categories: extraction, insertion,
-and modification.
+functions are roughly grouped into four categories: extraction, insertion,
+modification, and miscellaneous.
 
 ------------------------------------------------------------------------------
 2.1 Extraction                                              *factorus-extract*
@@ -82,19 +82,16 @@ and modification.
 :FRenameMethod {new_name}                                     *:FRenameMethod*
     Renames the current method to {new_name}.  
 
-==============================================================================
-3. Reverting Changes                                           *factorus-undo*
+------------------------------------------------------------------------------
+2.4 Miscellaneous                                              *factorus-misc*
 
-Every so often, you'll want to undo the changes made after running a Factorus
-command, without having to reset unrelated changes in Git. After running most 
-commands, this is a simple process, but when renaming methods or classes it 
-can become a pain. Luckily, the |:FRollback| command provides an easy way to
-do that.
+:Factorus                                                          *:Factorus*
+    Displays the current version of Factorus.
 
 :FRollback                                                        *:FRollback*
-
-    Reverts the changes made by the latest Factorus command. For instance, if
-    you most changed a class Foo using the command
+    Reverts the changes made by the latest Factorus command (other than the
+    commands listed in |factorus_misc|). For instance, if you most recently
+    renamed a class Foo using the command
 >
         :FRenameClass Bar
 <
@@ -105,8 +102,12 @@ do that.
     to set everything back to normal.  This only works for the most recent
     command, so changes made before then are permanent.
 
+:FRebuild [{build_task}]                                           *:FRebuild*
+    Rebuilds the current project. If {build_task} is given, the projects is
+    build according to that task; otherwise, |g:factorus_build_task| is used.
+   
 ==============================================================================
-4. Configuration                                          *factorus-configure*
+3. Configuration                                          *factorus-configure*
 
 
                                                       *g:factorus_project_dir*
@@ -255,6 +256,67 @@ was before the change, not after.
 Example:
 >
         let g:factorus_show_changes = 1
+<
+
+                                                    *g:factorus_build_program*
+g:factorus_build_program~
+Default: 'make'
+
+Determines the build program used for building the project.
+
+Example:
+>
+        let g:factorus_build_program = 'gradle'
+<
+
+                                                       *g:factorus_build_task*
+g:factorus_build_task~
+Default: ''
+
+Determines the default task called when building the project.
+
+Example:
+>
+        let g:factorus_build_task = 'build-war'
+<
+
+                                                       *g:factorus_build_file*
+g:factorus_build_file~
+Default: ''
+
+Determines the build file Factorus looks for when building the project. If
+this is not provided, the default build file for |g:factorus_build_program|
+will be used (i.e., build.xml for ant). If you wish to specify an absolute
+path to the build file, be sure not to use any aliases in the path (i.e, use 
+'/home/USERNAME' instead of '~').
+
+Example:
+>
+        let g:factorus_build_file = 'custom.xml'
+<
+
+                                                    *g:factorus_build_options*
+g:factorus_build_options~
+Default: ''
+
+Use this to specify any command-line arguments to pass to |g:factorus_build_program|.
+Add all arguments as a space-separated string.
+
+Example:
+>
+        let g:factorus_build_options = '-Dbuild_env=PROD'
+<
+
+                                                         *g:factorus_validate*
+g:factorus_validate~
+Default: 0
+
+If set to 1, Factorus will rebuild the project after every command, in order
+to validate the changes.  If set to 0, you can still validate the current
+state of the project by running |:FRebuild|.
+Example:
+>
+        let g:factorus_validate = 1
 <
 
 ==============================================================================

@@ -8,7 +8,7 @@ Bugs
 
 Tasks
 -----
-- Create TestChanges command to validate code changes (ant/maven builds)
+- Create Rebuild command to validate code changes (ant/maven builds) (DONE 07-12-2017, rudimentary but functional)
 - Make all methods atomic--if an error is thrown or the function is interrupted, roll back the changes
 - Provide list of all files/ all changes made after a rename
     * Java: 07-10-2017
