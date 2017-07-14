@@ -429,7 +429,7 @@ function! s:getSuperClasses()
     let a:possibles = system(a:search)
     let a:possibles = split(a:possibles,'\n')
     for poss in a:possibles
-        execute 'silent tabedit ' . poss
+        execute 'silent tabedit! ' . poss
         let a:sups += s:getSuperClasses()
         call s:safeClose()
     endfor
@@ -601,13 +601,13 @@ function! s:getAllFunctions()
 
     let a:defs = {'types' : [], 'names' : []}
     for class in a:hier
-        execute 'silent tabedit ' . class
+        execute 'silent tabedit! ' . class
         let a:funcs = s:getFunctionDecs()
         let a:defs['types'] += a:funcs['types']
         let a:defs['names'] += a:funcs['names']
         call s:safeClose()
     endfor
-    silent edit
+    silent edit!
 
     let s:all_funcs[expand('%:p')] = a:defs
     return a:defs
@@ -768,7 +768,7 @@ function! s:followChain(classes,funcs,new_method)
         let a:temp_list = []
         for file in a:chain_files
             let a:next = ''
-            execute 'silent tabedit ' . file
+            execute 'silent tabedit! ' . file
             call cursor(1,1)
             let a:search = s:no_comment . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\_s\+\<' . func . '\(\<\|\>\|)\|\s\).*'
             let a:find =  search(a:search)
@@ -805,7 +805,7 @@ function! s:followChain(classes,funcs,new_method)
 
     let a:res = 0
     for file in a:chain_files
-        execute 'silent tabedit ' . file
+        execute 'silent tabedit! ' . file
         let a:search = s:no_comment . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+\<' . a:new_method . '\>\_s*('
         let a:find =  search(a:search)
         call s:safeClose()
@@ -914,7 +914,6 @@ function! s:getNextUse(var,...)
 endfunction
 
 " File-Updating {{{2
-
 " updateFile {{{3
 function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
     let a:orig = [line('.'),col('.')]
@@ -1045,7 +1044,7 @@ function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
 
     let a:use_subs = map(getloclist(0),{key,val -> getbufinfo(val['bufnr'])[0]['name']})
     for file in a:use_subs
-        execute 'silent tabedit ' . file
+        execute 'silent tabedit! ' . file
         call cursor(1,1)
         if a:is_static == 1 || a:paren == '('
             if a:paren == '('
@@ -1059,7 +1058,7 @@ function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
 
         call s:safeClose()
     endfor
-    silent edit
+    silent edit!
 
     call add(a:sub_classes,a:class_name)
     return a:sub_classes
@@ -1098,11 +1097,11 @@ endfunction
 " updateMethodFiles {{{3
 function! s:updateMethodFiles(files,class_name,method_name,new_name,paren) abort
     for file in a:files
-        execute 'silent tabedit ' . file
+        execute 'silent tabedit! ' . file
         call s:updateMethodFile(a:class_name,a:method_name,a:new_name,a:paren)
         call s:safeClose()
     endfor
-    silent edit
+    silent edit!
 endfunction 
 
 " updateReferences {{{3
@@ -1160,7 +1159,7 @@ function! s:renameClass(new_name,...) abort
     call system('rm -rf ' . a:temp_file)
 
     let a:bufnr = bufnr('.')
-    execute 'silent edit ' . a:new_file
+    execute 'silent edit! ' . a:new_file
     execute 'silent! bwipeout ' . a:bufnr
 
     if a:0 == 0 || a:000[-1] != 'factorusRollback'
@@ -1192,7 +1191,7 @@ function! s:renameField(new_name,...) abort
     let a:var_search = s:no_comment . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+\<' . a:var . '\>\_s*[;=]'
     while a:top >= 1
         if a:supers[a:top] != a:file_name
-            execute 'silent tabedit ' . a:supers[a:top]
+            execute 'silent tabedit! ' . a:supers[a:top]
             call cursor(1,1)
             if search(a:var_search) != 0
                 break
@@ -1252,7 +1251,7 @@ function! s:renameMethod(new_name,...) abort
     let a:func_search = s:no_comment . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+\<' . a:method_name . '\>\_s*('
     while a:top >= 1
         if a:supers[a:top] != a:file_name
-            execute 'silent tabedit ' . a:supers[a:top]
+            execute 'silent tabedit! ' . a:supers[a:top]
             call cursor(1,1)
             if search(a:func_search) != 0
                 break
@@ -1891,7 +1890,7 @@ function! s:rollbackRename()
     let a:new = g:factorus_history['args'][0]
 
     for file in keys(a:files)
-        execute 'silent tabedit ' . file
+        execute 'silent tabedit! ' . file
         for line in a:files[file]
             call cursor(line,1)
             execute 's/\<' . a:new . '\>/' . a:old . '/ge'
@@ -1991,7 +1990,7 @@ function! java#factorus#addParam(param_name,param_type,...) abort
     call append(a:next[0] - 1,a:line)
 
     silent write
-    silent edit
+    silent edit!
     call cursor(a:orig[0],a:orig[1])
 
     echo 'Added parameter ' . a:param_name . ' to method'

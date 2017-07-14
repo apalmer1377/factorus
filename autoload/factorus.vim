@@ -124,15 +124,13 @@ function! factorus#command(func,...)
             endif
         endfor
 
-        if a:func == 'renameSomething' && (a:0 == 0 || a:000[-1] != 'factorusRollback')
-            call factorus#rollback()
-        endif
-
+        let a:roll = 1
         if match(v:exception,'^Vim(\a\+):E117:') >= 0
             if match(v:exception,'\<' . a:func . '\>') >= 0
                 let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
                 let a:name = a:func == 'renameSomething' ? 'rename' . a:000[-1] : a:func
                 let a:err = 'Factorus: ' . a:name . ' is not available for ' . a:lang . '.'
+                let a:roll = 0
             else
                 let a:err = 'Factorus: ' . v:exception
             endif
@@ -145,6 +143,10 @@ function! factorus#command(func,...)
             endif
         else
             let a:err = 'An unexpected error has occurred: ' . v:exception . ', at ' . v:throwpoint
+        endif
+
+        if a:func == 'renameSomething' && (a:0 == 0 || a:000[-1] != 'factorusRollback') && a:roll == 1
+            call factorus#rollback()
         endif
     endtry
 

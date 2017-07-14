@@ -458,7 +458,7 @@ function! s:renameClass(new_name,...) abort
         throw 'Factorus: ' . v:exception . ', at ' . v:throwpoint
     endtry
 
-    silent edit
+    silent edit!
 
     if a:0 == 0 || a:000[-1] != 'factorusRollback'
         redraw
@@ -499,7 +499,7 @@ function! s:renameMethod(new_name,...) abort
         throw 'Factorus: ' . v:exception . ', at ' . v:throwpoint
     endtry
 
-    silent edit
+    silent edit!
 
     if a:0 == 0 || a:000[-1] != 'factorusRollback'
         redraw
@@ -1012,7 +1012,7 @@ function! python#factorus#addParam(param_name,...)
     call append(a:next[0] - 1,a:line)
 
     silent write
-    silent edit
+    silent edit!
     call cursor(a:orig[0],a:orig[1])
 
     redraw
