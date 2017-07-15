@@ -37,6 +37,47 @@ let s:build_files = {
             \       'gradle'    : 'build.gradle'
             \}
 
+" Functions {{{1
+
+function! factorus#isRollback(a)
+    return (len(a:a) > 0 && a:a[-1] == 'factorusRollback')
+endfunction
+
+function! s:handleError(func,ext,error,opt)
+    let [a:exception,a:throwpoint] = a:error
+
+    for buf in getbufinfo()
+        if index(s:open_bufs,buf['name']) < 0
+            execute 'bwipeout ' . buf['bufnr']
+        endif
+    endfor
+
+    let a:roll = index(keys(g:factorus_history),'old') >= 0 ? 1 : 0
+    if match(a:exception,'Unknown function') >= 0
+        if match(a:exception,'\(\<' . a:func . '\>\|s:rename\)') >= 0
+            let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
+            let a:name = a:func == 'renameSomething' ? 'rename' . a:opt[-1] : a:func
+            let a:err = 'Factorus: ' . a:name . ' is not available for ' . a:lang . '.'
+            let a:roll = 0
+        else
+            let a:err = a:exception
+        endif
+    elseif match(a:exception,'^Factorus:') >= 0
+        let a:tail = join(split(a:exception,':')[1:])
+        let a:err = index(keys(s:errors),a:tail) >= 0 ? 'Factorus: ' . s:errors[a:tail] : a:exception
+    else
+        let a:err = 'An unexpected error has occurred: ' . a:exception . ', at ' . a:throwpoint
+    endif
+
+    if a:roll == 1 && a:func == 'renameSomething' && !factorus#isRollback(a:opt)
+        call factorus#rollback()
+        redraw
+        echo a:err
+    endif
+
+    "return a:err
+endfunction
+
 " Commands {{{1
 " factorus#version {{{2
 function! factorus#version()
@@ -84,33 +125,23 @@ endfunction
 
 " factorus#command {{{2
 function! factorus#command(func,...)
+    let s:open_bufs = map(getbufinfo(),{n,val -> val['name']})
+
+    let a:file = expand('%:p')
+    let a:pos = [line('.'),col('.')]
     let a:ext = &filetype
     if expand('%:e') == 'h'
         let a:ext = g:factorus_default_lang == '' ? 'cpp' : g:factorus_default_lang
     endif
 
-    let [a:res,a:err] = ['','']
-    let a:file = expand('%:p')
-
-    let a:pos = [line('.'),col('.')]
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         let g:factorus_history = {'file' : a:file, 'function' : a:func, 'pos' : copy(a:pos), 'args' : a:000}
     endif
-
-    let a:open_bufs = []
-    let a:buf_nrs = []
-    for buf in getbufinfo()
-        call add(a:open_bufs,buf['name'])
-        call add(a:buf_nrs,buf['bufnr'])
-    endfor
-    let a:curr_buf = a:buf_nrs[index(a:open_bufs,expand('%:p'))]
-    let a:buf_setting = &switchbuf
 
     try
         let Func = function(a:ext . '#factorus#' . a:func,a:000)
         let a:res = Func()
-        let a:file = expand('%:p')
-        if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        if !factorus#isRollback(a:000)
             if g:factorus_show_changes > 0 && a:func == 'renameSomething'
                 copen
             endif
@@ -122,45 +153,10 @@ function! factorus#command(func,...)
             endif
         endif
     catch /.*/
-        for buf in getbufinfo()
-            if index(a:open_bufs,buf['name']) < 0
-                execute 'bwipeout ' . buf['bufnr']
-            endif
-        endfor
-
-        let a:roll = 1
-        if match(v:exception,'^Vim(\a\+):E117:') >= 0
-            if match(v:exception,'\<' . a:func . '\>') >= 0 || (a:func == '' && match(v:exception,'s:rename') >= 0)
-                let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
-                let a:name = a:func == 'renameSomething' ? 'rename' . a:000[-1] : a:func
-                let a:err = 'Factorus: ' . a:name . ' is not available for ' . a:lang . '.'
-                let a:roll = 0
-            else
-                let a:err = 'Factorus: ' . v:exception
-            endif
-        elseif match(v:exception,'^Factorus:') >= 0
-            let a:custom = index(keys(s:errors),join(split(v:exception,':')[1:]))
-            if a:custom >= 0
-                let a:err = 'Factorus: ' . s:errors[split(v:exception,':')[1]]
-            else
-                let a:err = 'Factorus: ' . v:exception
-            endif
-        else
-            let a:err = 'An unexpected error has occurred: ' . v:exception . ', at ' . v:throwpoint
-        endif
-
-        if a:func == 'renameSomething' && (a:0 == 0 || a:000[-1] != 'factorusRollback') && a:roll == 1
-            call factorus#rollback()
-        endif
+        let a:res = ''
+        let a:error = [v:exception,v:throwpoint]
+        call s:handleError(a:func,a:ext,a:error,a:000)
     endtry
-
-    redraw
-    if a:err != ''
-        let a:res = a:err
-        if (a:0 == 0 || a:000[-1] != 'factorusRollback')
-            echo a:err
-        endif
-    endif
 
     let g:factorus_history = {'file' : a:file, 'function' : a:func, 'pos' : copy(a:pos), 'args' : a:000, 'old' : a:res}
     return a:res
@@ -168,7 +164,7 @@ endfunction
 
 " factorus#rollback {{{2
 function! factorus#rollback()
-    if !exists('g:factorus_history') || len(g:factorus_history['old']) == 0
+    if !exists('g:factorus_history') || index(keys(g:factorus_history),'old') < 0 || len(g:factorus_history['old']) == 0
         echo 'Nothing to roll back.'
         return
     endif
@@ -192,7 +188,7 @@ function! factorus#rollback()
     endif
     let g:factorus_history['old'] = ''
 
-    if a:curr != g:factorus_history['file'] && (g:factorus_history['function'] != 'renameSomething' || g:factorus_history['args'][-2] != 'Class')
+    if a:curr != g:factorus_history['file'] && (a:func != 'renameSomething' || g:factorus_history['args'][-2] != 'Class')
         if winnr("$") == 1 && tabpagenr("$") > 1 && tabpagenr() > 1 && tabpagenr() < tabpagenr("$")
           tabclose | tabprev
         else

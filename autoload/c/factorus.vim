@@ -433,7 +433,7 @@ function! s:renameArg(new_name,...) abort
     let g:factorus_history['old'] = a:var
     call s:updateFile(a:var,a:new_name,0,1)
 
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         redraw
         echo 'Re-named ' . a:var . ' to ' . a:new_name
     endif
@@ -491,7 +491,7 @@ function! s:renameMethod(new_name,...) abort
     endif
     silent edit!
 
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         redraw
         let a:keyword = a:is_static == 1 ? ' static' : ''
         echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
@@ -541,7 +541,7 @@ function! s:renameType(new_name,...) abort
     endif
     silent edit!
 
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         redraw
         let a:keyword = a:is_static == 1 ? ' static' : ''
         echo 'Re-named' . a:keyword . ' ' . a:type . ' ' . a:type_name . ' to ' . a:new_name
@@ -592,7 +592,7 @@ endfunction
 " Global Functions {{{1
 " addParam {{{2
 function! c#factorus#addParam(param_name,param_type,...) abort
-    if a:0 > 0 && a:1 == 'factorusRollback'
+    if factorus#isRollback(a:000)
         call s:gotoTag()
         execute 'silent s/,\=[^,]\{-\})/)/e'
         silent write!
@@ -637,7 +637,7 @@ function! c#factorus#renameSomething(new_name,type,...)
 
     let a:res = ''
     try
-        if a:0 > 0 && a:000[-1] == 'factorusRollback'
+        if factorus#isRollback(a:000)
             let a:res = s:rollbackRename()
             let g:factorus_qf = []
         else

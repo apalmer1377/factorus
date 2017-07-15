@@ -1129,7 +1129,7 @@ function! s:renameArg(new_name,...) abort
     let g:factorus_history['old'] = a:var
     call s:updateFile(a:var,a:new_name,0,1,0)
 
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         redraw
         echo 'Re-named ' . a:var . ' to ' . a:new_name
     endif
@@ -1162,7 +1162,7 @@ function! s:renameClass(new_name,...) abort
     execute 'silent edit! ' . a:new_file
     execute 'silent! bwipeout ' . a:bufnr
 
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         redraw
         echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
     endif
@@ -1210,13 +1210,13 @@ function! s:renameField(new_name,...) abort
             call s:updateClassFile(a:type,a:var,a:new_name)
         endif
 
-        if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        if !factorus#isRollback(a:000)
             redraw
             echo 'Updating sub-classes...'
         endif
         let a:classes = s:updateSubClassFiles(expand('%:t:r'),a:var,a:new_name,'',a:is_static)
 
-        if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        if !factorus#isRollback(a:000)
             redraw
             echo 'Updating references...'
         endif
@@ -1227,7 +1227,7 @@ function! s:renameField(new_name,...) abort
         call s:safeClose()
     endif
 
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         redraw
         echo 'Re-named ' . a:var . ' to ' . a:new_name
     endif
@@ -1264,13 +1264,13 @@ function! s:renameMethod(new_name,...) abort
     let s:all_funcs = {}
     let a:is_static = match(getline('.'),'\s\+static\s\+[^)]\+(') >= 0 ? 1 : 0
 
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         redraw
         echo 'Updating hierarchy...'
     endif
     let a:classes = s:updateSubClassFiles(expand('%:t:r'),a:method_name,a:new_name,'(',a:is_static)
 
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         redraw
         echo 'Updating references...'
     endif
@@ -1280,7 +1280,7 @@ function! s:renameMethod(new_name,...) abort
         call s:safeClose()
     endif
 
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         redraw
         let a:keyword = a:is_static == 1 ? ' static' : ''
         echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
@@ -1930,7 +1930,7 @@ endfunction
 " Global Functions {{{1
 " encapsulateField {{{2
 function! java#factorus#encapsulateField(...) abort
-    if a:0 > 0 && a:1 == 'factorusRollback'
+    if factorus#isRollback(a:000)
         call s:rollbackEncapsulation() 
         return 'Rolled back encapsulation for ' . g:factorus_history['old'][0]
     endif
@@ -1973,7 +1973,7 @@ endfunction
 
 " addParam {{{2
 function! java#factorus#addParam(param_name,param_type,...) abort
-    if a:0 > 0 && a:1 == 'factorusRollback'
+    if factorus#isRollback(a:000)
         call s:gotoTag(0)
         execute 'silent s/,\=[^,]\{-\})/)/e'
         silent write!
@@ -2018,7 +2018,7 @@ function! java#factorus#renameSomething(new_name,type,...)
 
     let a:res = ''
     try
-        if a:0 > 0 && a:000[-1] == 'factorusRollback'
+        if factorus#isRollback(a:000)
             let a:res = s:rollbackRename()
             let g:factorus_qf = []
         else
@@ -2079,7 +2079,7 @@ endfunction
 
 " extractMethod {{{2
 function! java#factorus#extractMethod(...)
-    if a:0 > 0 && a:1 == 'factorusRollback'
+    if factorus#isRollback(a:000)
         call s:rollbackExtraction()
         return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
     endif

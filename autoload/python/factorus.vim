@@ -425,7 +425,7 @@ function! s:renameArg(new_name,...) abort
 
     call s:updateFile(a:var,a:new_name,0,1,0)
 
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         redraw
         echo 'Re-named ' . a:var . ' to ' . a:new_name
     endif
@@ -460,7 +460,7 @@ function! s:renameClass(new_name,...) abort
 
     silent edit!
 
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         redraw
         echo 'Re-named class ' . a:class_name . ' to ' . a:new_name
     endif
@@ -501,7 +501,7 @@ function! s:renameMethod(new_name,...) abort
 
     silent edit!
 
-    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+    if !factorus#isRollback(a:000)
         redraw
         let a:keyword = a:is_global == 1 ? ' global' : ''
         echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
@@ -989,7 +989,7 @@ endfunction
 " Global Functions {{{1
 " addParam {{{2
 function! python#factorus#addParam(param_name,...)
-    if a:0 > 0 && a:000[-1] == 'factorusRollback'
+    if factorus#isRollback(a:000)
         call s:gotoTag(0)
         execute 'silent s/,\=\s\=\<' . a:param_name . '\>[^)]*)/)/e'
         execute 'silent s/(\<' . a:param_name . '\>,\=\s\=/(/e'
@@ -1044,7 +1044,7 @@ function! python#factorus#renameSomething(new_name,type,...)
         let Rename = function('s:rename' . a:type)
         let a:res = Rename(a:new_name)
 
-        if a:0 > 0 && a:000[-1] == 'factorusRollback'
+        if factorus#isRollback(a:000)
             let a:res = 'Rolled back renaming of ' . substitute(g:factorus_history['args'][-1],'\(.\)\(.*\)','\L\1\E\2','') . ' ' . g:factorus_history['old']
         else
             if g:factorus_show_changes > 0
@@ -1098,7 +1098,7 @@ endfunction
 
 " extractMethod {{{2
 function! python#factorus#extractMethod(...)
-    if a:0 > 0 && a:1 == 'factorusRollback'
+    if factorus#isRollback(a:000)
         call s:rollbackExtraction()
         return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
     endif
