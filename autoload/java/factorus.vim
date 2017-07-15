@@ -950,7 +950,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
     endif
 
     call cursor(a:orig[0],a:orig[1])
-    silent write
+    silent write!
 endfunction
 
 " updateClassFile {{{3
@@ -997,7 +997,7 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
     endwhile
     call cursor(a:prev[0],a:prev[1])
 
-    silent write
+    silent write!
 endfunction
 
 " updateDeclaration {{{3
@@ -1024,7 +1024,7 @@ function! s:updateDeclaration(method_name,new_name)
         let a:prev = [line('.'),col('.')]
         let a:next = searchpos('^\s*' . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+' . a:method_name . '\_s*(','Wn')
     endwhile
-    silent write
+    silent write!
 
     call cursor(a:orig[0],a:orig[1])
 endfunction
@@ -1091,7 +1091,7 @@ function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
         let a:next = searchpos(a:search,'Wn')
     endwhile
 
-    silent write
+    silent write!
 endfunction
 
 " updateMethodFiles {{{3
@@ -1864,7 +1864,7 @@ function! s:rollbackEncapsulation()
         endif
         execute 'silent ' . a:open . ',' . a:close . 'delete'
         call cursor(a:orig[0],a:orig[1])
-        silent write
+        silent write!
 endfunction
 
 " rollbackRename {{{3
@@ -1895,7 +1895,7 @@ function! s:rollbackRename()
             call cursor(line,1)
             execute 's/\<' . a:new . '\>/' . a:old . '/ge'
         endfor
-        silent write
+        silent write!
         call s:safeClose()
     endfor
 
@@ -1924,7 +1924,7 @@ function! s:rollbackExtraction()
     execute 'silent ' . a:open . ',' . a:close . 'delete'
     call append(line('.')-1,g:factorus_history['old'][1])
     call cursor(a:open,1)
-    silent write
+    silent write!
 endfunction
 
 " Global Functions {{{1
@@ -1965,7 +1965,7 @@ function! java#factorus#encapsulateField(...) abort
 
     let a:end = searchpos('}','bn')
     call append(a:end[0] - 1,a:encap)
-    silent write
+    silent write!
 
     echo 'Created getters and setters for ' . a:var
     return 
@@ -1976,7 +1976,7 @@ function! java#factorus#addParam(param_name,param_type,...) abort
     if a:0 > 0 && a:1 == 'factorusRollback'
         call s:gotoTag(0)
         execute 'silent s/,\=[^,]\{-\})/)/e'
-        silent write
+        silent write!
         return 'Removed new parameter ' . a:param_name
     endif
     let g:factorus_history['old'] = a:param_name
@@ -1989,7 +1989,7 @@ function! java#factorus#addParam(param_name,param_type,...) abort
     execute 'silent ' .  a:next[0] . 'd'
     call append(a:next[0] - 1,a:line)
 
-    silent write
+    silent write!
     silent edit!
     call cursor(a:orig[0],a:orig[1])
 
@@ -2168,7 +2168,7 @@ function! java#factorus#extractMethod(...)
     endwhile
 
     call search('public.*\<' . g:factorus_method_name . '\>(')
-    silent write
+    silent write!
     redraw
     echo 'Extracted ' . len(a:best_lines) . ' lines from ' . a:method_name
     return [a:method_name,a:old_lines]

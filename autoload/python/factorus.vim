@@ -414,7 +414,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_global)
     endif
 
     call cursor(a:orig,1)
-    silent write
+    silent write!
 endfunction
 
 " Renaming {{{2
@@ -983,7 +983,7 @@ function! s:rollbackExtraction()
     execute 'silent ' . a:open . ',' . a:close . 'delete'
     call append(line('.')-1,g:factorus_history['old'][1])
     call cursor(a:open,1)
-    silent write
+    silent write!
 endfunction
 
 " Global Functions {{{1
@@ -993,7 +993,7 @@ function! python#factorus#addParam(param_name,...)
         call s:gotoTag(0)
         execute 'silent s/,\=\s\=\<' . a:param_name . '\>[^)]*)/)/e'
         execute 'silent s/(\<' . a:param_name . '\>,\=\s\=/(/e'
-        silent write
+        silent write!
         return 'Removed new parameter ' . a:param_name
     endif
 
@@ -1011,7 +1011,7 @@ function! python#factorus#addParam(param_name,...)
     execute 'silent ' .  a:next[0] . 'd'
     call append(a:next[0] - 1,a:line)
 
-    silent write
+    silent write!
     silent edit!
     call cursor(a:orig[0],a:orig[1])
 
@@ -1179,7 +1179,7 @@ function! python#factorus#extractMethod(...)
     endwhile
 
     call search('def ' . g:factorus_method_name . '(')
-    silent write
+    silent write!
     redraw
     echo 'Extracted ' . len(a:best_lines) . ' lines from ' . a:method_name
     return [a:method_name,a:old_lines]

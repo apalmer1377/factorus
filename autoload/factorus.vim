@@ -85,6 +85,10 @@ endfunction
 " factorus#command {{{2
 function! factorus#command(func,...)
     let a:ext = &filetype
+    if expand('%:e') == 'h'
+        let a:ext = g:factorus_default_lang == '' ? 'cpp' : g:factorus_default_lang
+    endif
+
     let [a:res,a:err] = ['','']
     let a:file = expand('%:p')
 
@@ -126,7 +130,7 @@ function! factorus#command(func,...)
 
         let a:roll = 1
         if match(v:exception,'^Vim(\a\+):E117:') >= 0
-            if match(v:exception,'\<' . a:func . '\>') >= 0
+            if match(v:exception,'\<' . a:func . '\>') >= 0 || (a:func == '' && match(v:exception,'s:rename') >= 0)
                 let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
                 let a:name = a:func == 'renameSomething' ? 'rename' . a:000[-1] : a:func
                 let a:err = 'Factorus: ' . a:name . ' is not available for ' . a:lang . '.'

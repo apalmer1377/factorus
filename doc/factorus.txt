@@ -317,9 +317,23 @@ Default: 0
 If set to 1, Factorus will rebuild the project after every command, in order
 to validate the changes.  If set to 0, you can still validate the current
 state of the project by running |:FRebuild|.
+
 Example:
 >
         let g:factorus_validate = 1
+<
+
+                                                     *g:factorus_default_lang*
+g:factorus_default_lang~
+Default: ''
+
+Used to distinguish which language to use in the case of ambigious file 
+extensions (.h in particular).  This option is really only usefult when
+working in C, as the default filetype when editing header files is C++.
+
+Example:
+>
+        let g:factorus_default_lang = 'c'
 <
 
 ==============================================================================

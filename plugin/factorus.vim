@@ -19,7 +19,8 @@ let s:opts = {
             \   'build_task'            : '',
             \   'build_file'            : '',
             \   'build_options'         : '',
-            \   'validate'              : 0
+            \   'validate'              : 0,
+            \   'default_lang'          : ''
             \ }
 
 function! s:init_var(var,val)
@@ -84,8 +85,9 @@ command! -nargs=0 FExtractMethod    call factorus#command('extractMethod')
 
 command! -nargs=1 FRenameArg        call factorus#command('renameSomething', <f-args>, 'Arg')
 command! -nargs=1 FRenameClass      call factorus#command('renameSomething', <f-args>, 'Class')
-command! -nargs=1 FRenameMethod     call factorus#command('renameSomething', <f-args>, 'Method')
 command! -nargs=1 FRenameField      call factorus#command('renameSomething', <f-args>, 'Field') 
+command! -nargs=1 FRenameMethod     call factorus#command('renameSomething', <f-args>, 'Method')
+command! -nargs=1 FRenameType       call factorus#command('renameSomething', <f-args>, 'Type')
 
 command! -nargs=0 FEncapsulate      call factorus#command('encapsulateField')
 command! -nargs=+ FAddParam         call factorus#command('addParam', <f-args>)  

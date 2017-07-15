@@ -10,13 +10,13 @@ let s:c_identifier = '[' . s:start_chars . '][' . s:search_chars . ']*'
 let s:c_type = '\(struct\_s*\|union\_s*\|long\_s*\|short\_s*\)\=\<' . s:c_identifier . '\>'
 let s:collection_identifier = '\([\[\*&]\=[[\]\*' . s:search_chars . '[:space:]&]*[\*\]]\)\='
 
-let s:c_keywords = '\<\(break\|case\|continue\|default\|do\|else\|for\|goto\|if\|return\|sizeof\|switch\|typedef\|while\)\>'
+let s:c_keywords = '\<\(break\|case\|continue\|default\|do\|else\|for\|goto\|if\|return\|sizeof\|switch\|while\)\>'
 let s:c_allow = 'auto,char,const,double,enum,extern,float,inline,int,long,register,restrict,short,signed,static,struct,union,unsigned,void,volatile'
 
 let s:modifiers = '\(typedef\_s*\|extern\_s*\|static\_s*\|auto\_s*\|register\_s*\|const\_s*\|restrict\_s*\|volatile\_s*\|signed\_s*\|unsigned\_s*\)\='
 let s:modifier_query = repeat(s:modifiers,3)
 
-let s:struct = '\<\(enum\|struct\|union\)\>\_s*\(' . s:c_identifier . '\)\=\_s*{'
+let s:struct = '\<\(enum\|struct\|union\)\>\_s*\(' . s:c_identifier . '\)\=\_s*\({\|\<' . s:c_identifier . '\>\_s*;\)'
 let s:func = s:c_type . '\_s*' . s:collection_identifier . '\<' . s:c_identifier . '\>\_s*('
 let s:tag_query = '^\s*' . s:modifier_query . '\(' . s:struct . '\|' . s:func . '\)'
 
@@ -270,6 +270,10 @@ function! s:isValidTag(line)
         return 0
     endif
 
+    if match(getline(a:line),';') >= 0 && match(getline(a:line),'\<typedef\>') < 0
+        return 0
+    endif
+
     return 1
 endfunction
 
@@ -388,7 +392,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local)
     let a:orig = [line('.'),col('.')]
 
     if a:is_local == 1
-        let a:query = '\([^.]\)\<' . a:old_name . '\>'
+        let a:query = '\(^\|[^.]\)\<' . a:old_name . '\>'
         call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
         execute 'silent s/' . a:query . '/\1' . a:new_name . '/g'
 
@@ -409,17 +413,17 @@ function! s:updateFile(old_name,new_name,is_method,is_local)
     else
         let a:paren = a:is_method == 1 ? '(' : ''
         try
-            execute 'silent lvimgrep /\([^.]\)\<' . a:old_name . '\>' . a:paren . '/j %:p'
+            execute 'silent lvimgrep /\(^\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/j %:p'
             let g:factorus_qf += map(getloclist(0),{n,val -> {'filename' : expand('%:p'), 'lnum' : val['lnum'], 'text' : s:trim(val['text'])}})
         catch /.*/
         endtry
         call setloclist(0,[])
 
-        execute 'silent %s/\([^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
+        execute 'silent %s/\(^\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
     endif
 
     call cursor(a:orig[0],a:orig[1])
-    silent write
+    silent write!
 endfunction
 
 " Renaming {{{2
@@ -434,6 +438,16 @@ function! s:renameArg(new_name,...) abort
         echo 'Re-named ' . a:var . ' to ' . a:new_name
     endif
     return a:var
+endfunction
+
+" renameField {{{3
+function! s:renameField(new_name,...) abort
+
+endfunction
+
+" renameMacro {{{3
+function! s:renameMacro(new_name,...) abort
+
 endfunction
 
 " renameMethod {{{3
@@ -485,6 +499,56 @@ function! s:renameMethod(new_name,...) abort
     return a:method_name
 endfunction
 
+" renameType {{{3
+function! s:renameType(new_name,...) abort
+    call s:gotoTag()
+
+    let a:search = '^.*\<\(enum\|struct\|union\)\>\s*\(\<' . s:c_identifier . '\>\)\s*\({\|\<' . s:c_identifier . '\>\_s*;\).*'
+    if match(getline('.'),a:search) < 0
+        throw 'Factorus:Invalid'
+    endif
+
+    let [a:type,a:type_name] = split(substitute(getline('.'),a:search,'\1|\2',''),'|')
+    let a:is_static = match(getline('.'),'\<static\>[^)]\+(') >= 0 ? 1 : 0
+    let a:rep = '\<' . a:type . '\>\_s*\<' . a:type_name . '\>'
+    let a:new_rep = a:type . ' ' . a:new_name
+    let g:factorus_history['old'] = a:type . ' ' . a:type_name
+
+    let a:includes = s:getAllIncluded()
+    try
+        execute 'silent lvimgrep /' . a:rep . '/j ' . join(a:includes)
+        execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
+        call setloclist(0,[])
+        let a:swap = 1
+    catch /.*/
+        let a:swap = 0
+    endtry
+
+    call s:updateFile(a:rep,a:new_rep,0,0)
+    if a:is_static == 0
+        let a:search = '\<' . a:type . '\>[[:space:]]*\<' . a:type_name . '\>'
+        let a:temp_file = '.FactorusInc'
+
+        call s:getInclusions(a:temp_file)
+        call s:updateQuickFix(a:temp_file,a:search)
+
+        call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/' . a:new_rep . '/g"')
+        call system('rm -rf ' . a:temp_file)
+    endif
+
+    if a:swap == 1
+        call s:safeClose()
+    endif
+    silent edit!
+
+    if a:0 == 0 || a:000[-1] != 'factorusRollback'
+        redraw
+        let a:keyword = a:is_static == 1 ? ' static' : ''
+        echo 'Re-named' . a:keyword . ' ' . a:type . ' ' . a:type_name . ' to ' . a:new_name
+    endif
+    return a:type . ' ' . a:type_name
+endfunction
+
 " Extraction {{{2
 
 " Method-Building {{{2
@@ -510,7 +574,7 @@ function! s:rollbackRename()
     endfor
 
     let a:old = g:factorus_history['old']
-    let a:new = g:factorus_history['args'][0]
+    let a:new = g:factorus_history['args'][-1] == 'Type' ? split(a:old)[0] . ' ' . g:factorus_history['args'][0] : g:factorus_history['args'][0]
 
     for file in keys(a:files)
         execute 'silent tabedit! ' . file
@@ -518,7 +582,7 @@ function! s:rollbackRename()
             call cursor(line,1)
             execute 's/\<' . a:new . '\>/' . a:old . '/ge'
         endfor
-        silent write
+        silent write!
         call s:safeClose()
     endfor
 
@@ -527,6 +591,30 @@ endfunction
 
 " Global Functions {{{1
 " addParam {{{2
+function! c#factorus#addParam(param_name,param_type,...) abort
+    if a:0 > 0 && a:1 == 'factorusRollback'
+        call s:gotoTag()
+        execute 'silent s/,\=[^,]\{-\})/)/e'
+        silent write!
+        return 'Removed new parameter ' . a:param_name
+    endif
+    let g:factorus_history['old'] = a:param_name
+
+    let a:orig = [line('.'),col('.')]
+    call s:gotoTag()
+
+    let a:next = searchpos(')','Wn')
+    let a:line = substitute(getline(a:next[0]), ')', ', ' . a:param_type . ' ' . a:param_name . ')', '')
+    execute 'silent ' .  a:next[0] . 'd'
+    call append(a:next[0] - 1,a:line)
+
+    silent write!
+    silent edit!
+    call cursor(a:orig[0],a:orig[1])
+
+    echo 'Added parameter ' . a:param_name . ' to method'
+    return a:param_name
+endfunction
 
 " renameSomething {{{2
 function! c#factorus#renameSomething(new_name,type,...)
