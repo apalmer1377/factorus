@@ -63,7 +63,7 @@ function! s:handleError(func,ext,error,opt)
             let a:err = a:exception
         endif
     elseif match(a:exception,'^Factorus:') >= 0
-        let a:tail = join(split(a:exception,':')[1:])
+        let a:tail = substitute(join(split(a:exception,':')[1:]),',.*','','')
         let a:err = index(keys(s:errors),a:tail) >= 0 ? 'Factorus: ' . s:errors[a:tail] : a:exception
     else
         let a:err = 'An unexpected error has occurred: ' . a:exception . ', at ' . a:throwpoint
@@ -71,11 +71,10 @@ function! s:handleError(func,ext,error,opt)
 
     if a:roll == 1 && a:func == 'renameSomething' && !factorus#isRollback(a:opt)
         call factorus#rollback()
-        redraw
-        echo a:err
     endif
 
-    "return a:err
+    redraw
+    echo a:err
 endfunction
 
 " Commands {{{1
@@ -141,6 +140,7 @@ function! factorus#command(func,...)
     try
         let Func = function(a:ext . '#factorus#' . a:func,a:000)
         let a:res = Func()
+        let a:file = expand('%:p')
         if !factorus#isRollback(a:000)
             if g:factorus_show_changes > 0 && a:func == 'renameSomething'
                 copen
@@ -169,15 +169,18 @@ function! factorus#rollback()
         return
     endif
     echo 'Rolling back previous action...'
+    let a:func = g:factorus_history['function']
+    let a:old = g:factorus_history['old']
+
+    if a:func == 'renameSomething' && g:factorus_history['args'][-1] == 'Class'
+        cclose
+    endif
 
     let a:curr = expand('%:p')
     if a:curr != g:factorus_history['file']
         execute 'silent tabedit ' . g:factorus_history['file']
     endif
     call cursor(g:factorus_history['pos'][0],g:factorus_history['pos'][1])
-
-    let a:func = g:factorus_history['function']
-    let a:old = g:factorus_history['old']
 
     if a:func == 'addParam'
         let a:echo = factorus#command('addParam',a:old,a:old,'factorusRollback')

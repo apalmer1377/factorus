@@ -7,7 +7,7 @@ scriptencoding utf-8
 let s:start_chars = '_A-Za-z'
 let s:search_chars = s:start_chars . '0-9#'
 let s:c_identifier = '[' . s:start_chars . '][' . s:search_chars . ']*'
-let s:c_type = '\(struct\_s*\|union\_s*\|long\_s*\|short\_s*\)\=\<' . s:c_identifier . '\>'
+let s:c_type = '\(enum\_s*\|struct\_s*\|union\_s*\|long\_s*\|short\_s*\)\=\<' . s:c_identifier . '\>'
 let s:collection_identifier = '\([\[\*&]\=[[\]\*' . s:search_chars . '[:space:]&]*[\*\]]\)\='
 
 let s:c_keywords = '\<\(break\|case\|continue\|default\|do\|else\|for\|goto\|if\|return\|sizeof\|switch\|while\)\>'
@@ -141,7 +141,11 @@ endfunction
 function! s:updateQuickFix(temp_file,search_string)
     let a:res = split(system('cat ' . a:temp_file . ' | xargs grep -n "' . a:search_string . '"'),'\n')
     call map(a:res,{n,val -> split(val,':')})
-    call map(a:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
+    if len(split(system('cat ' . a:temp_file),'\n')) == 1
+        call map(a:res,{n,val -> {'filename' : expand('%:p'), 'lnum' : val[0], 'text' : s:trim(join(val[1:],':'))}})
+    else
+        call map(a:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
+    endif
     let g:factorus_qf += a:res
 endfunction
 
@@ -307,6 +311,31 @@ function! s:getNextTag()
     return [s:getAdjacentTag(''),1]
 endfunction
 
+" getTypeTag {{{3
+function! s:getTypeTag()
+    let [a:line,a:col] = [line('.'),col('.')]
+    call cursor(1,1)
+    let a:class_tag = search(s:tag_query,'n')
+    let a:tag_end = search(s:tag_query,'ne')
+    call cursor(a:line,a:col)
+    return [a:class_tag,a:tag_end]
+endfunction
+
+"isInType {{{3
+function! s:isInType()
+    let a:orig = [line('.'),col('.')]
+    let a:close = s:getClosingBracket(0)
+    let a:back = s:getAdjacentTag('b')
+    call cursor(a:back,1)
+
+    let a:res = 0
+    if s:isBefore(searchpos('{','Wn'),searchpos('(','Wn')) && s:getClosingBracket(1,[a:back,1]) == a:close
+        let a:res = 1
+    endif
+    call cursor(a:orig[0],a:orig[1])
+    return a:res
+endfunction
+
 " gotoTag {{{3
 function! s:gotoTag()
     let a:tag = s:getAdjacentTag('b')
@@ -384,6 +413,24 @@ function! s:getInclusions(temp_file)
 endfunction
 
 " Declarations {{{2
+" getTypeDefs {{{3
+function! s:getTypeDefs(files,type,name)
+    let a:search = '\<typedef\>\_s*' . a:type . '\_s*' . a:name . '\_s*\<\(' . s:c_identifier . '\)\>'
+    try
+        execute 'silent lvimgrep /' . a:search . '/j ' . join(a:files)
+        let a:res = []
+        for grep in getloclist(0)
+            let a:def = substitute(grep['text'],a:search,'\1','')
+            if index(a:res,a:def) < 0
+                call add(a:res,a:def)
+            endif
+        endfor
+        return a:res
+    catch /.*/
+        return []
+    endtry
+endfunction
+
 " getNextArg {{{3
 function! s:getNextArg(...)
     let a:get_variable = '^[^/*].*(.*\<\(' . a:1 . '\)\>' . s:collection_identifier . '\=\s\+\(\<' . a:2 . '\).*).*'
@@ -427,11 +474,11 @@ endfunction
 
 " getNextDec {{{3
 function! s:getNextDec()
-    let a:get_variable = '^\s*\(' . s:modifier_query . '\|for\s*(\)\s*\(' . s:c_type . 
-                \ s:collection_identifier . '\)\s\+\(\<' . s:c_identifier . '\>[^=;]*\)[;=].*'
+    let a:get_variable = '^\s*\(' . s:modifier_query . '\|for\s*(\)\s*\(' . s:c_type . '\_s*' . 
+                \ s:collection_identifier . '\)\s*\(\<' . s:c_identifier . '\>[^=;]*\)[;=].*'
     
-    let a:alt_get = '^\s*' . s:modifier_query . '\s*\(' . s:c_type . 
-                \ s:collection_identifier . '\)\s\+\(\<' . s:c_identifier . '\>[^=;]*\)[=;].*'
+    let a:alt_get = '^\s*' . s:modifier_query . '\s*\(' . s:c_type . '\_s*' . 
+                \ s:collection_identifier . '\)\s*\(\<' . s:c_identifier . '\>[^=;]*\)[=;].*'
 
     let [a:line,a:col] = [line('.'),col('.')]
     let a:match = searchpos(a:get_variable,'Wn')
@@ -449,7 +496,8 @@ function! s:getNextDec()
             let a:var = substitute(getline(a:match[0]),a:get_variable,'\5','')
             let a:fline = split(substitute(getline(a:match[0]),a:get_variable,'\8',''),',')
         else
-            let a:var = substitute(getline(a:match[0]),a:alt_get,'\4','')
+            let a:var = s:trim(substitute(getline(a:match[0]),a:alt_get,'\1 \2 \3 \4',''))
+            let a:var = substitute(a:var,'\s\+',' ','g')
             let a:fline = split(substitute(getline(a:match[0]),a:alt_get,'\7',''),',')
         endif
         call map(a:fline,{n,var -> s:trim(var)})
@@ -486,14 +534,282 @@ function! s:getLocalDecs(close)
     return a:vars
 endfunction
 
+" getFunctionDecs {{{3
+function! s:getFunctionDecs()
+    let a:access = '\<\(void\|public\|private\|protected\|static\|abstract\|final\|synchronized\)\>'
+    let a:query = '^\s*' . s:modifier_query . '\s*\(' .  s:c_type . '\_s*' . s:collection_identifier . '\=\)\_s\+\(' . s:c_identifier . '\)\_s*\([;=(]\).*'
+    let a:decs = {'types' : [], 'names' : []}
+    try
+        let a:class_tag = s:getClassTag()
+        let a:close = s:getClosingBracket(1,[a:class_tag[0],1])
+        execute 'silent vimgrep /' . a:query . '/j %:p'
+        let a:greps = getqflist()
+
+        for g in a:greps
+            let a:fname = substitute(g['text'],a:query,'\4|\6\7','')
+            if match(a:fname,s:java_keywords) >= 0 || match(a:fname,a:access) >= 0
+                continue
+            endif
+
+            if a:fname[len(a:fname)-1] == '('
+                let [a:type,a:name] = split(a:fname,'|')
+            else
+                call cursor(g['lnum'],g['col'])
+                if searchpair('{','','}','Wnb') == a:class_tag[0]
+                    let [a:type,a:name] = split(a:fname[:-2],'|')
+                else
+                    continue
+                endif
+            endif
+
+            call add(a:decs['types'],a:type)
+            call add(a:decs['names'],a:name)
+        endfor
+
+    catch /.*No match.*/
+    endtry
+
+    return a:decs
+endfunction
+
+" getAllFunctions {{{3
+function! s:getAllFunctions()
+"    if index(keys(s:all_funcs),expand('%:p')) >= 0
+"        return s:all_funcs[expand('%:p')]
+"    endif
+
+    let a:hier = s:getSuperClasses()
+
+    let a:defs = {'types' : [], 'names' : []}
+    for class in a:hier
+        execute 'silent tabedit! ' . class
+        let a:funcs = s:getFunctionDecs()
+        let a:defs['types'] += a:funcs['types']
+        let a:defs['names'] += a:funcs['names']
+        call s:safeClose()
+    endfor
+    silent edit!
+
+    let s:all_funcs[expand('%:p')] = a:defs
+    return a:defs
+endfunction
+
+" getStructVars {{{3
+function! s:getStructVars(var,dec,funcs)
+    if match(a:dec,'>$') < 0
+        return [a:dec]
+    endif
+
+    if len(a:funcs) > 1
+        let old = a:funcs[0]
+        call remove(a:funcs,0)
+        call add(a:funcs[0],old)
+    endif
+
+    let a:orig = substitute(a:dec,'^\([^<]*\)<.*','\1','')
+    let a:res = substitute(a:dec,'^.*<','','')
+    let a:res = substitute(a:res,'\(<\|>\|\s\)','','g')
+    return [a:orig] + split(a:res,',')
+endfunction
+
+" getFuncDec {{{3
+function! s:getFuncDec(func)
+    let a:orig = [line('.'),col('.')]
+    call cursor(1,1)
+    let a:search = s:no_comment . s:modifier_query . '\(' . s:c_type . '\_s*' . s:collection_identifier . '\)\_s\+\<' . a:func . '\(\<\|\>\|)\|\s\).*'
+    let a:find =  search(a:search)
+    let a:next = ''
+    if a:find > 0
+        call cursor(line('.'),1)
+        let a:next = substitute(getline('.'),a:search,'\4','')
+    else
+        let a:all_funcs = s:getAllFunctions()
+        let a:ind = match(a:all_funcs['names'],a:func)
+        if a:ind >= 0
+            let a:next = a:all_funcs['types'][a:ind]
+        endif
+    endif
+    call cursor(a:orig[0],a:orig[1])
+    return a:next
+endfunction
+
+" getVarDec {{{3
+function! s:getVarDec(var)
+    let a:orig = [line('.'),col('.')]
+    let a:search = s:no_comment  . '.\{-\}\(' . s:modifier_query . '\|for\s*(\)\s*\(' . s:c_type . '\_s*' .
+                \ s:collection_identifier . '\)\s*\<' . a:var . '\>.*'
+    let a:jump = '\<' . a:var . '\>'
+
+    let a:pos = search(a:search,'Wb')
+    call search(a:jump)
+    let a:res = substitute(getline(a:pos),a:search,'\5','')
+    while s:isQuoted(a:res,getline(a:pos)) == 1 || s:isCommented() == 1 || match(a:res,s:c_keywords) >= 0
+        if a:pos == 0
+            return ''
+        endif
+        call cursor(a:pos-1,a:pos)
+        let a:pos = search(a:search,'Wb')
+        call search(a:jump)
+        let a:res = substitute(getline(a:pos),a:search,'\5','')
+    endwhile
+
+    call cursor(a:orig[0],a:orig[1])
+    return a:res
+endfunction
+
+" getClassVarDec {{{3
+function! s:getClassVarDec(var)
+    let a:orig = [line('.'),col('.')]
+    call s:gotoTag()
+    let a:search = '.*\<\(' . s:c_identifier . s:collection_identifier . '\=\)\_s\+\<' . a:var . '\>.*'
+    let a:find = search(a:search,'Wn')
+    let a:res = substitute(getline(a:find),a:search,'\1','') 
+    call cursor(a:orig[0],a:orig[1])
+    return a:res
+endfunction
+
+" getUsingVar {{{3
+function! s:getUsingVar()
+    let a:orig = [line('.'),col('.')]
+
+    while 1 == 1
+        let a:adj = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
+        if a:adj == ')'
+            call cursor(line('.'),col('.')-1)
+            execute 'normal %'
+            if searchpos('\(\.\|->\)','bn') == searchpos('[^[:space:]]\_s*\<' . s:c_identifier . '\>','bn')
+                call search('\(\.\|->\)','b')
+            elseif s:isBefore(searchpos('\<' . s:c_identifier . '\>(','bn'),searchpos('[^[:space:]' . s:search_chars . ']','bn'))
+                call search('\<' . s:c_identifier . '\>','')
+                let a:var = expand('<cword>')
+                let a:dec = s:getVarDec(a:var)
+            else
+                let a:end = col('.')
+                call search('\<' . s:c_identifier . '\>','b')
+                let a:begin = col('.') - 1
+                let a:var = strpart(getline('.'),a:begin,a:end - a:begin)
+                let a:dec = s:getFuncDec(a:var)
+                break
+            endif
+        else
+            let a:end = col('.') - 1
+            call search('\<' . s:c_identifier . '\>','b')
+            let a:dot = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
+            if a:dot != '.' && a:dot != '>'
+                let a:begin = col('.') - 1
+                let a:var = strpart(getline('.'),a:begin,a:end - a:begin)
+                let a:var = substitute(a:var,'-','','g')
+                let a:dec = s:getVarDec(a:var)
+                break
+            endif
+            call search('\(\.\|->\)','b')
+        endif 
+    endwhile
+
+    let a:funcs = []
+    let a:search = '\(\.\|->\)\<' . s:c_identifier . '\>[([]\='
+    let a:next = searchpos(a:search,'Wn')
+    let a:next_end = searchpos(a:search,'Wnez')
+    while s:isBefore(a:next,a:orig) == 1
+        call cursor(a:next[0],a:next[1])
+        if matchstr(getline('.'), '\%' . (col('.') + 1) . 'c.') == '>'
+            break
+        endif
+
+        call add(a:funcs,[strpart(getline('.'),a:next[1], a:next_end[1] - a:next[1])])
+        if matchstr(getline('.'), '\%' . a:next_end[1] . 'c.') == '('
+            call search('(')
+            execute 'normal %'
+        elseif matchstr(getline('.'), '\%' . a:next_end[1] . 'c.') == '['
+            call search('[')
+            execute 'normal %'
+        endif
+        let a:next = searchpos(a:search,'Wn')
+        let a:next_end = searchpos(a:search,'Wnez')
+    endwhile
+    call cursor(a:orig[0],a:orig[1])
+
+    let a:dec = s:getStructVars(a:var,a:dec,a:funcs)
+    return [a:var,a:dec,a:funcs]
+endfunction
+
+" followChain {{{3
+function! s:followChain(classes,funcs,new_method)
+    let a:chain_file = '.Factorus' . a:new_method . 'Chain'
+    let a:names_list = []
+    for class in a:classes
+        call add(a:names_list,' -name "' . class . '.java" ') 
+    endfor
+    let a:names = join(a:names_list,'-or')
+    call system('find ' . getcwd() . a:names . '> ' . a:chain_file)
+    
+    let a:vars = copy(a:classes)
+    let a:chain_files = readfile(a:chain_file)
+    while len(a:funcs) > 0
+        let func = '\(' . join(a:funcs[0],'\|') . '\)'
+        let a:temp_list = []
+        for file in a:chain_files
+            let a:next = ''
+            execute 'silent tabedit! ' . file
+            call cursor(1,1)
+            let a:search = s:no_comment . s:modifier_query . '\(' . s:c_type . s:collection_identifier . '\=\)\_s\+\<' . func . '\(\<\|\>\|)\|\s\).*'
+            let a:find =  search(a:search)
+            if a:find > 0
+                call cursor(line('.'),1)
+                let a:next = substitute(getline('.'),a:search,'\4','')
+            else
+                let a:all_funcs = s:getAllFunctions()
+                let a:ind = match(a:all_funcs['names'],func)
+                if a:ind >= 0
+                    let a:next = a:all_funcs['types'][a:ind]
+                endif
+            endif
+
+            if a:next != ''
+                let a:vars = s:getStructVars(func,a:next,a:funcs)
+            endif
+            let a:next_list = []
+            for var in a:vars
+                call add(a:next_list,' -name "' . var . '.java" ') 
+            endfor
+            let a:nexts = join(a:next_list,'-or')
+
+            call system('find ' . getcwd() . a:nexts . '> ' . a:chain_file)
+            let a:temp_list += readfile(a:chain_file)
+
+            call s:safeClose()
+        endfor
+        let a:chain_files = copy(a:temp_list)
+        if len(a:funcs) > 0
+            call remove(a:funcs,0)
+        endif
+    endwhile
+
+    let a:res = 0
+    for file in a:chain_files
+        execute 'silent tabedit! ' . file
+        let a:search = s:no_comment . s:modifier_query . s:c_type . s:collection_identifier . '\=\_s\+\<' . a:new_method . '\>\_s*('
+        let a:find =  search(a:search)
+        call s:safeClose()
+
+        if a:find > 0
+            let a:res = 1
+            break
+        endif
+    endfor
+    call system('rm -rf ' . a:chain_file)
+
+    return a:res
+endfunction
+
 " References {{{2
 " getNextReference {{{3
 function! s:getNextReference(var,type,...)
     if a:type == 'right'
-        let a:search = s:no_comment . s:modifier_query . '\s*\(' . s:c_identifier . s:collection_identifier . 
+        let a:search = s:no_comment . s:modifier_query . '\s*\(' . s:c_type . '\_s*' . s:collection_identifier . 
                     \ '\)\=\s*\(' . s:c_identifier . '\)\s*[(.=]\_[^{;]*\<\(' . a:var . '\)\>\_.\{-\};$'
-        let a:index = '\6'
-        let a:alt_index = '\7'
+        let a:index = '\7'
+        let a:alt_index = '\8'
     elseif a:type == 'left'
         let a:search = s:no_comment . '\<\(' . a:var . '\)\>\s*\(++\_s*;\|--\_s*;\|[-\^|&~+*/]\=[.=][^=]\).*'
         let a:index = '\1'
@@ -514,6 +830,10 @@ function! s:getNextReference(var,type,...)
         let a:prev = [line('.'),col('.')]
         while s:isValidTag(a:line[0]) == 0
             if a:line == [0,0]
+                break
+            endif
+
+            if match(getline(a:line[0]),';') >= 0
                 break
             endif
 
@@ -579,6 +899,45 @@ function! s:getNextUse(var,...)
 endfunction
 
 " File-Updating {{{2
+" updateMethodFile {{{3
+function! s:updateUsingFile(type_name,old_name,new_name,paren) abort
+    call cursor(1,1)
+    let a:here = [line('.'),col('.')]
+    let a:types = '\<\(' . a:type_name . '\)\>'
+    let a:search = '\(\.\|->\)' . a:old_name . a:paren
+
+    let a:next = searchpos(a:search,'Wn')
+    while a:next != [0,0]
+        call cursor(a:next[0],a:next[1])
+        let [a:var,a:dec,a:funcs] = s:getUsingVar()
+        if len(a:funcs) == 0 
+            let a:dec = join(a:dec,'|')
+            if match(a:dec,a:types) >= 0
+                call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+                execute 'silent s/\(\.\|->\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/e'
+            endif
+"        else
+"            if s:followChain(a:dec,a:funcs,a:new_name) == 1
+"                call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+"                execute 'silent s/\<' . a:old_name . '\>' . a:paren . '/' . a:new_name . a:paren . '/e'
+"            endif
+        endif
+        let a:next = searchpos(a:search,'Wn')
+    endwhile
+
+    silent write!
+endfunction
+
+" updateMethodFiles {{{3
+function! s:updateUsingFiles(files,type_name,old_name,new_name,paren) abort
+    for file in a:files
+        execute 'silent tabedit! ' . file
+        call s:updateUsingFile(a:type_name,a:old_name,a:new_name,a:paren)
+        call s:safeClose()
+    endfor
+    silent edit!
+endfunction 
+
 " updateFile {{{3
 function! s:updateFile(old_name,new_name,is_method,is_local)
     let a:orig = [line('.'),col('.')]
@@ -629,12 +988,104 @@ function! s:renameArg(new_name,...) abort
         redraw
         echo 'Re-named ' . a:var . ' to ' . a:new_name
     endif
-    return a:var
+    return [a:var,[]]
 endfunction
 
 " renameField {{{3
 function! s:renameField(new_name,...) abort
+    let a:search = '^\s*' . s:modifier_query . '\(' . s:c_type . s:collection_identifier . '\)\=\s*\(' . s:c_identifier . '\)\s*[;=].*'
 
+    let a:line = getline('.')
+    let a:is_static = match(a:line,'\<static\>') >= 0 ? 1 : 0
+    let a:is_local = !s:isInType()
+    let a:type = substitute(a:line,a:search,'\4','')
+    let a:var = substitute(a:line,a:search,'\7','')
+    if a:var == '' || a:type == '' || match(a:var,'[^' . s:search_chars . ']') >= 0
+        if a:is_local == 1 || match(getline(s:getAdjacentTag('b')),'\<enum\>') < 0
+            throw 'Factorus:Invalid'
+        endif
+        let a:var = expand('<cword>')
+        call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+        execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/e'
+        silent write!
+
+        let a:temp_file = '.FactorusEnum'
+        
+        echo 'Updating enum...'
+        call s:findTags(a:temp_file,'\<' . a:var . '\>','no')
+        call s:updateQuickFix(a:temp_file,'\<' . a:var . '\>')
+        call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:var . '\>/' . a:new_name . '/g"')
+        call system('rm -rf ' . a:temp_file)
+
+        redraw
+        echo 'Renamed enum ' . a:var . ' to ' . a:new_name . '.'
+        return a:var
+    elseif a:var == a:new_name
+        throw 'Factorus:Duplicate'
+    endif
+    let g:factorus_history['old'] = a:var
+
+    let a:unchanged = []
+    if a:is_local == 1
+        call s:updateFile(a:var,a:new_name,0,a:is_local)
+    elseif a:is_static == 0
+        call s:gotoTag()
+        let a:search = '^\s*\(\<typedef\>\)\=\_s*\<\(struct\|union\)\>\_s*\(' . s:c_identifier . '\)\=\_s*{\=.*'
+        let a:type_type = substitute(getline('.'),a:search,'\2','')
+        if a:type_type == ''
+            throw 'Factorus:Invalid'
+        endif
+
+        let a:type_defs = []
+        let a:type_name = ''
+        if substitute(getline('.'),a:search,'\3','') != ''
+            let a:type_name = substitute(getline('.'),a:search,'\3','')
+        endif
+
+        if match(getline('.'),'\<typedef\>') >= 0
+            let a:prev = [line('.'),col('.')]
+            call search('{')
+            normal %
+            if match(getline('.'),'\<\(' . s:c_identifier . '\)\>') >= 0
+                call add(a:type_defs,substitute(getline('.'),'.*\<\(' . s:c_identifier . '\)\>.*','\1',''))
+            endif
+            call cursor(a:prev[0],a:prev[1])
+        endif
+
+        let a:includes = s:getAllIncluded()
+
+        try
+            execute 'silent lvimgrep /\<' . a:method_name . '\>(/j ' . join(a:includes)
+            execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
+            call setloclist(0,[])
+            let a:swap = 1
+        catch /.*/
+            let a:swap = 0
+        endtry
+
+        redraw
+        echo 'Updating references...'
+
+        let a:temp_file = '.FactorusInc'
+        call s:getInclusions(a:temp_file)
+        call s:narrowTags(a:temp_file,'\(\.\|->\)' . a:var)
+
+        let a:files = readfile(a:temp_file) + [expand('%:p')]
+        if a:type_name != ''
+            let a:type_defs += s:getTypeDefs(a:files,a:type_type,a:type_name)
+            let a:find_name = a:type_type . '\_s*' . a:type_name
+            call add(a:type_defs,a:find_name)
+        endif
+
+        let a:def_find = join(a:type_defs,'\|')
+        call s:updateUsingFiles(a:files,a:def_find,a:var,a:new_name,'')
+        call system('rm -rf ' . a:temp_file)
+        let a:unchanged = s:getUnchanged('\(\.\|->\)\<' . a:var . '\>')
+    endif
+
+    redraw
+    echo 'Re-named ' . a:var . ' to ' . a:new_name
+    return [a:var,a:unchanged]
 endfunction
 
 " renameMacro {{{3
@@ -646,6 +1097,7 @@ endfunction
 function! s:renameMethod(new_name,...) abort
     call s:gotoTag()
 
+    let a:unchanged = []
     let a:method_name = matchstr(getline('.'),'\<' . s:c_identifier . '\>\s*(')
     let a:method_name = matchstr(a:method_name,'[^[:space:](]\+')
     if a:method_name == a:new_name
@@ -676,6 +1128,7 @@ function! s:renameMethod(new_name,...) abort
 
         call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/\1' . a:new_name . '(/g"')
         call system('rm -rf ' . a:temp_file)
+        let a:unchanged = s:getUnchanged('\<' . a:method_name . '\>')
     endif
 
     if a:swap == 1
@@ -688,13 +1141,14 @@ function! s:renameMethod(new_name,...) abort
         let a:keyword = a:is_static == 1 ? ' static' : ''
         echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
     endif
-    return a:method_name
+    return [a:method_name,a:unchanged]
 endfunction
 
 " renameType {{{3
 function! s:renameType(new_name,...) abort
     call s:gotoTag()
 
+    let a:unchanged = []
     let a:search = '^.*\<\(enum\|struct\|union\)\>\s*\(\<' . s:c_identifier . '\>\)\s*\({\|\<' . s:c_identifier . '\>\_s*;\).*'
     if match(getline('.'),a:search) < 0
         throw 'Factorus:Invalid'
@@ -726,6 +1180,7 @@ function! s:renameType(new_name,...) abort
 
         call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/' . a:new_rep . '/g"')
         call system('rm -rf ' . a:temp_file)
+        let a:unchanged = s:getUnchanged(a:search)
     endif
 
     if a:swap == 1
@@ -738,7 +1193,7 @@ function! s:renameType(new_name,...) abort
         let a:keyword = a:is_static == 1 ? ' static' : ''
         echo 'Re-named' . a:keyword . ' ' . a:type . ' ' . a:type_name . ' to ' . a:new_name
     endif
-    return a:type . ' ' . a:type_name
+    return [a:type . ' ' . a:type_name,a:unchanged]
 endfunction
 
 " Extraction {{{2
@@ -782,13 +1237,15 @@ function! s:getAllBlocks(close)
             continue
         endif
 
-        if match(getline('.'),'\<if\>') >= 0
+        if match(getline('.'),'\<\(if\|while\)\>') >= 0
             let a:open = [line('.'),col('.')]
             let a:ret =  searchpos('{','Wn')
             let a:semi = searchpos(';','Wn')
 
             let a:o = line('.')
-            if s:isBefore(a:ret,a:semi) == 1
+            if s:isBefore(a:semi,a:ret) == 1
+                call cursor(a:semi[0],a:semi[1])
+            elseif match(getline('.'),'\<if\>') >= 0
                 call cursor(a:ret[0],a:ret[1])
                 execute 'normal %'
 
@@ -808,7 +1265,11 @@ function! s:getAllBlocks(close)
                 endwhile
                 call add(a:blocks,[a:o,line('.')])
             else
-                call cursor(a:semi[0],a:semi[1])
+                call search('{','W')
+                let a:prev = [line('.'),col('.')]
+                execute 'normal %'
+                call add(a:blocks,[a:next[0],line('.')])
+                call cursor(a:prev[0],a:prev[1])
             endif
 
             call add(a:blocks,[a:open[0],line('.')])
@@ -1180,21 +1641,19 @@ function! s:formatMethod(def,body,spaces)
     let a:def_space = repeat(' ',a:paren+1)
     call map(a:def,{n,line -> a:spaces . (n > 0 ? a:def_space : '') . substitute(line,'\s*\(.*\)','\1','')})
 
-    let a:dspaces = repeat(a:spaces,2)
-    if a:dspaces == ''
-        let a:dspaces = repeat(' ',&tabstop)
-    endif
+    let a:fspaces = a:spaces == '' ? repeat(' ',&tabstop) : a:spaces
+    let a:dspaces = a:spaces == '' ? a:fspaces : repeat(a:spaces,2)
     let a:i = 0
 
     call map(a:body,{n,line -> substitute(line,'\s*\(.*\)','\1','')})
     while a:i < len(a:body)
         if match(a:body[a:i],'}') >= 0
-            let a:dspaces = strpart(a:dspaces,len(a:spaces))
+            let a:dspaces = strpart(a:dspaces,len(a:fspaces))
         endif
         let a:body[a:i] = a:dspaces . a:body[a:i]
 
         if match(a:body[a:i],'{') >= 0
-            let a:dspaces .= a:spaces
+            let a:dspaces .= a:fspaces
         endif
 
         let a:i += 1
@@ -1256,7 +1715,7 @@ function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
     endfor
 
     let a:build = s:buildArgs(a:args,0)
-    let a:build_string = 'public ' . a:type . ' ' .  g:factorus_method_name . '(' . a:build . ') {'
+    let a:build_string = a:type . ' ' .  g:factorus_method_name . '(' . a:build . ') {'
     let a:temp = join(reverse(split(a:build_string, '.\zs')), '')
     let a:def = []
 
@@ -1405,14 +1864,13 @@ function! c#factorus#renameSomething(new_name,type,...)
         else
             let g:factorus_qf = []
             let Rename = function('s:rename' . a:type)
-            let a:res = Rename(a:new_name)
+            let [a:res,a:un] = Rename(a:new_name)
 
             if g:factorus_show_changes > 0
                 let s:qf = copy(g:factorus_qf)
 
                 let a:ch = len(g:factorus_qf)
                 let a:ch_i = a:ch == 1 ? ' instance ' : ' instances '
-                let a:un = s:getUnchanged('\<' . a:res . '\>')
                 let a:un_l = len(a:un)
                 let a:un_i = a:un_l == 1 ? ' instance ' : ' instances '
 
@@ -1548,7 +2006,7 @@ function! c#factorus#extractMethod(...)
         let a:i -= 1
     endwhile
 
-    call search('public.*\<' . g:factorus_method_name . '\>(')
+    call search(g:factorus_method_name . '(\_[^;]*{')
     silent write!
     redraw
     echo 'Extracted ' . len(a:best_lines) . ' lines from ' . a:method_name

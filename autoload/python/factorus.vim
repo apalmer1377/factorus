@@ -132,8 +132,12 @@ endfunction
 function! s:updateQuickFix(temp_file,search_string)
     let a:res = split(system('cat ' . a:temp_file . ' | xargs grep -n "' . a:search_string . '"'),'\n')
     call map(a:res,{n,val -> split(val,':')})
-    call map(a:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
-    let s:qf += a:res
+    if len(split(system('cat ' . a:temp_file),'\n')) == 1
+        call map(a:res,{n,val -> {'filename' : expand('%:p'), 'lnum' : val[0], 'text' : s:trim(join(val[1:],':'))}})
+    else
+        call map(a:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
+    endif
+    let g:factorus_qf += a:res
 endfunction
 
 function! s:setQuickFix(type)

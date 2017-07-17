@@ -150,7 +150,11 @@ endfunction
 function! s:updateQuickFix(temp_file,search_string)
     let a:res = split(system('cat ' . a:temp_file . ' | xargs grep -n "' . a:search_string . '"'),'\n')
     call map(a:res,{n,val -> split(val,':')})
-    call map(a:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
+    if len(split(system('cat ' . a:temp_file),'\n')) == 1
+        call map(a:res,{n,val -> {'filename' : expand('%:p'), 'lnum' : val[0], 'text' : s:trim(join(val[1:],':'))}})
+    else
+        call map(a:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
+    endif
     let g:factorus_qf += a:res
 endfunction
 
@@ -1053,7 +1057,7 @@ function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
 
             call s:updateFile(a:old_name,a:new_name,a:is_method,0,a:is_static)
         else
-            call s:updateClassFile(a:sub_class,a:old_name,a:new_name)
+            call s:updateClassFile(expand('%:t:r'),a:old_name,a:new_name)
         endif
 
         call s:safeClose()
@@ -1179,7 +1183,26 @@ function! s:renameField(new_name,...) abort
     let a:type = substitute(a:line,a:search,'\4','')
     let a:var = substitute(a:line,a:search,'\6','')
     if a:var == '' || a:type == '' || match(a:var,'[^' . s:search_chars . ']') >= 0
-        throw 'Factorus:Invalid'
+        if a:is_local == 1 || match(getline(s:getClassTag()[0]),'\<enum\>') < 0
+            throw 'Factorus:Invalid'
+        endif
+        let a:var = expand('<cword>')
+        let a:enum_name = expand('%:t:r')
+        call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+        execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/e'
+        silent write!
+
+        let a:temp_file = '.FactorusEnum'
+        
+        echo 'Updating enum...'
+        call s:findTags(a:temp_file,a:enum_name . '\.' . a:var,'no')
+        call s:updateQuickFix(a:temp_file,a:enum_name . '\.' . a:var)
+        call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:enum_name . '\.' . a:var . '/' . a:enum_name . '.' . a:new_name . '/g"')
+        call system('rm -rf ' . a:temp_file)
+
+        redraw
+        echo 'Renamed enum ' . a:var . ' to ' . a:new_name . '.'
+        return a:var
     elseif a:var == a:new_name
         throw 'Factorus:Duplicate'
     endif
@@ -1210,16 +1233,12 @@ function! s:renameField(new_name,...) abort
             call s:updateClassFile(a:type,a:var,a:new_name)
         endif
 
-        if !factorus#isRollback(a:000)
-            redraw
-            echo 'Updating sub-classes...'
-        endif
+        redraw
+        echo 'Updating sub-classes...'
         let a:classes = s:updateSubClassFiles(expand('%:t:r'),a:var,a:new_name,'',a:is_static)
 
-        if !factorus#isRollback(a:000)
-            redraw
-            echo 'Updating references...'
-        endif
+        redraw
+        echo 'Updating references...'
         call s:updateReferences(a:classes,a:var,a:new_name,'',a:is_static)
     endif
 
@@ -1330,13 +1349,15 @@ function! s:getAllBlocks(close)
             continue
         endif
 
-        if match(getline('.'),'\<\(if\|try\)\>') >= 0
+        if match(getline('.'),'\<\(if\|try\|for\|while\)\>') >= 0
             let a:open = [line('.'),col('.')]
             let a:ret =  searchpos('{','Wn')
             let a:semi = searchpos(';','Wn')
 
             let a:o = line('.')
-            if s:isBefore(a:ret,a:semi) == 1
+            if s:isBefore(a:semi,a:ret) == 1
+                call cursor(a:semi[0],a:semi[1])
+            elseif match(getline('.'),'\<\(if\|try\)\>') >= 0
                 call cursor(a:ret[0],a:ret[1])
                 execute 'normal %'
 
@@ -1356,7 +1377,11 @@ function! s:getAllBlocks(close)
                 endwhile
                 call add(a:blocks,[a:o,line('.')])
             else
-                call cursor(a:semi[0],a:semi[1])
+                call search('{','W')
+                let a:prev = [line('.'),col('.')]
+                execute 'normal %'
+                call add(a:blocks,[a:next[0],line('.')])
+                call cursor(a:prev[0],a:prev[1])
             endif
 
             call add(a:blocks,[a:open[0],line('.')])
@@ -1868,36 +1893,40 @@ function! s:rollbackEncapsulation()
 endfunction
 
 " rollbackRename {{{3
-function! s:rollbackRename()
+function! s:rollbackRename(new_name,type)
     let a:files = {}
-
-    for line in g:factorus_qf
-        if index(keys(line),'filename') < 0
-            if line['pattern'] == 'Unmodified'
-                break
-            endif
-            continue
-        endif
-
-        if index(keys(a:files),line['filename']) < 0
-            let a:files[line['filename']] = [line['lnum']]
-        else
-            call add(a:files[line['filename']],line['lnum'])
-        endif
-    endfor
-
     let a:old = g:factorus_history['old']
     let a:new = g:factorus_history['args'][0]
 
-    for file in keys(a:files)
-        execute 'silent tabedit! ' . file
-        for line in a:files[file]
-            call cursor(line,1)
-            execute 's/\<' . a:new . '\>/' . a:old . '/ge'
+    if a:type == 'Class'
+        call s:renameClass(a:new_name)
+        execute 'bwipeout ' . g:factorus_history['file']
+    else
+        for line in g:factorus_qf
+            if index(keys(line),'filename') < 0
+                if line['pattern'] == 'Unmodified'
+                    break
+                endif
+                continue
+            endif
+
+            if index(keys(a:files),line['filename']) < 0
+                let a:files[line['filename']] = [line['lnum']]
+            else
+                call add(a:files[line['filename']],line['lnum'])
+            endif
         endfor
-        silent write!
-        call s:safeClose()
-    endfor
+
+        for file in keys(a:files)
+            execute 'silent tabedit! ' . file
+            for line in a:files[file]
+                call cursor(line,1)
+                execute 's/\<' . a:new . '\>/' . a:old . '/ge'
+            endfor
+            silent write!
+            call s:safeClose()
+        endfor
+    endif
 
     return 'Rolled back renaming of ' . substitute(g:factorus_history['args'][-1],'\(.\)\(.*\)','\L\1\E\2','') . ' ' . a:old
 endfunction
@@ -2019,7 +2048,7 @@ function! java#factorus#renameSomething(new_name,type,...)
     let a:res = ''
     try
         if factorus#isRollback(a:000)
-            let a:res = s:rollbackRename()
+            let a:res = s:rollbackRename(a:new_name,a:type)
             let g:factorus_qf = []
         else
             let g:factorus_qf = []
