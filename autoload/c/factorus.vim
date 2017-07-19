@@ -918,7 +918,6 @@ function! s:updateUsingFile(type_name,old_name,new_name,paren) abort
             let a:chain = '\(' . repeat('\<' . s:c_identifier . '\>\(\.\|->\)',len(a:funcs)+1) . '\)'
             if s:followChain(a:dec,a:funcs,a:type_name) == 1
                 call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-                redraw
                 execute 'silent s/' . a:chain . '\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/e'
             endif
         endif
@@ -1042,6 +1041,9 @@ function! s:renameField(new_name,...) abort
         if substitute(getline('.'),a:search,'\3','') != ''
             let a:type_name = substitute(getline('.'),a:search,'\3','')
         endif
+
+        call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+        execute 'silent s/\<' . a:type_name . '\>/' a:new_name . '/e'
 
         if match(getline('.'),'\<typedef\>') >= 0
             let a:prev = [line('.'),col('.')]
