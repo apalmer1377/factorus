@@ -438,8 +438,8 @@ endfunction
 
 " getStructDef {{{3
 function! s:getStructDef(type)
-    if exists('s:all_structs') && index(keys(s:all_structs),expand('%:p') . '-' . a:type >= 0
-        return s:all_structs[a:type]
+    if exists('s:all_structs') && index(keys(s:all_structs),expand('%:p') . '-' . a:type) >= 0
+        return s:all_structs[expand('%:p') . '-' . a:type]
     endif
 
     let a:files = s:getAllIncluded() + [expand('%:p')]
@@ -580,30 +580,23 @@ endfunction
 
 " getFunctionDecs {{{3
 function! s:getFunctionDecs()
-    let a:access = '\<\(void\|public\|private\|protected\|static\|abstract\|final\|synchronized\)\>'
-    let a:query = '^\s*' . s:modifier_query . '\s*\(' .  s:c_type . '\_s*' . s:collection_identifier . '\=\)\_s\+\(' . s:c_identifier . '\)\_s*\([;=(]\).*'
+    let a:query = '^\s*' . s:modifier_query . '\s*\(' .  s:c_type . '\_s*' . s:collection_identifier . '\=\)\_s\+\(' . s:c_identifier . '\)\_s*\([;(]\).*'
     let a:decs = {'types' : [], 'names' : []}
     try
-        let a:class_tag = s:getClassTag()
-        let a:close = s:getClosingBracket(1,[a:class_tag[0],1])
         execute 'silent vimgrep /' . a:query . '/j %:p'
         let a:greps = getqflist()
 
         for g in a:greps
-            let a:fname = substitute(g['text'],a:query,'\4|\6\7','')
-            if match(a:fname,s:java_keywords) >= 0 || match(a:fname,a:access) >= 0
+            let a:fname = substitute(g['text'],a:query,'\4|\7\8','')
+            if match(a:fname,s:c_keywords) >= 0 || match(a:fname,a:access) >= 0
                 continue
             endif
 
             if a:fname[len(a:fname)-1] == '('
                 let [a:type,a:name] = split(a:fname,'|')
             else
-                call cursor(g['lnum'],g['col'])
-                if searchpair('{','','}','Wnb') == a:class_tag[0]
-                    let [a:type,a:name] = split(a:fname[:-2],'|')
-                else
-                    continue
-                endif
+                let [a:type,a:name] = split(a:fname[:-2],'|')
+                let a:name = substitute(a:name,';','(','')
             endif
 
             call add(a:decs['types'],a:type)
@@ -618,14 +611,14 @@ endfunction
 
 " getAllFunctions {{{3
 function! s:getAllFunctions()
-"    if index(keys(s:all_funcs),expand('%:p')) >= 0
-"        return s:all_funcs[expand('%:p')]
-"    endif
+    if index(keys(s:all_funcs),expand('%:p')) >= 0
+        return s:all_funcs[expand('%:p')]
+    endif
 
-    let a:hier = s:getSuperClasses()
+    let a:use = s:getAllIncluded()
 
     let a:defs = {'types' : [], 'names' : []}
-    for class in a:hier
+    for class in a:use
         execute 'silent tabedit! ' . class
         let a:funcs = s:getFunctionDecs()
         let a:defs['types'] += a:funcs['types']
@@ -683,16 +676,23 @@ function! s:getVarDec(var)
 
     let a:pos = search(a:search,'Wb')
     call search(a:jump)
-    let a:res = substitute(getline(a:pos),a:search,'\5','')
-    while s:isQuoted(a:res,getline(a:pos)) == 1 || s:isCommented() == 1 || match(a:res,s:c_keywords) >= 0
-        if a:pos == 0
-            return ''
-        endif
-        call cursor(a:pos-1,a:pos)
-        let a:pos = search(a:search,'Wb')
-        call search(a:jump)
-        let a:res = substitute(getline(a:pos),a:search,'\5','')
-    endwhile
+    let a:res = substitute(substitute(getline(a:pos),a:search,'\5',''),'\*','','g')
+    try
+        while s:isQuoted(a:res,getline(a:pos)) == 1 || s:isCommented() == 1 || match(a:res,s:c_keywords) >= 0
+            if a:pos == 0
+                return ''
+            endif
+            call cursor(a:pos-1,a:pos)
+            let a:pos = search(a:search,'Wb')
+            call search(a:jump)
+            let a:res = substitute(substitute(getline(a:pos),a:search,'\5',''),'\*','','g')
+        endwhile
+    catch /.*/
+        echom a:res . ' ' . getline(a:pos)
+        echom a:var
+        echom string(v:exception) . ' ' . string(v:throwpoint)
+        throw v:exception
+    endtry
 
     call cursor(a:orig[0],a:orig[1])
     return a:res
@@ -999,7 +999,7 @@ function! s:renameField(new_name,...) abort
     let a:is_static = match(a:line,'\<static\>') >= 0 ? 1 : 0
     let a:is_local = !s:isInType()
     let a:type = substitute(a:line,a:search,'\4','')
-    let a:var = substitute(a:line,a:search,'\7','')
+    let a:var = s:trim(substitute(a:line,a:search,'\7',''))
     if a:var == '' || a:type == '' || match(a:var,'[^' . s:search_chars . ']') >= 0
         if a:is_local == 1 || match(getline(s:getAdjacentTag('b')),'\<enum\>') < 0
             throw 'Factorus:Invalid'
@@ -1025,6 +1025,9 @@ function! s:renameField(new_name,...) abort
     endif
     let g:factorus_history['old'] = a:var
 
+    call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+    execute 'silent s/\<' . a:var . '\>/' a:new_name . '/e'
+
     let a:unchanged = []
     if a:is_local == 1
         call s:updateFile(a:var,a:new_name,0,a:is_local)
@@ -1041,9 +1044,6 @@ function! s:renameField(new_name,...) abort
         if substitute(getline('.'),a:search,'\3','') != ''
             let a:type_name = substitute(getline('.'),a:search,'\3','')
         endif
-
-        call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-        execute 'silent s/\<' . a:type_name . '\>/' a:new_name . '/e'
 
         if match(getline('.'),'\<typedef\>') >= 0
             let a:prev = [line('.'),col('.')]
