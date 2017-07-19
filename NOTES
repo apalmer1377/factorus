@@ -40,9 +40,11 @@ Tasks
 =====
 C/C++
 =====
-- Add functionality for C/C++
+- Add functionality for C
     addParam--2017-07-14
     renameArg--2017-07-14
     renameType--2017-07-14
     renameMethod--2017-07-16
     extractMethod--2017-07-17
+
+- Add functionality for C++

@@ -74,7 +74,7 @@ function! s:handleError(func,ext,error,opt)
     endif
 
     redraw
-    echo a:err
+    echom a:err
 endfunction
 
 " Commands {{{1

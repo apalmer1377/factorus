@@ -117,8 +117,9 @@ function! s:safeClose(...)
     endif
 
     if index(s:open_bufs,a:file) < 0 && s:isAlone(a:file) == 1
-        execute 'bwipeout ' a:file
-    elseif a:file == expand('%:p')
+        execute 'bwipeout ' . a:file
+    else
+        "if a:file == expand('%:p')
         q
     endif
 
@@ -368,7 +369,7 @@ function! s:getIncluded()
 
     call map(a:files,{n,val -> ' -name "' . substitute(val,'\(.*\/\)\=\(.*\)','\2','') . '"'})
     let a:or = join(a:files,' -or')
-    let a:fin = split(system('find ' . getcwd() . a:or),'\n')
+    let a:fin = split(system('find ' . getcwd() . g:factorus_ignore_string . a:or . ' 2> /dev/null'),'\n')
 
     call cursor(a:orig[0],a:orig[1])
     return a:fin
@@ -376,21 +377,25 @@ endfunction
 
 " getAllIncluded {{{3 
 function! s:getAllIncluded()
+    if exists('s:all_inc') && index(keys(s:all_inc),expand('%:p')) >= 0
+        return s:all_inc[expand('%:p')]
+    endif
+
     let a:fin = s:getIncluded()
     let a:files = copy(a:fin)
 
-    while a:files != []
-        let a:temp = []
-        for file in a:files
-            execute 'silent tabedit! ' . file
-            let a:temp += filter(s:getIncluded(),'index(a:temp,v:val) < 0')
-            call s:safeClose()
-        endfor
-        call filter(a:temp,'index(a:fin,v:val) < 0')
-        let a:files = copy(a:temp)
-        let a:fin += a:files
-    endwhile
+    for file in a:files
+        execute 'silent tabedit! ' . file
+        if !exists('b:current_syntax')
+            redraw
+            echom file
+            sleep 5
+        endif
+        let a:fin += s:getAllIncluded()
+        call s:safeClose()
+    endfor
 
+    let s:all_inc[expand('%:p')] = a:fin
     return a:fin
 endfunction
 
@@ -429,6 +434,45 @@ function! s:getTypeDefs(files,type,name)
     catch /.*/
         return []
     endtry
+endfunction
+
+" getStructDef {{{3
+function! s:getStructDef(type)
+    if exists('s:all_structs') && index(keys(s:all_structs),expand('%:p') . '-' . a:type >= 0
+        return s:all_structs[a:type]
+    endif
+
+    let a:files = s:getAllIncluded() + [expand('%:p')]
+    let [a:prev_file,a:res] = ['',[]]
+    if match(a:type,'\<\(struct\|union\)\>') >= 0
+        try
+            execute 'silent lvimgrep! /' . a:type . '\_s*{/j ' . join(a:files)
+            execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
+            call cursor(1,1)
+            let a:find = search(a:type . '\_s*{','W')
+            if a:find != 0
+                let a:prev_file = expand('%:p')
+                call search('{')
+                let a:start = line('.')
+                normal %
+                let a:end = line('.')
+                let a:def = join(getline(a:start,a:end))
+                let a:res = a:def
+
+                let a:res = s:trim(substitute(a:res,'^[^{]*{\(.*\)}[^}]*$','\1',''))
+                let a:res = s:trim(substitute(a:res,'\/\*.\{-\}\*\/','','g'))
+                let a:res = split(a:res,';')
+                call map(a:res,{n,val -> s:trim(substitute(val,'\(\*\|\[[^]]*\]\)',' ','g'))})
+                call map(a:res,{n,val -> [join(split(val)[:-2]),split(val)[-1]]})
+            endif
+            call s:safeClose()
+        catch /.*/
+        endtry
+    else
+    endif
+
+    let s:all_structs[expand('%:p') . '-' . a:type] = [a:prev_file,a:type,a:res]
+    return [a:prev_file,a:type,a:res]
 endfunction
 
 " getNextArg {{{3
@@ -600,9 +644,6 @@ function! s:getStructVars(var,dec,funcs)
         return [a:dec]
     endif
 
-    if len(a:funcs) > 1
-        let old = a:funcs[0]
-        call remove(a:funcs,0)
         call add(a:funcs[0],old)
     endif
 
@@ -657,28 +698,18 @@ function! s:getVarDec(var)
     return a:res
 endfunction
 
-" getClassVarDec {{{3
-function! s:getClassVarDec(var)
-    let a:orig = [line('.'),col('.')]
-    call s:gotoTag()
-    let a:search = '.*\<\(' . s:c_identifier . s:collection_identifier . '\=\)\_s\+\<' . a:var . '\>.*'
-    let a:find = search(a:search,'Wn')
-    let a:res = substitute(getline(a:find),a:search,'\1','') 
-    call cursor(a:orig[0],a:orig[1])
-    return a:res
-endfunction
-
 " getUsingVar {{{3
 function! s:getUsingVar()
     let a:orig = [line('.'),col('.')]
 
+    let a:search = '\(\.\|->\)'
     while 1 == 1
         let a:adj = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
         if a:adj == ')'
             call cursor(line('.'),col('.')-1)
             execute 'normal %'
-            if searchpos('\(\.\|->\)','bn') == searchpos('[^[:space:]]\_s*\<' . s:c_identifier . '\>','bn')
-                call search('\(\.\|->\)','b')
+            if searchpos(a:search,'bn') == searchpos('[^[:space:]]\_s*\<' . s:c_identifier . '\>','bn')
+                call search(a:search,'b')
             elseif s:isBefore(searchpos('\<' . s:c_identifier . '\>(','bn'),searchpos('[^[:space:]' . s:search_chars . ']','bn'))
                 call search('\<' . s:c_identifier . '\>','')
                 let a:var = expand('<cword>')
@@ -702,21 +733,20 @@ function! s:getUsingVar()
                 let a:dec = s:getVarDec(a:var)
                 break
             endif
-            call search('\(\.\|->\)','b')
+            call search(a:search,'b')
         endif 
     endwhile
 
     let a:funcs = []
-    let a:search = '\(\.\|->\)\<' . s:c_identifier . '\>[([]\='
-    let a:next = searchpos(a:search,'Wn')
+    let a:search = a:search . '\<' . s:c_identifier . '\>[([]\='
+    let a:next = searchpos(a:search,'W')
     let a:next_end = searchpos(a:search,'Wnez')
-    while s:isBefore(a:next,a:orig) == 1
-        call cursor(a:next[0],a:next[1])
-        if matchstr(getline('.'), '\%' . (col('.') + 1) . 'c.') == '>'
-            break
-        endif
 
-        call add(a:funcs,[strpart(getline('.'),a:next[1], a:next_end[1] - a:next[1])])
+    while s:isBefore(a:next,a:orig)
+        call cursor(a:next[0],a:next[1])
+
+        let a:func = substitute(strpart(getline('.'),a:next[1], a:next_end[1] - a:next[1]),'^>','','')
+        call add(a:funcs,a:func)
         if matchstr(getline('.'), '\%' . a:next_end[1] . 'c.') == '('
             call search('(')
             execute 'normal %'
@@ -724,82 +754,50 @@ function! s:getUsingVar()
             call search('[')
             execute 'normal %'
         endif
-        let a:next = searchpos(a:search,'Wn')
+        let a:next = searchpos(a:search,'W')
         let a:next_end = searchpos(a:search,'Wnez')
     endwhile
     call cursor(a:orig[0],a:orig[1])
 
-    let a:dec = s:getStructVars(a:var,a:dec,a:funcs)
+    let a:dec = [a:dec]
     return [a:var,a:dec,a:funcs]
 endfunction
 
 " followChain {{{3
-function! s:followChain(classes,funcs,new_method)
-    let a:chain_file = '.Factorus' . a:new_method . 'Chain'
-    let a:names_list = []
-    for class in a:classes
-        call add(a:names_list,' -name "' . class . '.java" ') 
-    endfor
-    let a:names = join(a:names_list,'-or')
-    call system('find ' . getcwd() . a:names . '> ' . a:chain_file)
-    
-    let a:vars = copy(a:classes)
-    let a:chain_files = readfile(a:chain_file)
+function! s:followChain(types,funcs,type_name)
+    let a:orig = [line('.'),col('.')]
+
+    let a:func_search = '\(' . s:c_type . '\_s*' . s:collection_identifier . '\)\_s*\<' . a:funcs[0]
+    let [a:prev_file,a:prev_struct,a:fields] = s:getStructDef('\(' . join(a:types,'\|') . '\)')
+
     while len(a:funcs) > 0
-        let func = '\(' . join(a:funcs[0],'\|') . '\)'
-        let a:temp_list = []
-        for file in a:chain_files
-            let a:next = ''
-            execute 'silent tabedit! ' . file
-            call cursor(1,1)
-            let a:search = s:no_comment . s:modifier_query . '\(' . s:c_type . s:collection_identifier . '\=\)\_s\+\<' . func . '\(\<\|\>\|)\|\s\).*'
-            let a:find =  search(a:search)
-            if a:find > 0
-                call cursor(line('.'),1)
-                let a:next = substitute(getline('.'),a:search,'\4','')
-            else
-                let a:all_funcs = s:getAllFunctions()
-                let a:ind = match(a:all_funcs['names'],func)
-                if a:ind >= 0
-                    let a:next = a:all_funcs['types'][a:ind]
-                endif
+        if match(a:funcs[0],'(') >= 0
+            try
+                let a:included = s:getAllIncluded() + [expand('%:p')]
+                execute 'silent lvimgrep /' . a:func_search . '/j ' . join(a:included)
+            catch /.*/
+            endtry
+        else
+            let a:ind = index(map(a:fields,{n,val -> val[1]}),a:funcs[0])
+            if a:ind < 0
+                break
             endif
 
-            if a:next != ''
-                let a:vars = s:getStructVars(func,a:next,a:funcs)
-            endif
-            let a:next_list = []
-            for var in a:vars
-                call add(a:next_list,' -name "' . var . '.java" ') 
-            endfor
-            let a:nexts = join(a:next_list,'-or')
-
-            call system('find ' . getcwd() . a:nexts . '> ' . a:chain_file)
-            let a:temp_list += readfile(a:chain_file)
-
+            execute 'silent tabedit! ' . a:prev_file
+            let [a:prev_file,a:prev_struct,a:fields] = s:getStructDef(a:fields[a:ind][0])
             call s:safeClose()
-        endfor
-        let a:chain_files = copy(a:temp_list)
+        endif
         if len(a:funcs) > 0
             call remove(a:funcs,0)
         endif
     endwhile
+    call cursor(a:orig[0],a:orig[1])
 
-    let a:res = 0
-    for file in a:chain_files
-        execute 'silent tabedit! ' . file
-        let a:search = s:no_comment . s:modifier_query . s:c_type . s:collection_identifier . '\=\_s\+\<' . a:new_method . '\>\_s*('
-        let a:find =  search(a:search)
-        call s:safeClose()
+    if a:ind >= 0
+        let a:ind = match(a:prev_struct,a:type_name)
+    endif
 
-        if a:find > 0
-            let a:res = 1
-            break
-        endif
-    endfor
-    call system('rm -rf ' . a:chain_file)
-
-    return a:res
+    return (a:ind >= 0)
 endfunction
 
 " References {{{2
@@ -899,36 +897,39 @@ function! s:getNextUse(var,...)
 endfunction
 
 " File-Updating {{{2
-" updateMethodFile {{{3
+" updateUsingFile {{{3
 function! s:updateUsingFile(type_name,old_name,new_name,paren) abort
     call cursor(1,1)
     let a:here = [line('.'),col('.')]
     let a:types = '\<\(' . a:type_name . '\)\>'
-    let a:search = '\(\.\|->\)' . a:old_name . a:paren
+    let a:search = '\(\.\|->\)\<' . a:old_name . '\>' . a:paren
 
     let a:next = searchpos(a:search,'Wn')
     while a:next != [0,0]
         call cursor(a:next[0],a:next[1])
         let [a:var,a:dec,a:funcs] = s:getUsingVar()
-        if len(a:funcs) == 0 
+        if len(a:funcs) == 0
             let a:dec = join(a:dec,'|')
             if match(a:dec,a:types) >= 0
                 call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
                 execute 'silent s/\(\.\|->\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/e'
             endif
-"        else
-"            if s:followChain(a:dec,a:funcs,a:new_name) == 1
-"                call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-"                execute 'silent s/\<' . a:old_name . '\>' . a:paren . '/' . a:new_name . a:paren . '/e'
-"            endif
+        else
+            let a:chain = '\(' . repeat('\<' . s:c_identifier . '\>\(\.\|->\)',len(a:funcs)+1) . '\)'
+            if s:followChain(a:dec,a:funcs,a:type_name) == 1
+                call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+                redraw
+                execute 'silent s/' . a:chain . '\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/e'
+            endif
         endif
+        call cursor(a:next[0],a:next[1])
         let a:next = searchpos(a:search,'Wn')
     endwhile
 
     silent write!
 endfunction
 
-" updateMethodFiles {{{3
+" updateUsingFiles {{{3
 function! s:updateUsingFiles(files,type_name,old_name,new_name,paren) abort
     for file in a:files
         execute 'silent tabedit! ' . file
@@ -1842,6 +1843,9 @@ function! c#factorus#renameSomething(new_name,type,...)
     let a:orig = [line('.'),col('.')]
     let s:open_bufs = []
     let s:qf = []
+
+    let s:all_structs = {}
+    let s:all_inc = {}
 
     let a:prev_dir = getcwd()
     let a:buf_nrs = []
