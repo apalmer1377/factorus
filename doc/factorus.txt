@@ -77,10 +77,23 @@ modification, and miscellaneous.
     Renames the current class to {new_name}.
 
 :FRenameField {new_name}                                       *:FRenameField*
-    Renames the current variable to {new_name}.
+    Renames the current variable to {new_name}. This function is actually
+    quite versatile, as it can provide several different functionalities:
+        - Rename a variable within a function
+        - Rename a class/struct field, and all of its instances
+        - Rename a static variable
+        - Rename an enum field
 
 :FRenameMethod {new_name}                                     *:FRenameMethod*
     Renames the current method to {new_name}.  
+
+(For C/C++ Only)
+
+:FRenameType {new_name}                                         *:FRenameType* 
+    Renames the current struct/enum to {new_name}.
+
+:FRenameMacro {new_name}                                       *:FRenameMacro*
+    Renames the macro defined on the current line to {new_name}.
 
 ------------------------------------------------------------------------------
 2.4 Miscellaneous                                              *factorus-misc*

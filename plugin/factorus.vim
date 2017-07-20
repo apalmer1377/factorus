@@ -87,6 +87,8 @@ command! -nargs=1 FRenameArg        call factorus#command('renameSomething', <f-
 command! -nargs=1 FRenameClass      call factorus#command('renameSomething', <f-args>, 'Class')
 command! -nargs=1 FRenameField      call factorus#command('renameSomething', <f-args>, 'Field') 
 command! -nargs=1 FRenameMethod     call factorus#command('renameSomething', <f-args>, 'Method')
+
+command! -nargs=1 FRenameMacro      call factorus#command('renameSomething', <f-args>, 'Macro')
 command! -nargs=1 FRenameType       call factorus#command('renameSomething', <f-args>, 'Type')
 
 command! -nargs=0 FEncapsulate      call factorus#command('encapsulateField')

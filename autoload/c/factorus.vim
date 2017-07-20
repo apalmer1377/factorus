@@ -1093,7 +1093,26 @@ endfunction
 
 " renameMacro {{{3
 function! s:renameMacro(new_name,...) abort
+    let a:search = '^#define \<\(' . s:c_identifier . '\)\>.*'
+    let a:macro = substitute(getline('.'),a:search,'\1','')
+    if a:macro == '' || a:macro == getline('.')
+        throw 'Factorus:Invalid'
+    endif
+    call s:updateFile(a:macro,a:new_name,0,0)
 
+    let a:temp_file = '.FactorusMacro'
+    call s:getInclusions(a:temp_file)
+    call s:updateQuickFix(a:temp_file,'\<' . a:macro . '\>')
+
+    call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:macro . '\>/' . a:new_name . '/g"')
+    call system('rm -rf ' . a:temp_file)
+    let a:unchanged = s:getUnchanged('\<' . a:macro . '\>')
+
+    silent edit!
+    redraw
+    echo 'Renamed macro ' . a:macro . ' to ' . a:new_name . '.'
+
+    return [a:macro,a:unchanged]
 endfunction
 
 " renameMethod {{{3
@@ -1139,11 +1158,10 @@ function! s:renameMethod(new_name,...) abort
     endif
     silent edit!
 
-    if !factorus#isRollback(a:000)
-        redraw
-        let a:keyword = a:is_static == 1 ? ' static' : ''
-        echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
-    endif
+    redraw
+    let a:keyword = a:is_static == 1 ? ' static' : ''
+    echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
+
     return [a:method_name,a:unchanged]
 endfunction
 

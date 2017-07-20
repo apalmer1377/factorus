@@ -44,7 +44,8 @@ C/C++
     addParam--2017-07-14
     renameArg--2017-07-14
     renameType--2017-07-14
-    renameMethod--2017-07-16
+    renameMethod--2017-07-16,fixes 2017-07-20
     extractMethod--2017-07-17
+    renameMacro--2017-07-20
 
 - Add functionality for C++
