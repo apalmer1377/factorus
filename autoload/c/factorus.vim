@@ -386,11 +386,6 @@ function! s:getAllIncluded()
 
     for file in a:files
         execute 'silent tabedit! ' . file
-        if !exists('b:current_syntax')
-            redraw
-            echom file
-            sleep 5
-        endif
         let a:fin += s:getAllIncluded()
         call s:safeClose()
     endfor
@@ -677,22 +672,15 @@ function! s:getVarDec(var)
     let a:pos = search(a:search,'Wb')
     call search(a:jump)
     let a:res = substitute(substitute(getline(a:pos),a:search,'\5',''),'\*','','g')
-    try
-        while s:isQuoted(a:res,getline(a:pos)) == 1 || s:isCommented() == 1 || match(a:res,s:c_keywords) >= 0
-            if a:pos == 0
-                return ''
-            endif
-            call cursor(a:pos-1,a:pos)
-            let a:pos = search(a:search,'Wb')
-            call search(a:jump)
-            let a:res = substitute(substitute(getline(a:pos),a:search,'\5',''),'\*','','g')
-        endwhile
-    catch /.*/
-        echom a:res . ' ' . getline(a:pos)
-        echom a:var
-        echom string(v:exception) . ' ' . string(v:throwpoint)
-        throw v:exception
-    endtry
+    while s:isQuoted(a:res,getline(a:pos)) == 1 || s:isCommented() == 1 || match(a:res,s:c_keywords) >= 0
+        if a:pos == 0
+            return ''
+        endif
+        call cursor(a:pos-1,a:pos)
+        let a:pos = search(a:search,'Wb')
+        call search(a:jump)
+        let a:res = substitute(substitute(getline(a:pos),a:search,'\5',''),'\*','','g')
+    endwhile
 
     call cursor(a:orig[0],a:orig[1])
     return a:res
@@ -1026,7 +1014,7 @@ function! s:renameField(new_name,...) abort
     let g:factorus_history['old'] = a:var
 
     call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-    execute 'silent s/\<' . a:var . '\>/' a:new_name . '/e'
+    execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/e'
 
     let a:unchanged = []
     if a:is_local == 1

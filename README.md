@@ -13,11 +13,12 @@ which languages:
 |:------------:|:------------:|:------------------:|:------------:|:-------------: |:----------:|:------------:|:----------:|
 |     Java     |   &#10003;   |      &#10003;      |   &#10003;   |    &#10003;    |  &#10003;  |   &#10003;   |  &#10003;  |
 |    Python    |   &#10003;   |         N/A        |   &#10003;   |    &#10003;    |  &#10003;  |   &#10003;   |     N/A    |
-|      C       |   &#10003;   |         N/A        |   &#10003;   |    &#10003;    |    N/A     |   &#10003;   |  &#10007;  |  
+|      C       |   &#10003;   |         N/A        |   &#10003;   |    &#10003;    |    N/A     |   &#10003;   |  &#10003;  |  
 
 Additionally, for C/C++, Factorus supports the following refactorings:
 
 |              |Rename Type|Rename Macro|Rename Namespace|
+|:------------:|:---------:|:----------:|:--------------:|
 |      C       |  &#10003; |  &#10003;  |      N/A       |
 
 Factorus also has commands for reverting changes and rebuilding projects, for stability and sanity testing.
