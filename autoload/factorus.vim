@@ -21,7 +21,6 @@ let s:langs = { 'java'      : 'Java',
             \   'rs'        : 'Rust',
             \   'js'        : 'Javascript',
             \   'perl'      : 'Perl',
-            \   'cs'        : 'C#',
             \   'vim'       : 'Vimscript'
             \ }
 

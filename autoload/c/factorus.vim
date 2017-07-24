@@ -118,8 +118,7 @@ function! s:safeClose(...)
 
     if index(s:open_bufs,a:file) < 0 && s:isAlone(a:file) == 1
         execute 'bwipeout ' . a:file
-    else
-        "if a:file == expand('%:p')
+    elseif a:file == expand('%:p')
         q
     endif
 
@@ -129,8 +128,8 @@ function! s:safeClose(...)
 endfunction
 
 function! s:findTags(temp_file,search_string,append)
-    let a:fout = a:append == 'yes' ? '>>' : '>'
-    call system('find ' . getcwd() . g:factorus_ignore_string . '-exec grep -l "' . a:search_string . '" {} + ' . a:fout . ' ' . a:temp_file . ' 2> /dev/null')
+    let a:fout = a:append == 'yes' ? ' >> ' : ' > '
+    call system('cat ' . s:temp_file . ' | xargs grep -l "' . a:search_string . '"' .  a:fout . a:temp_file . ' 2> /dev/null')
 endfunction
 
 function! s:narrowTags(temp_file,search_string)
@@ -354,7 +353,7 @@ function! s:getIncluded()
     call cursor(1,1)
 
     let a:files = []
-    let a:include = '^#\<include\>'
+    let a:include = '^#\<include\>\s*"'
     let a:next = search(a:include,'Wc')
     while a:next > 0
         if match(getline(a:next),'<.*>$') < 0
@@ -367,9 +366,9 @@ function! s:getIncluded()
         return []
     endif
 
-    call map(a:files,{n,val -> ' -name "' . substitute(val,'\(.*\/\)\=\(.*\)','\2','') . '"'})
-    let a:or = join(a:files,' -or')
-    let a:fin = split(system('find ' . getcwd() . g:factorus_ignore_string . a:or . ' 2> /dev/null'),'\n')
+    call map(a:files,{n,val -> '\/' . substitute(val,'\(.*\/\)\=\(.*\)','\2','')})
+    let a:or = substitute(' "\(' . join(a:files,'\|') . '\)" ','\.','\\.','g')
+    let a:fin = split(system('grep' . a:or . s:temp_file . ' 2> /dev/null'),'\n')
 
     call cursor(a:orig[0],a:orig[1])
     return a:fin
@@ -414,8 +413,15 @@ endfunction
 
 " Declarations {{{2
 " getTypeDefs {{{3
-function! s:getTypeDefs(files,type,name)
-    let a:search = '\<typedef\>\_s*' . a:type . '\_s*' . a:name . '\_s*\<\(' . s:c_identifier . '\)\>'
+function! s:getTypeDefs(name,...)
+    let a:type = a:0 > 0 ? '\_s*' . a:1 . '\_s*' : '\_s*'
+
+    let a:temp_file = '.FactorusInc'
+    call s:getInclusions(a:temp_file)
+    let a:files = readfile(a:temp_file) + [expand('%:p')]
+    call system('rm -rf ' . a:temp_file)
+
+    let a:search = '\<typedef\>' . a:type . a:name . '\_s*\<\(' . s:c_identifier . '\)\>'
     try
         execute 'silent lvimgrep /' . a:search . '/j ' . join(a:files)
         let a:res = []
@@ -466,7 +472,7 @@ function! s:getStructDef(type)
     else
     endif
 
-    let s:all_structs[expand('%:p') . '-' . a:type] = [a:prev_file,a:type,a:res]
+    let s:all_structs[expand('%:p') . '-' . a:type] = [a:prev_file,a:type,deepcopy(a:res)]
     return [a:prev_file,a:type,a:res]
 endfunction
 
@@ -575,7 +581,7 @@ endfunction
 
 " getFunctionDecs {{{3
 function! s:getFunctionDecs()
-    let a:query = '^\s*' . s:modifier_query . '\s*\(' .  s:c_type . '\_s*' . s:collection_identifier . '\=\)\_s\+\(' . s:c_identifier . '\)\_s*\([;(]\).*'
+    let a:query = '^\s*' . s:modifier_query . '\s*\(' .  s:c_type . '\_s*' . s:collection_identifier . '\)\_s*\(' . s:c_identifier . '\)\_s*\([;(]\).*'
     let a:decs = {'types' : [], 'names' : []}
     try
         execute 'silent vimgrep /' . a:query . '/j %:p'
@@ -583,7 +589,7 @@ function! s:getFunctionDecs()
 
         for g in a:greps
             let a:fname = substitute(g['text'],a:query,'\4|\7\8','')
-            if match(a:fname,s:c_keywords) >= 0 || match(a:fname,a:access) >= 0
+            if match(a:fname,s:c_keywords) >= 0
                 continue
             endif
 
@@ -606,6 +612,7 @@ endfunction
 
 " getAllFunctions {{{3
 function! s:getAllFunctions()
+    echom expand('%:p')
     if index(keys(s:all_funcs),expand('%:p')) >= 0
         return s:all_funcs[expand('%:p')]
     endif
@@ -693,12 +700,12 @@ function! s:getUsingVar()
     let a:search = '\(\.\|->\)'
     while 1 == 1
         let a:adj = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
-        if a:adj == ')'
+        if a:adj == ')' || a:adj == ']'
             call cursor(line('.'),col('.')-1)
             execute 'normal %'
             if searchpos(a:search,'bn') == searchpos('[^[:space:]]\_s*\<' . s:c_identifier . '\>','bn')
                 call search(a:search,'b')
-            elseif s:isBefore(searchpos('\<' . s:c_identifier . '\>(','bn'),searchpos('[^[:space:]' . s:search_chars . ']','bn'))
+            elseif s:isBefore(searchpos('\<' . s:c_identifier . '\>\((\|\[\)','bn'),searchpos('[^[:space:]' . s:search_chars . ']','bn'))
                 call search('\<' . s:c_identifier . '\>','')
                 let a:var = expand('<cword>')
                 let a:dec = s:getVarDec(a:var)
@@ -708,6 +715,7 @@ function! s:getUsingVar()
                 let a:begin = col('.') - 1
                 let a:var = strpart(getline('.'),a:begin,a:end - a:begin)
                 let a:dec = s:getFuncDec(a:var)
+                let a:var = substitute(a:var,'\(\[\|(\)','','')
                 break
             endif
         else
@@ -766,13 +774,21 @@ function! s:followChain(types,funcs,type_name)
             catch /.*/
             endtry
         else
-            let a:ind = index(map(a:fields,{n,val -> val[1]}),a:funcs[0])
+            let a:ind = index(map(deepcopy(a:fields),{n,val -> val[1]}),a:funcs[0])
             if a:ind < 0
                 break
             endif
 
             execute 'silent tabedit! ' . a:prev_file
-            let [a:prev_file,a:prev_struct,a:fields] = s:getStructDef(a:fields[a:ind][0])
+            let a:new_struct = split(a:fields[a:ind][0],' ')
+            if len(a:new_struct) == 1
+                let a:type_defs = s:getTypeDefs(a:new_struct[0])
+            else
+                let a:type_defs = s:getTypeDefs(join(a:new_struct[1:],'\_s*'),a:new_struct[0])
+            endif
+
+            let a:struct_find = len(a:type_defs) == 0 ? a:fields[a:ind][0] : '\(' . a:fields[a:ind][0] . '\|' . join(a:type_defs,'\|') . '\)'
+            let [a:prev_file,a:prev_struct,a:fields] = s:getStructDef(a:struct_find)
             call s:safeClose()
         endif
         if len(a:funcs) > 0
@@ -1064,7 +1080,7 @@ function! s:renameField(new_name,...) abort
 
         let a:files = readfile(a:temp_file) + [expand('%:p')]
         if a:type_name != ''
-            let a:type_defs += s:getTypeDefs(a:files,a:type_type,a:type_name)
+            let a:type_defs += s:getTypeDefs(a:type_name,a:type_type)
             let a:find_name = a:type_type . '\_s*' . a:type_name
             call add(a:type_defs,a:find_name)
         endif
@@ -1116,7 +1132,6 @@ function! s:renameMethod(new_name,...) abort
     endif
     let g:factorus_history['old'] = a:method_name
 
-    let s:all_funcs = {}
     let a:is_static = match(getline('.'),'\<static\>[^)]\+(') >= 0 ? 1 : 0
 
     let a:includes = s:getAllIncluded()
@@ -1851,10 +1866,8 @@ endfunction
 function! c#factorus#renameSomething(new_name,type,...)
     let a:orig = [line('.'),col('.')]
     let s:open_bufs = []
-    let s:qf = []
 
-    let s:all_structs = {}
-    let s:all_inc = {}
+    let [s:all_structs,s:all_inc,s:all_funcs] = [{},{},{}]
 
     let a:prev_dir = getcwd()
     let a:buf_nrs = []
@@ -1862,12 +1875,16 @@ function! c#factorus#renameSomething(new_name,type,...)
         call add(s:open_bufs,buf['name'])
         call add(a:buf_nrs,buf['bufnr'])
     endfor
+
     let a:curr_buf = a:buf_nrs[index(s:open_bufs,expand('%:p'))]
     let a:buf_setting = &switchbuf
 
     execute 'silent cd ' . expand('%:p:h')
     let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
     execute 'silent cd ' a:project_dir
+
+    let s:temp_file = '.FactorusTemp'
+    call system('find ' . getcwd() . g:factorus_ignore_string . ' > ' . s:temp_file)
 
     let a:res = ''
     try
@@ -1906,6 +1923,7 @@ function! c#factorus#renameSomething(new_name,type,...)
                 call s:setQuickFix(a:type)
             endif
         endif
+        call system('rm -rf ' . s:temp_file)
 
         execute 'silent cd ' a:prev_dir
         if a:type != 'Class'

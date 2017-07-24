@@ -5,7 +5,7 @@ GENERAL
 Bugs
 ----
 - FRenameField doesn't work with multiple declarations on the same line
-- strange "find" error occasionally with large codebases or frequent use of system('find')
+- strange "find" error occasionally with large codebases or frequent use of system('find') (FIXED 2017-07-24)
 
 Tasks
 -----
@@ -40,8 +40,9 @@ C
 
 Bugs
 ----
-- Typedefs not noticed in renameField
+- Typedefs not noticed in renameField (FIXED 2017-07-24)
 - Structs defined within structs not properly identified in renameField
+- Arrays of structs not identified in renameField (FIXED 2017-07-24)
 
 Tasks
 -----

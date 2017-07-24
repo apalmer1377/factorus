@@ -120,7 +120,7 @@ endfunction
 
 function! s:findTags(temp_file,search_string,append)
     let a:fout = a:append == 'yes' ? '>>' : '>'
-    call system('find ' . getcwd() . g:factorus_ignore_string . '-exec grep -l "' . a:search_string . '" {} + ' . a:fout . ' ' . a:temp_file . ' 2> /dev/null')
+    call system('cat ' . s:temp_file . ' | xargs grep -l "' . a:search_string . '"' .  a:fout . a:temp_file . ' 2> /dev/null')
 endfunction
 
 function! s:narrowTags(temp_file,search_string)
@@ -1043,6 +1043,9 @@ function! python#factorus#renameSomething(new_name,type,...)
     let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
     execute 'silent cd ' a:project_dir
 
+    let s:temp_file = '.FactorusTemp'
+    call system('find ' . getcwd() . g:factorus_ignore_string . ' > ' . s:temp_file)
+
     let a:res = ''
     try
         let Rename = function('s:rename' . a:type)
@@ -1077,6 +1080,7 @@ function! python#factorus#renameSomething(new_name,type,...)
                 call s:setQuickFix(a:type)
             endif
         endif
+        call system('rm -rf ' . s:temp_file)
 
         execute 'silent cd ' a:prev_dir
         if a:type != 'Class'
