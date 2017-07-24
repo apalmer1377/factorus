@@ -4,8 +4,6 @@ GENERAL
 
 Bugs
 ----
-- Rollback for renameClass doesn't work properly (FIXED 2017-07-17)
-- updateQuickFix breaks if only one file is read (FIXED 2017-07-17)
 - FRenameField doesn't work with multiple declarations on the same line
 - strange "find" error occasionally with large codebases or frequent use of system('find')
 
@@ -21,11 +19,9 @@ JAVA
 
 Bugs
 ----
-- single-line, no-bracket for and while loops screw with getAllBlocks (FIXED 2017-07-17 for while, for is tricker)
 
 Tasks
 -----
-- add ability to rename enum field (i.e., if you have enum DayOfWeek, rename Monday to MONDAY) (DONE 2017-07-17)
 
 ======
 PYTHON
@@ -38,15 +34,21 @@ Tasks
 -----
 - make renaming better (currently just a universal find/replace)
 
-=====
-C/C++
-=====
-- Add functionality for C
-    addParam--2017-07-14
-    renameArg--2017-07-14
-    renameType--2017-07-14
-    renameMethod--2017-07-16,fixes 2017-07-20 
-    extractMethod--2017-07-17
-    renameMacro--2017-07-20
+=
+C
+=
+
+Bugs
+----
+- Typedefs not noticed in renameField
+- Structs defined within structs not properly identified in renameField
+
+Tasks
+-----
+- Speed up renameField
+
+===
+C++
+===
 
 - Add functionality for C++
