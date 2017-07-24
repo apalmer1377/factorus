@@ -7,6 +7,7 @@ Bugs
 - Rollback for renameClass doesn't work properly (FIXED 2017-07-17)
 - updateQuickFix breaks if only one file is read (FIXED 2017-07-17)
 - FRenameField doesn't work with multiple declarations on the same line
+- strange "find" error occasionally with large codebases or frequent use of system('find')
 
 Tasks
 -----
@@ -44,7 +45,7 @@ C/C++
     addParam--2017-07-14
     renameArg--2017-07-14
     renameType--2017-07-14
-    renameMethod--2017-07-16,fixes 2017-07-20
+    renameMethod--2017-07-16,fixes 2017-07-20 
     extractMethod--2017-07-17
     renameMacro--2017-07-20
 

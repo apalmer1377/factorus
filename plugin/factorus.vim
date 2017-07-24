@@ -6,7 +6,7 @@
 " Helper Functions {{{1
 
 let s:opts = {
-            \   'version'               : '1.9375',
+            \   'version'               : '1.96875',
             \   'project_dir'           : '',
             \   'min_extracted_lines'   : 2,
             \   'method_name'           : 'newFactorusMethod',

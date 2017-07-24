@@ -1005,21 +1005,22 @@ function! s:renameField(new_name,...) abort
         call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:var . '\>/' . a:new_name . '/g"')
         call system('rm -rf ' . a:temp_file)
 
+        let a:unchanged = s:getUnchanged('\<' . a:var . '\>')
         redraw
-        echo 'Renamed enum ' . a:var . ' to ' . a:new_name . '.'
-        return a:var
+        echo 'Renamed enum field ' . a:var . ' to ' . a:new_name . '.'
+        return [a:var,a:unchanged]
     elseif a:var == a:new_name
         throw 'Factorus:Duplicate'
     endif
     let g:factorus_history['old'] = a:var
 
-    call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-    execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/e'
-
     let a:unchanged = []
     if a:is_local == 1
         call s:updateFile(a:var,a:new_name,0,a:is_local)
     elseif a:is_static == 0
+        call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+        execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/e'
+
         call s:gotoTag()
         let a:search = '^\s*\(\<typedef\>\)\=\_s*\<\(struct\|union\)\>\_s*\(' . s:c_identifier . '\)\=\_s*{\=.*'
         let a:type_type = substitute(getline('.'),a:search,'\2','')

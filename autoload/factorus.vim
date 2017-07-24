@@ -13,10 +13,15 @@ let g:loaded_factorus = 1
 " Language Dictionary {{{2
 let s:langs = { 'java'      : 'Java',
             \   'python'    : 'Python',
-            \   'cpp'       : 'C++',
-            \   'ruby'      : 'Ruby',
-            \   'cs'        : 'C#',
             \   'c'         : 'C',
+            \   'cpp'       : 'C++',
+            \   'go'        : 'Go',
+            \   'rb'        : 'Ruby',
+            \   'php'       : 'Php',
+            \   'rs'        : 'Rust',
+            \   'js'        : 'Javascript',
+            \   'perl'      : 'Perl',
+            \   'cs'        : 'C#',
             \   'vim'       : 'Vimscript'
             \ }
 
