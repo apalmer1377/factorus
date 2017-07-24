@@ -79,23 +79,24 @@ call s:init_vars()
 
 " Commands {{{1
 
-command! -nargs=0 Factorus          call factorus#version()
+command! -nargs=0           Factorus          call factorus#version()
 
-command! -nargs=0 FExtractMethod    call factorus#command('extractMethod')
+command! -nargs=0           FExtractMethod    call factorus#command('extractMethod')
+command! -nargs=? -range    FManualExtract    call factorus#command('manualExtract', <line1>, <line2>, <f-args>)
 
-command! -nargs=1 FRenameArg        call factorus#command('renameSomething', <f-args>, 'Arg')
-command! -nargs=1 FRenameClass      call factorus#command('renameSomething', <f-args>, 'Class')
-command! -nargs=1 FRenameField      call factorus#command('renameSomething', <f-args>, 'Field') 
-command! -nargs=1 FRenameMethod     call factorus#command('renameSomething', <f-args>, 'Method')
+command! -nargs=1           FRenameArg        call factorus#command('renameSomething', <f-args>, 'Arg')
+command! -nargs=1           FRenameClass      call factorus#command('renameSomething', <f-args>, 'Class')
+command! -nargs=1           FRenameField      call factorus#command('renameSomething', <f-args>, 'Field') 
+command! -nargs=1           FRenameMethod     call factorus#command('renameSomething', <f-args>, 'Method')
 
-command! -nargs=1 FRenameMacro      call factorus#command('renameSomething', <f-args>, 'Macro')
-command! -nargs=1 FRenameType       call factorus#command('renameSomething', <f-args>, 'Type')
+command! -nargs=1           FRenameMacro      call factorus#command('renameSomething', <f-args>, 'Macro')
+command! -nargs=1           FRenameType       call factorus#command('renameSomething', <f-args>, 'Type')
 
-command! -nargs=0 FEncapsulate      call factorus#command('encapsulateField')
-command! -nargs=+ FAddParam         call factorus#command('addParam', <f-args>)  
+command! -nargs=0           FEncapsulate      call factorus#command('encapsulateField')
+command! -nargs=+           FAddParam         call factorus#command('addParam', <f-args>)  
 
-command! -nargs=0 FRollback         call factorus#rollback()
-command! -nargs=? FRebuild          call factorus#rebuild(<f-args>)
+command! -nargs=0           FRollback         call factorus#rollback()
+command! -nargs=?           FRebuild          call factorus#rebuild(<f-args>)
 
 " Modeline {{{1
 " vim: ts=8 sw=4 sts=4 et foldenable foldmethod=marker foldcolumn=1

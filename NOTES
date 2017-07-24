@@ -9,7 +9,10 @@ Bugs
 
 Tasks
 -----
-- Manual extraction (methods, types, etc.)
++ Manual extraction (methods, types, etc.)
+    Java: 2017-07-24
+    Python: 2017-07-24
+    C: 2017-07-24
 - Find repeated/duplicate code
 - Add default argument to function with added parameter
 
@@ -32,7 +35,7 @@ Bugs
 
 Tasks
 -----
-- make renaming better (currently just a universal find/replace)
++ make renaming better (currently just a universal find/replace)
 
 =
 C
@@ -43,10 +46,11 @@ Bugs
 - Typedefs not noticed in renameField (FIXED 2017-07-24)
 - Structs defined within structs not properly identified in renameField
 - Arrays of structs not identified in renameField (FIXED 2017-07-24)
+- Method declarations without implementation not noticed as tags (FIXED 2017-07-24)
 
 Tasks
 -----
-- Speed up renameField
+- Speed up renameField (specifically in the context of renaming a struct field)
 
 ===
 C++

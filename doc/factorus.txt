@@ -42,6 +42,13 @@ modification, and miscellaneous.
     code runs in the same way; therefore, it is hightly suggested that you 
     review the changes made before committing them.
 
+:FManualExtract [{new_name}]
+    Extracts the visually selected text into a new method, which is then
+    inserted directly below the current method. The return type and
+    arguments of the new method are automatically determined, and the method
+    name is either {new_name}, or |g:factorus_method_name| if {new_name} is
+    not provided.
+
 ------------------------------------------------------------------------------
 2.2 Insertion                                                *factorus-insert*
 

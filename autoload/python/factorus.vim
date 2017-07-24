@@ -757,7 +757,7 @@ endfunction
 
 " Method-Building {{{2
 " getNewArgs {{{3
-function! s:getNewArgs(lines,vars,rels,var)
+function! s:getNewArgs(lines,vars,rels,...)
     let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
     let a:search = '\(' . join(a:names,'\|') . '\)'
     let a:search = '^.*\<' . a:search . '\>.*'
@@ -773,7 +773,7 @@ function! s:getNewArgs(lines,vars,rels,var)
             let a:spot = a:rels[a:new]
             let a:next_var = filter(deepcopy(a:vars),'v:val[0] == a:new')[0]
 
-            if index(a:args,a:next_var) < 0 && index(a:lines,a:spot) < 0 && (a:next_var[0] != a:var[0] || a:next_var[1] == a:var[1]) 
+            if index(a:args,a:next_var) < 0 && index(a:lines,a:spot) < 0 && (a:0 == 0 || a:next_var[0] != a:1[0] || a:next_var[1] == a:1[1]) 
                 call add(a:args,a:next_var)
             endif
             let a:this = substitute(a:this,'\<' . a:new . '\>','','g')
@@ -881,7 +881,7 @@ function! s:formatMethod(def,body,return,lines,spaces)
 endfunction
 
 " buildNewMethod {{{3
-function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
+function! s:buildNewMethod(lines,args,ranges,vars,rels,tab,close,...)
     call cursor(a:lines[-1],1)
     let a:return = ''
     let a:call = ''
@@ -931,8 +931,9 @@ function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
     endfor
     let a:body = map(copy(a:lines),{n,line -> getline(line)})
 
+    let a:name = a:0 == 0 ? g:factorus_method_name : a:1
     let a:arg_string = s:buildArgs(a:args)
-    let a:build_string = 'def ' .  g:factorus_method_name . '(' . a:arg_string . '):'
+    let a:build_string = 'def ' . a:name . '(' . a:arg_string . '):'
     let a:temp = join(reverse(split(a:build_string, '.\zs')), '')
     let a:def = []
 
@@ -959,7 +960,7 @@ function! s:buildNewMethod(var,lines,args,ranges,vars,rels,tab,close)
     let a:final = a:def + a:body + ['']
 
     let a:call_space = substitute(getline(s:getContainingBlock(a:lines[-1],a:ranges,a:ranges[0])[0]),'\(\s*\).*','\1','')
-    let a:rep = [a:call_space . a:call . g:factorus_method_name . '(' . a:arg_string . ')']
+    let a:rep = [a:call_space . a:call . a:name . '(' . a:arg_string . ')']
 
     return [a:final,a:rep]
 endfunction
@@ -1174,7 +1175,7 @@ function! python#factorus#extractMethod(...)
     endif
 
     let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:all,a:best_var)
-    let [a:final,a:rep] = s:buildNewMethod(a:best_var,a:best_lines,a:new_args,a:blocks,a:vars,a:all,a:tab,a:close)
+    let [a:final,a:rep] = s:buildNewMethod(a:best_lines,a:new_args,a:blocks,a:vars,a:all,a:tab,a:close)
 
     call append(a:close[0]-1,a:final)
     call append(a:best_lines[-1],a:rep)
@@ -1191,4 +1192,48 @@ function! python#factorus#extractMethod(...)
     redraw
     echo 'Extracted ' . len(a:best_lines) . ' lines from ' . a:method_name
     return [a:method_name,a:old_lines]
+endfunction
+
+"manualExtract {{{2
+function! python#factorus#manualExtract(...)
+    if factorus#isRollback(a:000)
+        call s:rollbackExtraction()
+        return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
+    endif
+    let a:name = a:0 <= 2 ? g:factorus_method_name : a:3
+
+    echo 'Extracting new method...'
+    call s:gotoTag(0)
+    let a:tab = [substitute(getline('.'),'\(\s*\).*','\1',''),substitute(getline(line('.')+1),'\(\s*\).*','\1','')]
+    let a:method_name = substitute(getline('.'),'^\s*def\s\+\<\(' . s:python_identifier . '\)\s*(.*','\1','')
+
+    let [a:open,a:close] = [line('.'),s:getClosingIndent(1)]
+
+    let a:extract_lines = range(a:1,a:2)
+    let a:old_lines = getline(a:open,a:close[0]-1)
+
+    let a:vars = s:getLocalDecs(a:close)
+    let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
+    let a:blocks = s:getAllBlocks(a:close)
+    let [a:all,a:isos] = s:getAllRelevantLines(a:vars,a:names,a:close)
+
+    let a:new_args = s:getNewArgs(a:extract_lines,a:vars,a:all)
+    let [a:final,a:rep] = s:buildNewMethod(a:extract_lines,a:new_args,a:blocks,a:vars,a:all,a:tab,a:close,a:name)
+
+    call append(a:close[0],a:final)
+    call append(a:extract_lines[-1],a:rep)
+
+    let a:i = len(a:extract_lines) - 1
+    while a:i >= 0
+        call cursor(a:extract_lines[a:i],1)
+        d 
+        let a:i -= 1
+    endwhile
+
+    call search('def\s*\<' . a:name . '\>(')
+    silent write!
+    redraw
+    echo 'Extracted ' . len(a:extract_lines) . ' lines from ' . a:method_name
+
+    return [a:name,a:old_lines]
 endfunction
