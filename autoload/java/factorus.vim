@@ -205,7 +205,7 @@ function! s:getClosingBracket(stack,...)
     else
         call search('{','Wc')
     endif
-    execute 'normal %'
+    normal %
     let a:res = [line('.'),col('.')]
     call cursor(a:orig[0],a:orig[1])
     return a:res
@@ -699,7 +699,7 @@ function! s:getUsingVar()
         let a:adj = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
         if a:adj == ')'
             call cursor(line('.'),col('.')-1)
-            execute 'normal %'
+            normal %
             if searchpos('\.','bn') == searchpos('[^[:space:]]\_\s*\<' . s:java_identifier . '\>','bn')
                 call search('\.','b')
             else
@@ -741,10 +741,10 @@ function! s:getUsingVar()
         call add(a:funcs,[strpart(getline('.'),a:next[1], a:next_end[1] - a:next[1])])
         if matchstr(getline('.'), '\%' . a:next_end[1] . 'c.') == '('
             call search('(')
-            execute 'normal %'
+            normal %
         elseif matchstr(getline('.'), '\%' . a:next_end[1] . 'c.') == '['
             call search('[')
-            execute 'normal %'
+            normal %
         endif
         let a:next = searchpos(a:search,'Wn')
         let a:next_end = searchpos(a:search,'Wnez')
@@ -1351,15 +1351,19 @@ function! s:getAllBlocks(close)
 
         if match(getline('.'),'\<\(if\|try\|for\|while\)\>') >= 0
             let a:open = [line('.'),col('.')]
+            call search('(')
+            normal %
+
             let a:ret =  searchpos('{','Wn')
             let a:semi = searchpos(';','Wn')
 
             let a:o = line('.')
             if s:isBefore(a:semi,a:ret) == 1
                 call cursor(a:semi[0],a:semi[1])
+                call add(a:blocks,[a:open[0],line('.')])
             elseif match(getline('.'),'\<\(if\|try\)\>') >= 0
                 call cursor(a:ret[0],a:ret[1])
-                execute 'normal %'
+                normal %
 
                 let a:continue = '}\_s*\(else\_s*\(\<if\>\_[^{]*)\)\=\|\<catch\>\_[^{]*\|\<finally\>\_[^{]*\){'
                 let a:next = searchpos(a:continue,'Wnc')
@@ -1371,20 +1375,22 @@ function! s:getAllBlocks(close)
                     call add(a:blocks,[a:o,line('.')])
                     call search('{','W')
                     let a:o = line('.')
-                    execute 'normal %'
+                    normal %
 
                     let a:next = searchpos(a:continue,'Wnc')
                 endwhile
                 call add(a:blocks,[a:o,line('.')])
+                if a:o != a:open[0]
+                    call add(a:blocks,[a:open[0],line('.')])
+                endif
             else
                 call search('{','W')
                 let a:prev = [line('.'),col('.')]
-                execute 'normal %'
+                normal %
                 call add(a:blocks,[a:next[0],line('.')])
                 call cursor(a:prev[0],a:prev[1])
             endif
 
-            call add(a:blocks,[a:open[0],line('.')])
             call cursor(a:open[0],a:open[1])
         elseif match(getline('.'),'\<switch\>') >= 0
             let a:open = [line('.'),col('.')]
@@ -1410,7 +1416,7 @@ function! s:getAllBlocks(close)
         else
             call search('{','W')
             let a:prev = [line('.'),col('.')]
-            execute 'normal %'
+            normal %
             call add(a:blocks,[a:next[0],line('.')])
             call cursor(a:prev[0],a:prev[1])
         endif

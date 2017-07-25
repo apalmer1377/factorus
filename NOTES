@@ -4,8 +4,12 @@ GENERAL
 
 Bugs
 ----
-- FRenameField doesn't work with multiple declarations on the same line
+- FRenameField doesn't work with multiple declarations on the same line (FIXED?)
 - strange "find" error occasionally with large codebases or frequent use of system('find') (FIXED 2017-07-24)
+- A lot of issues with extractMethod (frequently extracts invalid code snippets, lines from mismatched blocks, etc.)
+    Java: Testing 2017-07-24
+    C: Testing 2017-07-25
+    Python: N/A
 
 Tasks
 -----
