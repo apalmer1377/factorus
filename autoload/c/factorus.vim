@@ -149,7 +149,7 @@ function! s:updateQuickFix(temp_file,search_string)
     let g:factorus_qf += a:res
 endfunction
 
-function! s:setQuickFix(type)
+function! s:setQuickFix(type,qf)
     let a:title = a:type . ' : '
     if g:factorus_show_changes == 1
         let a:title .= 'ChangedFiles'
@@ -159,8 +159,36 @@ function! s:setQuickFix(type)
         let a:title .= 'AllFiles'
     endif
 
-    call setqflist(s:qf)
-    call setqflist(s:qf,'r',{'title' : a:title})
+    call setqflist(a:qf)
+    call setqflist(a:qf,'r',{'title' : a:title})
+endfunction
+
+function! s:setChanges(res,un,func,...)
+    let a:qf = copy(g:factorus_qf)
+    let a:type = a:func == 'rename' ? a:1 : ''
+
+    let a:ch = len(g:factorus_qf)
+    let a:ch_i = a:ch == 1 ? ' instance ' : ' instances '
+    let a:un_l = len(a:un)
+    let a:un_i = a:un_l == 1 ? ' instance ' : ' instances '
+
+    let a:first_line = a:ch . a:ch_i . 'modified'
+    let a:first_line .= (a:type == 'Arg' || a:func == 'addParam') ? '.' : ', ' . a:un_l . a:un_i . 'left unmodified.'
+
+    if g:factorus_show_changes > 1 && a:func != 'addParam' && a:type != 'Arg'
+        let a:un = [{'pattern' : 'Unmodified'}] + a:un
+        if g:factorus_show_changes == 2
+            let a:qf = []
+        endif
+        let a:qf += a:un
+    endif
+
+    if g:factorus_show_changes % 2 == 1
+        let a:qf = [{'pattern' : 'Modified'}] + a:qf
+    endif
+    let a:qf = [{'text' : a:first_line,'pattern' : a:func . a:type}] + a:qf
+
+    call s:setQuickFix(a:func . a:type,a:qf)
 endfunction
 
 function! s:getUnchanged(search)
@@ -182,6 +210,39 @@ function! s:getUnchanged(search)
 
     call system('rm -rf ' . a:temp_file)
     return a:qf
+endfunction
+
+function! s:setEnvironment()
+    let s:open_bufs = []
+
+    let a:prev_dir = getcwd()
+    let a:buf_nrs = []
+    for buf in getbufinfo()
+        call add(s:open_bufs,buf['name'])
+        call add(a:buf_nrs,buf['bufnr'])
+    endfor
+    let a:curr_buf = a:buf_nrs[index(s:open_bufs,expand('%:p'))]
+
+    execute 'silent cd ' . expand('%:p:h')
+    let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
+    execute 'silent cd ' a:project_dir
+
+    let s:temp_file = '.FactorusTemp'
+    call system('find ' . getcwd() . g:factorus_ignore_string . ' > ' . s:temp_file)
+
+    return [[line('.'),col('.')],a:prev_dir,a:curr_buf]
+endfunction
+
+function! s:resetEnvironment(orig,prev_dir,curr_buf,type)
+    let a:buf_setting = &switchbuf
+    call system('rm -rf .Factorus*')
+    execute 'silent cd ' a:prev_dir
+    if a:type != 'Class'
+        let &switchbuf = 'useopen,usetab'
+        execute 'silent sbuffer ' . a:curr_buf
+        let &switchbuf = a:buf_setting
+    endif
+    call cursor(a:orig[0],a:orig[1])
 endfunction
 
 " Utilities {{{2
@@ -940,6 +1001,49 @@ function! s:updateUsingFiles(files,type_name,old_name,new_name,paren) abort
     endfor
     silent edit!
 endfunction 
+
+" updateParamFile {{{3
+function! s:updateParamFile(method_name,commas,default,param_name,param_type) abort
+    call cursor(1,1)
+    let a:search = a:method_name . '('
+
+    let a:next = searchpos(a:search,'Wn')
+    let [a:param_search,a:insert] = ['',a:default . ')']
+    let a:com = a:commas > 0 ? ', ' : ''
+    if a:commas > 0
+        let a:insert = ', ' . a:insert
+        let a:param_search = '\_[^;]*'
+        let a:param_search .= repeat(',' . '\_[^;]*',a:commas - 1)
+    endif
+    let a:param_search = '\((' . a:param_search . '\))'
+
+    while a:next != [0,0]
+        call cursor(a:next[0],a:next[1])
+        let a:func = s:c_type . '\_s*' . s:collection_identifier . '\<' . a:method_name . '\>\_s*('
+        if match(getline('.'),a:func) >= 0
+            let a:end = searchpos(')','Wn')
+
+            let a:line = substitute(getline(a:end[0]), ')', a:com . a:param_type . ' ' . a:param_name . ')', '')
+            call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+            execute 'silent ' .  a:end[0] . 'd'
+            call append(a:end[0] - 1,a:line)
+        else
+            call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+            call search('(')
+            normal %
+            let a:end = line('.')
+            let a:leftover = strpart(getline('.'),col('.'))
+            call cursor(a:next[0],a:next[1])
+            execute 'silent ' . line('.') . ',' . a:end . 's/\<' .a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
+                        \ a:method_name . '\1' . a:insert . '\2/e'
+        endif
+
+        call cursor(a:next[0],a:next[1])
+        let a:next = searchpos(a:search,'Wn')
+    endwhile
+
+    silent write!
+endfunction
 
 " updateFile {{{3
 function! s:updateFile(old_name,new_name,is_method,is_local)
@@ -1781,6 +1885,45 @@ function! s:buildNewMethod(lines,args,ranges,vars,rels,tab,close,...)
 endfunction
 
 " Rollback {{{2
+" rollbackAddParam {{{3
+function! s:rollbackAddParam()
+    let a:files = {}
+    let [a:method_name,a:param_name] = g:factorus_history['old']
+
+    for line in g:factorus_qf
+        if index(keys(line),'filename') < 0
+            if line['pattern'] == 'Unmodified'
+                break
+            endif
+            continue
+        endif
+
+        if index(keys(a:files),line['filename']) < 0
+            let a:files[line['filename']] = [line['lnum']]
+        else
+            call add(a:files[line['filename']],line['lnum'])
+        endif
+    endfor
+
+    for file in keys(a:files)
+        execute 'silent tabedit! ' . file
+        for line in a:files[file]
+            call cursor(line,1)
+            call search(a:method_name . '(','e')
+            normal %
+            let end = line('.')
+            let a:leftover = strpart(getline('.'),col('.'))
+            call cursor(line,1)
+            execute line . ',' . end . 's/\<\(' . a:method_name . '\>(\_.\{-\}\)\(,\=[^,)]*)\)' . a:leftover . '/\1)' . a:leftover . '/ge'
+            call cursor(line,1)
+        endfor
+        silent write!
+        call s:safeClose()
+    endfor
+
+    return 'Rolled back adding of param ' . a:param_name . '.'
+endfunction
+
 " rollbackRename {{{3
 function! s:rollbackRename()
     let a:files = {}
@@ -1845,6 +1988,87 @@ endfunction
 " addParam {{{2
 function! c#factorus#addParam(param_name,param_type,...) abort
     if factorus#isRollback(a:000)
+        call s:rollbackAddParam()
+        let g:factorus_qf = []
+        return 'Removed new parameter ' . a:param_name
+    endif
+    let g:factorus_qf = []
+
+    let [s:all_inc,s:all_funcs] = [{},{}]
+    let [a:orig,a:prev_dir,a:curr_buf] = s:setEnvironment()
+
+    try
+        call s:gotoTag()
+        let a:tag = line('.')
+        let a:next = searchpos(')','Wn')
+        let [a:type,a:name,a:params] = split(substitute(join(getline(line('.'),a:next[0])),'^.*\<\(' . s:c_type . 
+                    \ s:collection_identifier . '\)\s*\<\(' . s:c_identifier . '\)\>\s*(\(.*\)).*','\1 | \4 | \5',''),'|')
+        let [a:type,a:name] = [s:trim(a:type),s:trim(a:name)]
+        let g:factorus_history['old'] = [a:name,a:param_name]
+
+        let a:includes = s:getAllIncluded()
+        try
+            execute 'silent lvimgrep /\<' . a:name . '\>(/j ' . join(a:includes)
+            execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
+            call cursor(getloclist(0)[0]['lnum'],1)
+            call setloclist(0,[])
+            let a:swap = 1
+        catch /.*/
+            call cursor(a:tag,1)
+            let a:swap = 0
+        endtry
+
+        let a:count = len(split(a:params,','))
+        let a:com = a:count > 0 ? ', ' : ''
+
+        let a:next = searchpos(')','Wn')
+        let a:line = substitute(getline(a:next[0]), ')', a:com . a:param_type . ' ' . a:param_name . ')', '')
+        call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+        execute 'silent ' .  a:next[0] . 'd'
+        call append(a:next[0] - 1,a:line)
+        silent write!
+
+        if g:factorus_add_default == 1
+    "        redraw
+    "        echo 'Updating hierarchy...'
+    "        let a:classes = s:updateSubClassFiles(expand('%:t:r'),a:method_name,a:new_name,'(',a:is_static)
+
+            redraw
+            echo 'Updating references...'
+
+            let a:default = a:0 > 0 ? a:1 : 'null'
+
+            let a:temp_file = '.FactorusParam'
+            call s:getInclusions(a:temp_file)
+            call s:narrowTags(a:temp_file,a:name)
+            for file in readfile(a:temp_file)
+                execute 'silent tabedit! ' . file
+                call s:updateParamFile(a:name,a:count,a:default,a:param_name,a:param_type)
+                call s:safeClose()
+            endfor
+            call system('rm -rf ' . a:temp_file)
+
+            if g:factorus_show_changes > 0
+                call s:setChanges(a:name,[],'addParam')
+            endif
+
+        endif
+        redraw
+        echo 'Added parameter ' . a:param_name . ' to method ' . a:name . '.'
+
+        if a:swap == 1
+            call s:safeClose()
+        endif
+
+        call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,'addParam')
+        return [a:name,a:param_name]
+    catch /.*/
+        call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,'addParam')
+        let a:err = match(v:exception,'^Factorus:') >= 0 ? v:exception : 'Factorus:' . v:exception
+        throw a:err . ', at ' . v:throwpoint
+    endtry
+
+    if factorus#isRollback(a:000)
         call s:gotoTag()
         execute 'silent s/,\=[^,]\{-\})/)/e'
         silent write!
@@ -1870,27 +2094,8 @@ endfunction
 
 " renameSomething {{{2
 function! c#factorus#renameSomething(new_name,type,...)
-    let a:orig = [line('.'),col('.')]
-    let s:open_bufs = []
-
     let [s:all_structs,s:all_inc,s:all_funcs] = [{},{},{}]
-
-    let a:prev_dir = getcwd()
-    let a:buf_nrs = []
-    for buf in getbufinfo()
-        call add(s:open_bufs,buf['name'])
-        call add(a:buf_nrs,buf['bufnr'])
-    endfor
-
-    let a:curr_buf = a:buf_nrs[index(s:open_bufs,expand('%:p'))]
-    let a:buf_setting = &switchbuf
-
-    execute 'silent cd ' . expand('%:p:h')
-    let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
-    execute 'silent cd ' a:project_dir
-
-    let s:temp_file = '.FactorusTemp'
-    call system('find ' . getcwd() . g:factorus_ignore_string . ' > ' . s:temp_file)
+    let [a:orig,a:prev_dir,a:curr_buf] = s:setEnvironment()
 
     let a:res = ''
     try
@@ -1903,51 +2108,13 @@ function! c#factorus#renameSomething(new_name,type,...)
             let [a:res,a:un] = Rename(a:new_name)
 
             if g:factorus_show_changes > 0
-                let s:qf = copy(g:factorus_qf)
-
-                let a:ch = len(g:factorus_qf)
-                let a:ch_i = a:ch == 1 ? ' instance ' : ' instances '
-                let a:un_l = len(a:un)
-                let a:un_i = a:un_l == 1 ? ' instance ' : ' instances '
-
-                let a:first_line = a:ch . a:ch_i . 'modified'
-                let a:first_line .= a:type == 'Arg' ? '.' : ', ' . a:un_l . a:un_i . 'left unmodified.'
-
-                if g:factorus_show_changes > 1 && a:type != 'Arg'
-                    let a:un = [{'pattern' : 'Unmodified'}] + a:un
-                    if g:factorus_show_changes == 2
-                        let s:qf = []
-                    endif
-                    let s:qf += a:un
-                endif
-
-                if g:factorus_show_changes % 2 == 1
-                    let s:qf = [{'pattern' : 'Modified'}] + s:qf
-                endif
-                let s:qf = [{'text' : a:first_line,'pattern' : 'rename' . a:type}] + s:qf
-
-                call s:setQuickFix(a:type)
+                call s:setChanges(a:res,a:un,'rename',a:type)
             endif
         endif
-        call system('rm -rf ' . s:temp_file)
-
-        execute 'silent cd ' a:prev_dir
-        if a:type != 'Class'
-            let &switchbuf = 'useopen,usetab'
-            execute 'silent sbuffer ' . a:curr_buf
-            let &switchbuf = a:buf_setting
-        endif
-        call cursor(a:orig[0],a:orig[1])
- 
+        call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,a:type)
         return a:res
     catch /.*/
-        call system('rm -rf .Factorus*')
-        execute 'silent cd ' a:prev_dir
-        if a:type != 'Class'
-            let &switchbuf = 'useopen,usetab'
-            execute 'silent sbuffer ' . a:curr_buf
-            let &switchbuf = a:buf_setting
-        endif
+        call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,a:type)
         let a:err = match(v:exception,'^Factorus:') >= 0 ? v:exception : 'Factorus:' . v:exception
         throw a:err . ', at ' . v:throwpoint
     endtry

@@ -146,7 +146,7 @@ function! factorus#command(func,...)
         let a:res = Func()
         let a:file = expand('%:p')
         if !factorus#isRollback(a:000)
-            if g:factorus_show_changes > 0 && a:func == 'renameSomething'
+            if g:factorus_show_changes > 0 && (a:func == 'renameSomething' || a:func == 'addParam')
                 copen
             endif
 
@@ -187,7 +187,7 @@ function! factorus#rollback()
     call cursor(g:factorus_history['pos'][0],g:factorus_history['pos'][1])
 
     if a:func == 'addParam'
-        let a:echo = factorus#command('addParam',a:old,a:old,'factorusRollback')
+        let a:echo = factorus#command('addParam',a:old[1],a:old[1],'factorusRollback')
     elseif a:func == 'renameSomething'
         let a:echo = factorus#command('renameSomething',a:old,g:factorus_history['args'][-1],'factorusRollback')
     else

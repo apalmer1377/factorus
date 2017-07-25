@@ -20,7 +20,8 @@ let s:opts = {
             \   'build_file'            : '',
             \   'build_options'         : '',
             \   'validate'              : 0,
-            \   'default_lang'          : ''
+            \   'default_lang'          : '',
+            \   'add_default'           : 0
             \ }
 
 function! s:init_var(var,val)

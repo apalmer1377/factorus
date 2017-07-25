@@ -52,7 +52,7 @@ modification, and miscellaneous.
 ------------------------------------------------------------------------------
 2.2 Insertion                                                *factorus-insert*
 
-:FAddParam {new_name} {other}                                     *:FAddParam*
+:FAddParam {new_name} {other} [{default}]                         *:FAddParam*
     Adds a new parameter with name {new_name} to 
     the function definition. The use of {other} depends on what language
     is being used:
@@ -66,9 +66,10 @@ modification, and miscellaneous.
         added to the end of the argument list; otherwise, it will be added
         to the end.
 
-    NOTE: As of 06/30/2017, this function doesn't update any calls to the
-    function in other parts of the project, as it is assumed that will be done
-    manually.  This feature may be added later.
+    If working in Java or C, and if |g:factorus_add_default| == 1, then the
+    optional {default} argument provides a default argument for external
+    function calls.  If {default} is not supplied, but |g:factorus_add_default|
+    is 1, then the default argument is 'null'.
 
 :FEncapsulate                                                  *:FEncapsulate*
     Creates getter and setter methods for the current variable, and sets 
@@ -354,6 +355,20 @@ working in C, as the default filetype when editing header files is C++.
 Example:
 >
         let g:factorus_default_lang = 'c'
+<
+
+                                                      *g:factorus_add_default*
+g:factorus_add_default~
+Default: 0
+
+If 1, then |:FAddParam| changes the signature of the function, as well as the
+declaration. This means that all function calls will be given a default
+argument, which can be specified as an argument (if left out, the default
+argument is just 'null').  If 0, only the declaration is changed.
+
+Example:
+>
+        let g:factorus_add_default = 1
 <
 
 ==============================================================================
