@@ -19,8 +19,8 @@ Tasks
     C: 2017-07-24
 - Find repeated/duplicate code
 + Add default argument to function with added parameter
-    Java: Testing 2017-07-25 (works but slow, and will miss collections or functions as arguments)
-    C: Testing 2017-07-25 (works but will miss functions as arguments)
+    Java: Testing 2017-07-25, fixed 2017-07-25
+    C: Testing 2017-07-25, fixed 2017-07-25
     Python: N/A (default param is already allowed via optional arguments)
 
 ====

@@ -20,6 +20,7 @@ let s:struct = '\<\(enum\|struct\|union\)\>\_s*\(' . s:c_identifier . '\)\=\_s*\
 let s:func = s:c_type . '\_s*' . s:collection_identifier . '\<' . s:c_identifier . '\>\_s*('
 let s:tag_query = '^\s*' . s:modifier_query . '\(' . s:struct . '\|' . s:func . '\)'
 let s:no_comment = '^\s*'
+let s:special_chars = '\([*\/[\]]\)'
 
 " Local Functions {{{1
 " Universal Functions {{{2
@@ -556,8 +557,8 @@ function! s:getNextArg(...)
     return ['none',[0,0]]
 endfunction
 
-" getArgs {{{3
-function! s:getArgs() abort
+" getParams {{{3
+function! s:getParams() abort
     let a:prev = [line('.'),col('.')]
     call s:gotoTag()
     let a:oparen = search('(','Wn')
@@ -621,7 +622,7 @@ function! s:getLocalDecs(close)
     let a:here = [line('.'),col('.')]
     let a:next = s:getNextDec()
 
-    let a:vars = s:getArgs()
+    let a:vars = s:getParams()
     while s:isBefore(a:next[2],a:close)
         if a:next[2] == [0,0]
             break
@@ -1001,6 +1002,51 @@ function! s:updateUsingFiles(files,type_name,old_name,new_name,paren) abort
     endfor
     silent edit!
 endfunction 
+
+" getArgs {{{3
+function! s:getArgs() abort
+    let a:prev = [line('.'),col('.')]
+    if matchstr(getline('.'), '\%' . col('.') . 'c.') != '('
+        call search('(')
+    endif
+    let a:start = strpart(getline('.'),0,col('.')-1)
+    normal %
+    let a:leftover = strpart(getline('.'),col('.'))
+    let a:end = line('.')
+    call cursor(a:prev[0],a:prev[1])
+
+    let a:start = substitute(a:start,s:special_chars,'\\\1','g')
+    let a:leftover = substitute(a:leftover,s:special_chars,'\\\1','g')
+
+    let a:args = join(getline(a:prev[0],a:end))
+    let a:args = substitute(a:args,a:start . '(\(.*\))' . a:leftover,'\1','')
+
+    if a:args == ''
+        return 0
+    endif
+
+    let a:car = 0
+    let a:par = 0
+    let a:count = 1
+    let a:i = 0
+    let a:prev = 0
+    while a:i < len(a:args)
+        let char = a:args[a:i]
+        if char == ',' && a:car == 0 && a:par == 0
+            let a:count += 1
+        elseif char == '>'
+            let a:car -= 1
+        elseif char == '<'
+            let a:car += 1
+        elseif char == ')'
+            let a:par -= 1
+        elseif char == '('
+            let a:par += 1
+        endif
+        let a:i += 1
+    endwhile
+    return a:count
+endfunction
 
 " updateParamFile {{{3
 function! s:updateParamFile(method_name,commas,default,param_name,param_type) abort
@@ -1888,7 +1934,7 @@ endfunction
 " rollbackAddParam {{{3
 function! s:rollbackAddParam()
     let a:files = {}
-    let [a:method_name,a:param_name] = g:factorus_history['old']
+    let [a:method_name,a:param_name,a:count] = g:factorus_history['old']
 
     for line in g:factorus_qf
         if index(keys(line),'filename') < 0
@@ -1909,13 +1955,23 @@ function! s:rollbackAddParam()
         execute 'silent tabedit! ' . file
         for line in a:files[file]
             call cursor(line,1)
-            call search(a:method_name . '(','e')
-            normal %
-            let end = line('.')
-            let a:leftover = strpart(getline('.'),col('.'))
-            call cursor(line,1)
-            execute line . ',' . end . 's/\<\(' . a:method_name . '\>(\_.\{-\}\)\(,\=[^,)]*)\)' . a:leftover . '/\1)' . a:leftover . '/ge'
-            call cursor(line,1)
+            let a:nline = search(a:method_name . '(','We')
+            let a:call_count = 0
+            while a:nline == line
+                if s:getArgs() == a:count
+                    let a:calls = repeat('.\{-\}' . a:method_name . '(.\{-\}',a:call_count)
+                    let col = col('.')
+                    normal %
+                    let end = line('.')
+                    let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
+
+                    call cursor(line,1)
+                    execute line . ',' . end . 's/\(' . a:calls . '\)\<\(' . a:method_name . '\>(\_.\{-\}\)\(,\=[^,)]*)\)\(' . a:leftover . '\)/\1\2)\4/e'
+                    call cursor(line,col)
+                endif
+                let a:call_count += 1
+                let a:nline = search(a:method_name . '(','We')
+            endwhile
         endfor
         silent write!
         call s:safeClose()
@@ -2061,7 +2117,7 @@ function! c#factorus#addParam(param_name,param_type,...) abort
         endif
 
         call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,'addParam')
-        return [a:name,a:param_name]
+        return [a:name,a:param_name,a:count+1]
     catch /.*/
         call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,'addParam')
         let a:err = match(v:exception,'^Factorus:') >= 0 ? v:exception : 'Factorus:' . v:exception

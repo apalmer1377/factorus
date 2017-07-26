@@ -18,6 +18,7 @@ let s:access_query = repeat(s:modifiers,3)
 
 "Regex patterns used to identify Java constructs (classes, variables, etc.)
 
+let s:special_chars = '\([*\/[\]]\)'
 let s:strip_dir = '\(.*\/\)\=\(.*\)'
 let s:no_comment = '^\s*'
 let s:class = '\<\(class\|enum\|interface\)\>'
@@ -523,8 +524,8 @@ function! s:getNextArg(...)
     return ['none',[0,0]]
 endfunction
 
-" getArgs {{{3
-function! s:getArgs() abort
+" getParams {{{3
+function! s:getParams() abort
     let a:prev = [line('.'),col('.')]
     call s:gotoTag(0)
     let a:oparen = search('(','Wn')
@@ -600,7 +601,7 @@ function! s:getLocalDecs(close)
     let a:here = [line('.'),col('.')]
     let a:next = s:getNextDec()
 
-    let a:vars = s:getArgs()
+    let a:vars = s:getParams()
     while s:isBefore(a:next[2],a:close)
         if a:next[2] == [0,0]
             break
@@ -1188,6 +1189,51 @@ function! s:updateReferences(classes,old_name,new_name,paren,is_static)
     call system('rm -rf ' . a:temp_file)
 endfunction
 
+" getArgs {{{3
+function! s:getArgs() abort
+    let a:prev = [line('.'),col('.')]
+    if matchstr(getline('.'), '\%' . col('.') . 'c.') != '('
+        call search('(')
+    endif
+    let a:start = strpart(getline('.'),0,col('.')-1)
+    normal %
+    let a:leftover = strpart(getline('.'),col('.'))
+    let a:end = line('.')
+    call cursor(a:prev[0],a:prev[1])
+
+    let a:start = substitute(a:start,s:special_chars,'\\\1','g')
+    let a:leftover = substitute(a:leftover,s:special_chars,'\\\1','g')
+
+    let a:args = join(getline(a:prev[0],a:end))
+    let a:args = substitute(a:args,a:start . '(\(.*\))' . a:leftover,'\1','')
+
+    if a:args == ''
+        return 0
+    endif
+
+    let a:car = 0
+    let a:par = 0
+    let a:count = 1
+    let a:i = 0
+    let a:prev = 0
+    while a:i < len(a:args)
+        let char = a:args[a:i]
+        if char == ',' && a:car == 0 && a:par == 0
+            let a:count += 1
+        elseif char == '>'
+            let a:car -= 1
+        elseif char == '<'
+            let a:car += 1
+        elseif char == ')'
+            let a:par -= 1
+        elseif char == '('
+            let a:par += 1
+        endif
+        let a:i += 1
+    endwhile
+    return a:count
+endfunction
+
 " updateParamFile {{{3
 function! s:updateParamFile(method_name,commas,default,is_static)
     let a:orig = [line('.'),col('.')]
@@ -1201,21 +1247,22 @@ function! s:updateParamFile(method_name,commas,default,is_static)
     endif
     let a:param_search = '\((' . a:param_search . '\))'
 
-    let a:next = searchpos('\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:method_name . '\>' . a:param_search,'Wn')
+    let a:next = searchpos('\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:method_name . '\>(','Wn')
     while a:next != [0,0]
-        call cursor(a:next[0],a:next[1])
-        if a:next[0] != s:getAdjacentTag('b')
+        call cursor(a:next[0],a:next[1]+1)
+        if a:next[0] != s:getAdjacentTag('b') && s:getArgs() == a:commas
             call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
             call search('(')
             normal %
             let a:end = line('.')
+"            let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
             let a:leftover = strpart(getline('.'),col('.'))
             call cursor(a:next[0],a:next[1])
             execute 'silent ' . line('.') . ',' . a:end . 's/\<' . a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
                         \ a:method_name . '\1' . a:insert . '\2/e'
             call cursor(a:next[0],a:next[1])
         endif
-        let a:next = searchpos('\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:method_name . '\>' . a:param_search,'Wn')
+        let a:next = searchpos('\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:method_name . '\>(','Wn')
     endwhile
 
     call cursor(a:orig[0],a:orig[1])
@@ -1265,32 +1312,38 @@ function! s:updateParamUsingFile(class_name,method_name,commas,default) abort
     let a:param_search = '\((' . a:param_search . '\))'
     while a:next != [0,0]
         call cursor(a:next[0],a:next[1])
-        let [a:var,a:dec,a:funcs] = s:getUsingVar()
-        if len(a:funcs) == 0 
-            let a:dec = join(a:dec,'|')
-            if match(a:dec,a:classes) >= 0
-                call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-                call search('(')
-                normal %
-                let a:end = line('.')
-                let a:leftover = strpart(getline('.'),col('.'))
-                call cursor(a:next[0],a:next[1])
-                execute 'silent ' . line('.') . ',' . a:end . 's/\<' .a:method_name . '\>' . a:param_search . a:leftover . '/' . a:method_name . '\1' . a:insert . a:leftover . '/e'
+        if s:getArgs() == a:commas
+            let [a:var,a:dec,a:funcs] = s:getUsingVar()
+            if len(a:funcs) == 0 
+                let a:dec = join(a:dec,'|')
+                if match(a:dec,a:classes) >= 0
+                    call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+                    call search('(')
+                    normal %
+                    let a:end = line('.')
+                    let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
+                    let a:leftover = strpart(getline('.'),col('.'))
+                    call cursor(a:next[0],a:next[1])
+                    execute 'silent ' . line('.') . ',' . a:end . 's/\<' .a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
+                                \ a:method_name . '\1' . a:insert . '\2/e'
 
+                endif
+            else
+                if s:followChain(a:dec,a:funcs,a:method_name) == 1
+                    call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+                    call cursor(a:next[0],a:next[1])
+                    call search('(')
+                    normal %
+                    let a:end = line('.')
+                    let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
+                    let a:leftover = strpart(getline('.'),col('.'))
+                    call cursor(a:next[0],a:next[1])
+                    execute 'silent ' . line('.') . ',' . a:end . 's/\<' .a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
+                                \ a:method_name . '\1' . a:insert . '\2/e'
+                endif
             endif
-        else
-            if s:followChain(a:dec,a:funcs,a:method_name) == 1
-                call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-                call cursor(a:next[0],a:next[1])
-                call search('(')
-                normal %
-                let a:end = line('.')
-                let a:leftover = strpart(getline('.'),col('.'))
-                call cursor(a:next[0],a:next[1])
-                execute 'silent ' . line('.') . ',' . a:end . 's/\<' .a:method_name . '\>' . a:param_search . a:leftover . '/' . a:method_name . '\1' . a:insert . a:leftover . '/e'
-            endif
+            call cursor(a:next[0],a:next[1])
         endif
-        call cursor(a:next[0],a:next[1])
         let a:next = searchpos(a:search,'Wn')
     endwhile
 
@@ -2060,7 +2113,7 @@ endfunction
 " rollbackAddParam {{{3
 function! s:rollbackAddParam()
     let a:files = {}
-    let [a:method_name,a:param_name] = g:factorus_history['old']
+    let [a:method_name,a:param_name,a:count] = g:factorus_history['old']
 
     for line in g:factorus_qf
         if index(keys(line),'filename') < 0
@@ -2081,13 +2134,23 @@ function! s:rollbackAddParam()
         execute 'silent tabedit! ' . file
         for line in a:files[file]
             call cursor(line,1)
-            call search(a:method_name . '(','e')
-            normal %
-            let end = line('.')
-            let a:leftover = strpart(getline('.'),col('.'))
-            call cursor(line,1)
-            execute line . ',' . end . 's/\<\(' . a:method_name . '\>(\_.\{-\}\)\(,\=[^,)]*)\)' . a:leftover . '/\1)' . a:leftover . '/ge'
-            call cursor(line,1)
+            let a:nline = search(a:method_name . '(','We')
+            let a:call_count = 0
+            while a:nline == line
+                if s:getArgs() == a:count
+                    let a:calls = repeat('.\{-\}' . a:method_name . '(.\{-\}',a:call_count)
+                    let col = col('.')
+                    normal %
+                    let end = line('.')
+                    let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
+
+                    call cursor(line,1)
+                    execute line . ',' . end . 's/\(' . a:calls . '\)\<\(' . a:method_name . '\>(\_.\{-\}\)\(,\=[^,)]*)\)\(' . a:leftover . '\)/\1\2)\4/e'
+                    call cursor(line,col)
+                endif
+                let a:call_count += 1
+                let a:nline = search(a:method_name . '(','We')
+            endwhile
         endfor
         silent write!
         call s:safeClose()
@@ -2311,7 +2374,7 @@ function! java#factorus#addParam(param_name,param_type,...) abort
         endif
 
         call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,'addParam')
-        return [a:name,a:param_name]
+        return [a:name,a:param_name,a:count+1]
     catch /.*/
         call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,'addParam')
         let a:err = match(v:exception,'^Factorus:') >= 0 ? v:exception : 'Factorus:' . v:exception
