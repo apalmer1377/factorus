@@ -7,8 +7,8 @@ Bugs
 - FRenameField doesn't work with multiple declarations on the same line (FIXED?)
 - strange "find" error occasionally with large codebases or frequent use of system('find') (FIXED 2017-07-24)
 - A lot of issues with extractMethod (frequently extracts invalid code snippets, lines from mismatched blocks, etc.)
-    Java: Testing 2017-07-24
-    C: Testing 2017-07-25
+    Java: Testing 2017-07-24, some fixed 2017-07-26
+    C: Testing 2017-07-25, some fixed 2017-07-26
     Python: N/A
 
 Tasks
@@ -22,6 +22,7 @@ Tasks
     Java: Testing 2017-07-25, fixed 2017-07-25
     C: Testing 2017-07-25, fixed 2017-07-25
     Python: N/A (default param is already allowed via optional arguments)
+- Add comments to functions and make function names more understandable
 
 ====
 JAVA
@@ -29,7 +30,6 @@ JAVA
 
 Bugs
 ----
-
 Tasks
 -----
 
@@ -42,7 +42,7 @@ Bugs
 
 Tasks
 -----
-+ make renaming better (currently just a universal find/replace)
+- make renaming better (currently just a universal find/replace) (unrealistic?)
 
 =
 C
@@ -51,9 +51,10 @@ C
 Bugs
 ----
 - Typedefs not noticed in renameField (FIXED 2017-07-24)
-- Structs defined within structs not properly identified in renameField
++ Structs defined within structs not properly identified in renameField (FIXED 2017-07-26)
 - Arrays of structs not identified in renameField (FIXED 2017-07-24)
 - Method declarations without implementation not noticed as tags (FIXED 2017-07-24)
+- Struct definition with no name shouldn't be noticed as a tag (FIXED 2017-07-26)
 
 Tasks
 -----

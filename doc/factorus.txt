@@ -68,8 +68,8 @@ modification, and miscellaneous.
 
     If working in Java or C, and if |g:factorus_add_default| == 1, then the
     optional {default} argument provides a default argument for external
-    function calls.  If {default} is not supplied, but |g:factorus_add_default|
-    is 1, then the default argument is 'null'.
+    function calls.  If |g:factorus_add_default| == 1, but {default} is not
+    supplied, then the default argument is 'null'.
 
 :FEncapsulate                                                  *:FEncapsulate*
     Creates getter and setter methods for the current variable, and sets 
@@ -89,8 +89,8 @@ modification, and miscellaneous.
     quite versatile, as it can provide several different functionalities:
         - Rename a variable within a function
         - Rename a class/struct field, and all of its instances
-        - Rename a static variable
-        - Rename an enum field
+        - Rename a static variable, and all occurrences
+        - Rename an enum field, and all occurences
 
 :FRenameMethod {new_name}                                     *:FRenameMethod*
     Renames the current method to {new_name}.  

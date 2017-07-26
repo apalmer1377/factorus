@@ -23,6 +23,22 @@ Additionally, for C/C++, Factorus supports the following refactorings:
 
 Factorus also has commands for reverting changes and rebuilding projects, for stability and sanity testing.
 
+## Examples
+
+# Rename Class
+![renameClass](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renameclass.gif)
+
+# Rename Field
+![renameField](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamefield.gif)
+
+# Rename Method
+![renameMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamemethod.gif)
+
+# Extract Method
+![extractMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/extract.gif)
+
+![manualExtractMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/manualextract.gif)
+
 ## Installation
 
 There are many ways to install Factorus. You can:

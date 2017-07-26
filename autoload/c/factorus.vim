@@ -164,10 +164,11 @@ function! s:setQuickFix(type,qf)
     call setqflist(a:qf,'r',{'title' : a:title})
 endfunction
 
-function! s:setChanges(res,un,func,...)
+function! s:setChanges(res,eun,func,...)
     let a:qf = copy(g:factorus_qf)
     let a:type = a:func == 'rename' ? a:1 : ''
 
+    let a:un = deepcopy(a:eun)
     let a:ch = len(g:factorus_qf)
     let a:ch_i = a:ch == 1 ? ' instance ' : ' instances '
     let a:un_l = len(a:un)
@@ -337,10 +338,13 @@ function! s:isValidTag(line)
         return 0
     endif
 
-    if match(getline(a:line),';') >= 0 && match(getline(a:line),'(') < 0 && match(getline(a:line),'\<typedef\>') < 0
-        return 0
+    let a:gline = getline(a:line)
+    if match(a:gline,'\<typedef\>') < 0
+        if (match(a:gline,';') >= 0 && match(a:gline,'(') < 0) || (match(a:gline,'\<\(struct\|enum\|union\)\>\s*{') >= 0)
+            return 0
+        endif
     endif
-
+    
     return 1
 endfunction
 
@@ -387,11 +391,10 @@ endfunction
 function! s:isInType()
     let a:orig = [line('.'),col('.')]
     let a:close = s:getClosingBracket(0)
-    let a:back = s:getAdjacentTag('b')
-    call cursor(a:back,1)
+    call s:gotoTag()
 
     let a:res = 0
-    if s:isBefore(searchpos('{','Wn'),searchpos('(','Wn')) && s:getClosingBracket(1,[a:back,1]) == a:close
+    if s:isBefore(searchpos('{','Wn'),searchpos('(','Wn')) && s:getClosingBracket(1)[0] >= a:close[0]
         let a:res = 1
     endif
     call cursor(a:orig[0],a:orig[1])
@@ -499,6 +502,47 @@ function! s:getTypeDefs(name,...)
     endtry
 endfunction
 
+" parseStruct {{{3
+function! c#factorus#parseStruct(struct)
+    if match(a:struct,'{') < 0
+        let a:res = substitute(a:struct,'\[.*\]','','g')
+        let a:res = substitute(a:res,'\*','','g')
+        let a:res = split(a:res)
+        return [join(a:res[:-2]),a:res[-1]]
+    elseif match(a:struct,'^enum') >= 0
+        let a:res = s:trim(substitute(a:struct,'^\([^{]*\){\(.*\)}\([^}]*\)$','\1 \3',''))
+        return split(a:res)
+    endif
+
+    let a:res = s:trim(substitute(a:struct,'^[^{]*{\(.*\)}[^}]*$','\1',''))
+    let a:res = s:trim(substitute(a:res,'\/\*.\{-\}\*\/','','g'))
+    let a:name = s:trim(substitute(a:struct,'^[^{]*{\(.*\)}\([^}]*\)$','\2',''))
+
+    let a:items = []
+    let a:brack = 0
+    let a:count = 1
+    let a:i = 0
+    let a:prev = 0
+    while a:i < len(a:res)
+        let char = a:res[a:i]
+        if char == ';' && a:brack == 0
+            call add(a:items,s:trim(strpart(a:res,a:prev,a:i - a:prev)))
+            let a:prev = a:i + 1
+        elseif char == '}'
+            let a:brack -= 1
+        elseif char == '{'
+            let a:brack += 1
+        endif
+        let a:i += 1
+    endwhile
+
+    for i in range(len(a:items))
+        let a:items[i] = c#factorus#parseStruct(a:items[i])
+    endfor
+
+    return [a:items,a:name]
+endfunction
+
 " getStructDef {{{3
 function! s:getStructDef(type)
     if exists('s:all_structs') && index(keys(s:all_structs),expand('%:p') . '-' . a:type) >= 0
@@ -520,13 +564,7 @@ function! s:getStructDef(type)
                 normal %
                 let a:end = line('.')
                 let a:def = join(getline(a:start,a:end))
-                let a:res = a:def
-
-                let a:res = s:trim(substitute(a:res,'^[^{]*{\(.*\)}[^}]*$','\1',''))
-                let a:res = s:trim(substitute(a:res,'\/\*.\{-\}\*\/','','g'))
-                let a:res = split(a:res,';')
-                call map(a:res,{n,val -> s:trim(substitute(val,'\(\*\|\[[^]]*\]\)',' ','g'))})
-                call map(a:res,{n,val -> [join(split(val)[:-2]),split(val)[-1]]})
+                let a:res = c#factorus#parseStruct(a:def)[0]
             endif
             call s:safeClose()
         catch /.*/
@@ -573,7 +611,6 @@ function! s:getParams() abort
     let a:args = split(a:dec,',')
     call map(a:args, {n,arg -> split(substitute(s:trim(arg),'\(.*\)\(\<' . s:c_identifier . '\>\)$','\1|\2',''),'|')})
     call map(a:args, {n,arg -> [s:trim(arg[1]),s:trim(arg[0]),line('.')]})
-    "call map(a:args, {n,arg -> [split(arg)[-1],join(split(arg)[:-2]),line('.')]})
 
     call cursor(a:prev[0],a:prev[1])
     return a:args
@@ -822,6 +859,11 @@ endfunction
 
 " followChain {{{3
 function! s:followChain(types,funcs,type_name)
+    let s:open_bufs = []
+    let s:all_incs = {}
+    let s:all_structs = {}
+    let s:all_funcs = {}
+
     let a:orig = [line('.'),col('.')]
 
     let a:func_search = '\(' . s:c_type . '\_s*' . s:collection_identifier . '\)\_s*\<' . a:funcs[0]
@@ -841,15 +883,19 @@ function! s:followChain(types,funcs,type_name)
             endif
 
             execute 'silent tabedit! ' . a:prev_file
-            let a:new_struct = split(a:fields[a:ind][0],' ')
-            if len(a:new_struct) == 1
-                let a:type_defs = s:getTypeDefs(a:new_struct[0])
-            else
-                let a:type_defs = s:getTypeDefs(join(a:new_struct[1:],'\_s*'),a:new_struct[0])
-            endif
+            try
+                let a:new_struct = split(a:fields[a:ind][0],' ')
+                if len(a:new_struct) == 1
+                    let a:type_defs = s:getTypeDefs(a:new_struct[0])
+                else
+                    let a:type_defs = s:getTypeDefs(join(a:new_struct[1:],'\_s*'),a:new_struct[0])
+                endif
 
-            let a:struct_find = len(a:type_defs) == 0 ? a:fields[a:ind][0] : '\(' . a:fields[a:ind][0] . '\|' . join(a:type_defs,'\|') . '\)'
-            let [a:prev_file,a:prev_struct,a:fields] = s:getStructDef(a:struct_find)
+                let a:struct_find = len(a:type_defs) == 0 ? a:fields[a:ind][0] : '\(' . a:fields[a:ind][0] . '\|' . join(a:type_defs,'\|') . '\)'
+                let [a:prev_file,a:prev_struct,a:fields] = s:getStructDef(a:struct_find)
+            catch /^Vim\((\a\+)\)\=:E730.*/
+                let [a:prev_file,a:prev_struct,a:fields] = [a:prev_file,a:fields[a:ind][1],a:fields[a:ind][0]]
+            endtry
             call s:safeClose()
         endif
         if len(a:funcs) > 0
@@ -859,7 +905,7 @@ function! s:followChain(types,funcs,type_name)
     call cursor(a:orig[0],a:orig[1])
 
     if a:ind >= 0
-        let a:ind = match(a:prev_struct,a:type_name)
+        let a:ind = match(map(a:fields,{n,val -> val[1]}),'\<' . a:type_name . '\>')
     endif
 
     return (a:ind >= 0)
@@ -913,14 +959,6 @@ function! s:getNextReference(var,type,...)
 
     if a:line[0] > line('.')
         let a:state = join(getline(a:line[0],a:endline[0]))
-"        if a:type == 'cond'
-"            let a:for = match(a:state,'\<for\>')
-"            let a:c = match(a:state,'\<\(switch\|while\|if\|else\s\+if\)\>')
-"            if a:c == -1 || (a:for != -1 && a:for < a:c)
-"                let a:index = '\4'
-"                let a:alt_index = '\5'
-"            endif
-"        endif
         let a:loc = substitute(a:state,a:search,a:index,'')
         if a:0 > 0 && a:1 == 1
             let a:name = substitute(a:state,a:search,a:alt_index,'')
@@ -980,10 +1018,10 @@ function! s:updateUsingFile(type_name,old_name,new_name,paren) abort
                 execute 'silent s/\(\.\|->\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/e'
             endif
         else
-            let a:chain = '\(' . repeat('\<' . s:c_identifier . '\>\(\.\|->\)',len(a:funcs)+1) . '\)'
-            if s:followChain(a:dec,a:funcs,a:type_name) == 1
+            let a:chain = '\(' . join([a:var] + a:funcs,'\(\.\|->\)') . '\(\.\|->\)\)' . '\<' . a:old_name . '\>' . a:paren
+            if s:followChain(a:dec,a:funcs,a:new_name) == 1 && match(getline('.'),a:chain) >= 0
                 call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-                execute 'silent s/' . a:chain . '\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/e'
+                execute 'silent s/' . a:chain . '/\1' . a:new_name . a:paren . '/e'
             endif
         endif
         call cursor(a:next[0],a:next[1])
@@ -1187,6 +1225,7 @@ function! s:renameField(new_name,...) abort
         execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/e'
 
         call s:gotoTag()
+
         let a:search = '^\s*\(\<typedef\>\)\=\_s*\<\(struct\|union\)\>\_s*\(' . s:c_identifier . '\)\=\_s*{\=.*'
         let a:type_type = substitute(getline('.'),a:search,'\2','')
         if a:type_type == ''
@@ -2046,7 +2085,7 @@ function! c#factorus#addParam(param_name,param_type,...) abort
     if factorus#isRollback(a:000)
         call s:rollbackAddParam()
         let g:factorus_qf = []
-        return 'Removed new parameter ' . a:param_name
+        return 'Removed new parameter ' . a:param_name . '.'
     endif
     let g:factorus_qf = []
 
@@ -2085,10 +2124,6 @@ function! c#factorus#addParam(param_name,param_type,...) abort
         silent write!
 
         if g:factorus_add_default == 1
-    "        redraw
-    "        echo 'Updating hierarchy...'
-    "        let a:classes = s:updateSubClassFiles(expand('%:t:r'),a:method_name,a:new_name,'(',a:is_static)
-
             redraw
             echo 'Updating references...'
 
