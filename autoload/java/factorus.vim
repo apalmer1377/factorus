@@ -451,12 +451,12 @@ function! s:getSubClasses(class_name)
         let a:sub = []
         for file in readfile(a:temp_file)
             if index(a:all,file) < 0
-                try
-                    execute 'silent lvimgrep /' . a:search . '/j ' . file
+                execute 'silent tabedit! ' . file
+                call cursor(1,1)
+                if search(a:search,'Wn') > 0
                     call add(a:sub,file)
-                    call s:safeClose(file)
-                catch /.*/
-                endtry
+                endif
+                call s:safeClose()
             endif
         endfor
         let a:all += a:sub
@@ -1261,8 +1261,7 @@ function! s:updateParamFile(method_name,commas,default,is_static)
             call search('(')
             normal %
             let a:end = line('.')
-"            let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
-            let a:leftover = strpart(getline('.'),col('.'))
+            let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
             call cursor(a:next[0],a:next[1])
             execute 'silent ' . line('.') . ',' . a:end . 's/\<' . a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
                         \ a:method_name . '\1' . a:insert . '\2/e'
@@ -1275,8 +1274,47 @@ function! s:updateParamFile(method_name,commas,default,is_static)
     silent write!
 endfunction
 
+" updateParamDeclaration {{{3
+function! s:updateParamDeclaration(method_name,commas,param_name,param_type)
+    let a:orig = [line('.'),col('.')]
+    call cursor(1,1)
+
+    let [a:param_search,a:insert] = ['',a:param_type . ' ' . a:param_name . ')']
+    if a:commas > 0
+        let a:insert = ', ' . a:insert
+        let a:param_search = '\_[^;]\{-\}'
+        let a:param_search .= repeat(',' . '\_[^;]\{-\}',a:commas - 1)
+    endif
+    let a:param_search = '\((' . a:param_search . '\))'
+
+    let a:search = '^\s*' . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+' . a:method_name . '\_s*('
+    let a:next = searchpos(a:search,'Wn')
+
+    while a:next[0] != 0
+        call cursor(a:next[0],a:next[1])
+
+        if s:isValidTag(a:next[0]) && s:getArgs() == a:commas
+            call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+            call search('(')
+            normal %
+            let a:end = line('.')
+            let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
+            call cursor(a:next[0],a:next[1])
+            execute 'silent ' . line('.') . ',' . a:end . 's/\<' . a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
+                        \ a:method_name . '\1' . a:insert . '\2/e'
+            call cursor(a:next[0],a:next[1])
+        endif
+
+        let a:next = searchpos(a:search,'Wn')
+    endwhile
+    silent write!
+
+    call cursor(a:orig[0],a:orig[1])
+endfunction
+
 " updateParamSubClassFiles {{{3
-function! s:updateParamSubClassFiles(class_name,old_name,commas,default,is_static)
+function! s:updateParamSubClassFiles(old_name,commas,default,param_name,param_type,is_static)
+    let a:class_name = expand('%:t:r')
     let a:pc = s:getPackageClasses(a:class_name,s:getPackage(expand('%:p')))
     let a:sub_files = a:pc + s:getSubClasses(a:class_name)
     let a:sub_classes = map(copy(a:sub_files),{n,val -> substitute(substitute(val,s:strip_dir,'\2',''),'\.java','','')})
@@ -1292,6 +1330,9 @@ function! s:updateParamSubClassFiles(class_name,old_name,commas,default,is_stati
         execute 'silent tabedit! ' . file
         call cursor(1,1)
         call s:updateParamFile(a:old_name,a:commas,a:default,a:is_static)
+        if a:is_static == 0
+            call s:updateParamDeclaration(a:old_name,a:commas,a:param_name,a:param_type)
+        endif
         call s:safeClose()
     endfor
     silent edit!
@@ -2301,28 +2342,33 @@ function! java#factorus#encapsulateField(...) abort
 
     let a:is_local = s:getClassTag()[0] == s:getAdjacentTag('b') ? 0 : 1
     if a:is_local == 1
-        throw 'Factorus:EncapStatic'
-    endif
-
-    if a:is_static == 1
         throw 'Factorus:EncapLocal'
     endif
 
-    let a:is_pub = 0
-    if match(getline('.'),'\<public\>') >= 0
-        let a:is_pub = 1
-        execute 'silent s/\<public\>/private/e'
+    if a:is_static == 1
+        throw 'Factorus:EncapStatic'
     endif
+
+    let a:is_pub = 0
+    if match(getline('.'),'\<\(public\|protected\)\>') >= 0
+        let a:is_pub = 1
+        execute 'silent! s/\<public\>/private/e'
+    elseif match(getline('.'),'\<private\>') < 0
+        execute 'silent! s/^\(\s*\)/\1private /e'
+    endif
+
     let g:factorus_history['old'] = [a:var,a:type,a:is_pub]
 
     let a:get = ["\tpublic " . a:type . " get" . a:cap . "() {" , "\t\treturn " . a:var . ";" , "\t}"]
     let a:set = ["\tpublic void set" . a:cap . "(" . a:type . ' ' . a:var . ") {" , "\t\tthis." . a:var . " = " . a:var . ";" , "\t}"]
     let a:encap = [""] + a:get + [""] + a:set + [""]
 
-    let a:end = searchpos('}','bn')
+    let a:end = s:getClosingBracket(1,s:getClassTag())
     call append(a:end[0] - 1,a:encap)
+    call cursor(a:end[0] + 1,1)
     silent write!
 
+    redraw
     echo 'Created getters and setters for ' . a:var
     return 
 endfunction
@@ -2374,6 +2420,7 @@ function! java#factorus#addParam(param_name,param_type,...) abort
         endwhile
         let a:com = a:count > 0 ? ', ' : ''
 
+        let a:next = searchpos(')','Wn')
         let a:line = substitute(getline(a:next[0]), ')', a:com . a:param_type . ' ' . a:param_name . ')', '')
         call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
         execute 'silent ' .  a:next[0] . 'd'
@@ -2385,7 +2432,7 @@ function! java#factorus#addParam(param_name,param_type,...) abort
 
             redraw
             echo 'Updating hierarchy...'
-            let a:classes = s:updateParamSubClassFiles(expand('%:t:r'),a:name,a:count,a:default,0)
+            let a:classes = s:updateParamSubClassFiles(a:name,a:count,a:default,a:param_name,a:param_type,0)
 
             redraw
             echo 'Updating references...'
@@ -2403,6 +2450,7 @@ function! java#factorus#addParam(param_name,param_type,...) abort
         endif
 
         call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,'addParam')
+
         return [a:name,a:param_name,a:count+1]
     catch /.*/
         call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,'addParam')

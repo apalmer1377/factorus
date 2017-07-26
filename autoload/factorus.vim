@@ -129,6 +129,8 @@ endfunction
 " factorus#command {{{2
 function! factorus#command(func,...)
     let s:open_bufs = map(getbufinfo(),{n,val -> val['name']})
+    let a:hl = &hlsearch
+    let &hlsearch = 0
 
     let a:file = expand('%:p')
     let a:pos = [line('.'),col('.')]
@@ -162,6 +164,7 @@ function! factorus#command(func,...)
         call s:handleError(a:func,a:ext,a:error,a:000)
     endtry
 
+    let &hlsearch = a:hl
     let g:factorus_history = {'file' : a:file, 'function' : a:func, 'pos' : copy(a:pos), 'args' : a:000, 'old' : a:res}
     return a:res
 endfunction

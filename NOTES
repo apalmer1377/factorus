@@ -23,6 +23,7 @@ Tasks
     C: Testing 2017-07-25, fixed 2017-07-25
     Python: N/A (default param is already allowed via optional arguments)
 - Add comments to functions and make function names more understandable
++ Add examples to README
 
 ====
 JAVA
@@ -30,6 +31,8 @@ JAVA
 
 Bugs
 ----
+- getSubClasses sometimes causes unwanted tabs to stay open, and wanted tabs to close (FIXED 2017-07-26)
+
 Tasks
 -----
 

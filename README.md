@@ -25,17 +25,31 @@ Factorus also has commands for reverting changes and rebuilding projects, for st
 
 ## Examples
 
-# Rename Class
+### Rename Class
 ![renameClass](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renameclass.gif)
 
-# Rename Field
+### Rename Field
 ![renameField](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamefield.gif)
 
-# Rename Method
+### Rename Method
 ![renameMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamemethod.gif)
 
-# Extract Method
+### Rename Arg
+![renameArg](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamearg.gif)
+
+### Add Parameter
+![addParam](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/addparam.gif)
+
+### Encapsulate Field
+![encapsulateField](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/encapsulate.gif)
+
+### Extract Method
+Factorus provides two functions for method extraction.  The first, FExtractMethod, automatically finds a block
+of code that can be safely extracted:
+
 ![extractMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/extract.gif)
+
+If you prefer to manually extract a block of code, however, FManualExtract allows you to do that:
 
 ![manualExtractMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/manualextract.gif)
 
