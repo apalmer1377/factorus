@@ -896,7 +896,7 @@ function! s:getNextReference(var,type,...)
         let a:index = '\6'
         let a:alt_index = '\7'
     elseif a:type == 'left'
-        let a:search = s:no_comment . '\(.\{-\}\[[^]]\{-\}\<\(' . a:var . '\)\>.\{-\}]\|\<\(' . a:var . '\)\>\)\s*\(++\_s*;\|--\_s*;\|[-+*/]\=[.=][^=]\).*'
+        let a:search = s:no_comment . '\(.\{-\}\[[^]]\{-\}\<\(' . a:var . '\)\>.\{-\}]\|\<\(' . a:var . '\)\>\)\s*\(++\_s*;\|--\_s*;\|[-\^|&~+*/]\=[.=][^=]\).*'
         let a:index = '\1'
         let a:alt_index = '\1'
     elseif a:type == 'cond'
@@ -1104,8 +1104,8 @@ endfunction
 
 " updateSubClassFiles {{{3
 function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
-    let a:pc = s:getPackageClasses(a:class_name,s:getPackage(expand('%:p')))
-    let a:sub_files = a:pc +  s:getSubClasses(a:class_name)
+"    let a:pc = s:getPackageClasses(a:class_name,s:getPackage(expand('%:p')))
+    let a:sub_files = s:getSubClasses(a:class_name)
     let a:is_method = a:paren == '(' ? 1 : 0
     let a:sub_classes = map(copy(a:sub_files),{n,val -> substitute(substitute(val,s:strip_dir,'\2',''),'\.java','','')})
 
@@ -1243,17 +1243,20 @@ endfunction
 " updateParamFile {{{3
 function! s:updateParamFile(method_name,commas,default,is_static)
     let a:orig = [line('.'),col('.')]
+    let a:rep = a:is_static ? ['\2','\3'] : ['\1','\2']
+    let a:meth = a:is_static ? '\1.' . substitute(a:method_name,'.*)\\>\\\.\(.*\)','\1','') : a:method_name
     call cursor(1,1)
 
     let [a:param_search,a:insert] = ['',a:default . ')']
     if a:commas > 0
         let a:insert = ', ' . a:insert
-        let a:param_search = '\_[^;,]*'
-        let a:param_search .= repeat(',' . '\_[^;,]*',a:commas - 1)
+        let a:param_search = '\_[^;]\{-\}'
+        let a:param_search .= repeat(',' . '\_[^;]\{-\}',a:commas - 1)
     endif
     let a:param_search = '\((' . a:param_search . '\))'
 
-    let a:next = searchpos('\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:method_name . '\>(','Wn')
+    let a:func_search = a:is_static ? '\<' . a:method_name . '\>(' : '\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:method_name . '\>('
+    let a:next = searchpos(a:func_search,'Wn')
     while a:next != [0,0]
         call cursor(a:next[0],a:next[1]+1)
         if a:next[0] != s:getAdjacentTag('b') && s:getArgs() == a:commas
@@ -1264,10 +1267,10 @@ function! s:updateParamFile(method_name,commas,default,is_static)
             let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
             call cursor(a:next[0],a:next[1])
             execute 'silent ' . line('.') . ',' . a:end . 's/\<' . a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
-                        \ a:method_name . '\1' . a:insert . '\2/e'
+                        \ a:meth . a:rep[0] . a:insert . a:rep[1] . '/e'
             call cursor(a:next[0],a:next[1])
         endif
-        let a:next = searchpos('\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:method_name . '\>(','Wn')
+        let a:next = searchpos(a:func_search,'Wn')
     endwhile
 
     call cursor(a:orig[0],a:orig[1])
@@ -1315,8 +1318,8 @@ endfunction
 " updateParamSubClassFiles {{{3
 function! s:updateParamSubClassFiles(old_name,commas,default,param_name,param_type,is_static)
     let a:class_name = expand('%:t:r')
-    let a:pc = s:getPackageClasses(a:class_name,s:getPackage(expand('%:p')))
-    let a:sub_files = a:pc + s:getSubClasses(a:class_name)
+"    let a:pc = s:getPackageClasses(a:class_name,s:getPackage(expand('%:p')))
+    let a:sub_files = s:getSubClasses(a:class_name)
     let a:sub_classes = map(copy(a:sub_files),{n,val -> substitute(substitute(val,s:strip_dir,'\2',''),'\.java','','')})
 
     try
@@ -1325,13 +1328,14 @@ function! s:updateParamSubClassFiles(old_name,commas,default,param_name,param_ty
         return [a:class_name]
     endtry
 
+    let a:rep_name = a:is_static == 0 ? a:old_name : '\(' . join(copy(a:sub_classes),'\|') . '\)\>\.' . a:old_name
     let a:use_subs = map(getloclist(0),{key,val -> getbufinfo(val['bufnr'])[0]['name']})
     for file in a:use_subs
         execute 'silent tabedit! ' . file
         call cursor(1,1)
-        call s:updateParamFile(a:old_name,a:commas,a:default,a:is_static)
+        call s:updateParamFile(a:rep_name,a:commas,a:default,a:is_static)
         if a:is_static == 0
-            call s:updateParamDeclaration(a:old_name,a:commas,a:param_name,a:param_type)
+            call s:updateParamDeclaration(a:rep_name,a:commas,a:param_name,a:param_type)
         endif
         call s:safeClose()
     endfor
@@ -1342,54 +1346,66 @@ function! s:updateParamSubClassFiles(old_name,commas,default,param_name,param_ty
 endfunction
 
 " updateParamUsingFile {{{3
-function! s:updateParamUsingFile(class_name,method_name,commas,default) abort
+function! s:updateParamUsingFile(class_name,method_name,commas,default,is_static) abort
     call s:gotoTag(1)
     call cursor(line('.')+1,1)
     let a:here = [line('.'),col('.')]
     let a:classes = '\<\(' . a:class_name . '\)\>'
-    let a:search = '\.' . a:method_name . '('
+    let a:search = a:is_static ? a:classes . '\.' . a:method_name . '(' : '\.' . a:method_name . '('
 
     let a:next = searchpos(a:search,'Wn')
     let [a:param_search,a:insert] = ['',a:default . ')']
     if a:commas > 0
         let a:insert = ', ' . a:insert
-        let a:param_search = '\_[^;]*'
-        let a:param_search .= repeat(',' . '\_[^;]*',a:commas - 1)
+        let a:param_search = '\_[^;]\{-\}'
+        let a:param_search .= repeat(',' . '\_[^;]\{-\}',a:commas - 1)
     endif
     let a:param_search = '\((' . a:param_search . '\))'
     while a:next != [0,0]
         call cursor(a:next[0],a:next[1])
         if s:getArgs() == a:commas
-            let [a:var,a:dec,a:funcs] = s:getUsingVar()
-            if len(a:funcs) == 0 
-                let a:dec = join(a:dec,'|')
-                if match(a:dec,a:classes) >= 0
-                    call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-                    call search('(')
-                    normal %
-                    let a:end = line('.')
-                    let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
-                    let a:leftover = strpart(getline('.'),col('.'))
-                    call cursor(a:next[0],a:next[1])
-                    execute 'silent ' . line('.') . ',' . a:end . 's/\<' .a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
-                                \ a:method_name . '\1' . a:insert . '\2/e'
-
-                endif
+            if a:is_static
+                call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+                call search('(')
+                normal %
+                let a:end = line('.')
+                let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
+                let a:leftover = strpart(getline('.'),col('.'))
+                call cursor(a:next[0],a:next[1])
+                let a:meth = a:classes . '\.\<' . a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)'
+                execute 'silent ' . line('.') . ',' . a:end . 's/' . a:meth . '/\1.' . a:method_name . '\2' . a:insert . '\3/e'
             else
-                if s:followChain(a:dec,a:funcs,a:method_name) == 1
-                    call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-                    call cursor(a:next[0],a:next[1])
-                    call search('(')
-                    normal %
-                    let a:end = line('.')
-                    let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
-                    let a:leftover = strpart(getline('.'),col('.'))
-                    call cursor(a:next[0],a:next[1])
-                    execute 'silent ' . line('.') . ',' . a:end . 's/\<' .a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
-                                \ a:method_name . '\1' . a:insert . '\2/e'
+                let [a:var,a:dec,a:funcs] = s:getUsingVar()
+                if len(a:funcs) == 0 
+                    let a:dec = join(a:dec,'|')
+                    if match(a:dec,a:classes) >= 0
+                        call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+                        call search('(')
+                        normal %
+                        let a:end = line('.')
+                        let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
+                        let a:leftover = strpart(getline('.'),col('.'))
+                        call cursor(a:next[0],a:next[1])
+                        execute 'silent ' . line('.') . ',' . a:end . 's/\<' .a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
+                                    \ a:method_name . '\1' . a:insert . '\2/e'
+
+                    endif
+                else
+                    if s:followChain(a:dec,a:funcs,a:method_name) == 1
+                        call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+                        call cursor(a:next[0],a:next[1])
+                        call search('(')
+                        normal %
+                        let a:end = line('.')
+                        let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
+                        let a:leftover = strpart(getline('.'),col('.'))
+                        call cursor(a:next[0],a:next[1])
+                        execute 'silent ' . line('.') . ',' . a:end . 's/\<' .a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
+                                    \ a:method_name . '\1' . a:insert . '\2/e'
+                    endif
                 endif
+                call cursor(a:next[0],a:next[1])
             endif
-            call cursor(a:next[0],a:next[1])
         endif
         let a:next = searchpos(a:search,'Wn')
     endwhile
@@ -1398,10 +1414,10 @@ function! s:updateParamUsingFile(class_name,method_name,commas,default) abort
 endfunction
 
 " updateParamUsingFiles {{{3
-function! s:updateParamUsingFiles(files,class_name,method_name,commas,default) abort
+function! s:updateParamUsingFiles(files,class_name,method_name,commas,default,is_static) abort
     for file in a:files
         execute 'silent tabedit! ' . file
-        call s:updateParamUsingFile(a:class_name,a:method_name,a:commas,a:default)
+        call s:updateParamUsingFile(a:class_name,a:method_name,a:commas,a:default,a:is_static)
         call s:safeClose()
     endfor
     silent edit!
@@ -1410,19 +1426,12 @@ endfunction
 " updateParamReferences {{{3
 function! s:updateParamReferences(classes,name,commas,default,is_static)
     let a:temp_file = '.FactorusParam'
-
     let a:class_names = join(a:classes,'\|')
-    if a:is_static == 1
-        let a:search = '\<\(' . a:class_names . '\)\>\.\<' . a:old_name . '\>' . a:paren
-        call s:findTags(a:temp_file,a:search,'no')
-        call s:updateQuickFix(a:temp_file,a:search)
-        call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/\1\.' . a:new_name . a:paren . '/g"')  
-    else
-        call s:findTags(a:temp_file,'\.' . a:name . '(','no')
-        call s:narrowTags(a:temp_file,'\(' . a:class_names . '\)')
-        let a:files = readfile(a:temp_file)
-        call s:updateParamUsingFiles(a:files,a:class_names,a:name,a:commas,a:default)
-    endif
+
+    call s:findTags(a:temp_file,'\.' . a:name . '(','no')
+    call s:narrowTags(a:temp_file,'\(' . a:class_names . '\)')
+    let a:files = readfile(a:temp_file)
+    call s:updateParamUsingFiles(a:files,a:class_names,a:name,a:commas,a:default,a:is_static)
 
     call system('rm -rf ' . a:temp_file)
 endfunction
@@ -2387,6 +2396,7 @@ function! java#factorus#addParam(param_name,param_type,...) abort
 
     try
         call s:gotoTag(0)
+        let a:is_static = (match(getline('.'),'\<static\>') >= 0)
         let a:next = searchpos(')','Wn')
         let [a:type,a:name,a:params] = split(substitute(join(getline(line('.'),a:next[0])),'^.*\<\(' . s:java_identifier . 
                     \ s:collection_identifier . '\=\)\s*\<\(' . s:java_identifier . '\)\>\s*(\(.*\)).*','\1 | \3 | \4',''),'|')
@@ -2432,11 +2442,11 @@ function! java#factorus#addParam(param_name,param_type,...) abort
 
             redraw
             echo 'Updating hierarchy...'
-            let a:classes = s:updateParamSubClassFiles(a:name,a:count,a:default,a:param_name,a:param_type,0)
+            let a:classes = s:updateParamSubClassFiles(a:name,a:count,a:default,a:param_name,a:param_type,a:is_static)
 
             redraw
             echo 'Updating references...'
-            call s:updateParamReferences(a:classes,a:name,a:count,a:default,0)
+            call s:updateParamReferences(a:classes,a:name,a:count,a:default,a:is_static)
 
             if g:factorus_show_changes > 0
                 call s:setChanges(a:name,'addParam')

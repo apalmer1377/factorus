@@ -920,7 +920,7 @@ function! s:getNextReference(var,type,...)
         let a:index = '\7'
         let a:alt_index = '\8'
     elseif a:type == 'left'
-        let a:search = s:no_comment . '\<\(' . a:var . '\)\>\s*\(++\_s*;\|--\_s*;\|[-\^|&~+*/]\=[.=][^=]\).*'
+        let a:search = s:no_comment . '\(.\{-\}\[[^]]\{-\}\<\(' . a:var . '\)\>.\{-\}]\|\<\(' . a:var . '\)\>\)\s*\(++\_s*;\|--\_s*;\|[-\^|&~+*/]\=[.=][^=]\).*'
         let a:index = '\1'
         let a:alt_index = '\1'
     elseif a:type == 'cond'
@@ -960,8 +960,14 @@ function! s:getNextReference(var,type,...)
     if a:line[0] > line('.')
         let a:state = join(getline(a:line[0],a:endline[0]))
         let a:loc = substitute(a:state,a:search,a:index,'')
+        if a:type == 'left'
+            let a:loc = substitute(a:loc,'.*\<\(' . a:var . '\)\>.*','\1','')
+        endif
         if a:0 > 0 && a:1 == 1
             let a:name = substitute(a:state,a:search,a:alt_index,'')
+            if a:type == 'left'
+                let a:name = a:loc
+            endif
             return [a:loc,a:line,a:name]
         endif
         return [a:loc,a:line]
@@ -1096,33 +1102,35 @@ function! s:updateParamFile(method_name,commas,default,param_name,param_type) ab
     let a:com = a:commas > 0 ? ', ' : ''
     if a:commas > 0
         let a:insert = ', ' . a:insert
-        let a:param_search = '\_[^;]*'
-        let a:param_search .= repeat(',' . '\_[^;]*',a:commas - 1)
+        let a:param_search = '\_[^;]\{-\}'
+        let a:param_search .= repeat(',' . '\_[^;]\{-\}',a:commas - 1)
     endif
     let a:param_search = '\((' . a:param_search . '\))'
 
     while a:next != [0,0]
         call cursor(a:next[0],a:next[1])
-        let a:func = s:c_type . '\_s*' . s:collection_identifier . '\<' . a:method_name . '\>\_s*('
-        if match(getline('.'),a:func) >= 0
-            let a:end = searchpos(')','Wn')
+        if s:getArgs() == a:commas
+            let a:func = s:c_type . '\_s*' . s:collection_identifier . '\<' . a:method_name . '\>\_s*('
+            if match(getline('.'),a:func) >= 0
+                let a:end = searchpos(')','Wn')
 
-            let a:line = substitute(getline(a:end[0]), ')', a:com . a:param_type . ' ' . a:param_name . ')', '')
-            call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-            execute 'silent ' .  a:end[0] . 'd'
-            call append(a:end[0] - 1,a:line)
-        else
-            call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-            call search('(')
-            normal %
-            let a:end = line('.')
-            let a:leftover = strpart(getline('.'),col('.'))
+                let a:line = substitute(getline(a:end[0]), ')', a:com . a:param_type . ' ' . a:param_name . ')', '')
+                call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+                execute 'silent ' .  a:end[0] . 'd'
+                call append(a:end[0] - 1,a:line)
+            else
+                call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
+                call search('(')
+                normal %
+                let a:end = line('.')
+                let a:leftover = strpart(getline('.'),col('.'))
+                call cursor(a:next[0],a:next[1])
+                execute 'silent ' . line('.') . ',' . a:end . 's/\<' .a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
+                            \ a:method_name . '\1' . a:insert . '\2/e'
+            endif
+
             call cursor(a:next[0],a:next[1])
-            execute 'silent ' . line('.') . ',' . a:end . 's/\<' .a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
-                        \ a:method_name . '\1' . a:insert . '\2/e'
         endif
-
-        call cursor(a:next[0],a:next[1])
         let a:next = searchpos(a:search,'Wn')
     endwhile
 
@@ -1539,13 +1547,27 @@ function! s:getAllRelevantLines(vars,names,close)
     let a:isos = {}
     for var in a:vars
         call cursor(var[2],1)
+        if match(getline('.'),'\<for\>') >= 0
+            call search('(')
+            normal %
+            if s:isBefore(searchpos(';','Wn'),searchpos('{','Wn'))
+                let a:start_lines = range(var[2],search(';','Wn'))
+            else
+                call search('{')
+                normal %
+                let a:start_lines = range(var[2],line('.'))
+            endif
+            call cursor(var[2],1)
+        else
+            let a:start_lines = [var[2]]
+        endif
         let a:local_close = var[2] == a:begin ? s:getClosingBracket(1) : s:getClosingBracket(0)
         let a:closes[var[0]] = copy(a:local_close)
         call cursor(a:orig[0],a:orig[1])
         if index(keys(a:lines),var[0]) < 0
-            let a:lines[var[0]] = {var[2] : [var[2]]}
+            let a:lines[var[0]] = {var[2] : a:start_lines}
         else
-            let a:lines[var[0]][var[2]] = [var[2]]
+            let a:lines[var[0]][var[2]] = a:start_lines
         endif
         let a:isos[var[0]] = {}
     endfor
@@ -1892,8 +1914,10 @@ function! s:buildNewMethod(lines,args,ranges,vars,rels,tab,close,...)
     let a:include_dec = 1
     for var in a:vars
         if index(a:lines,var[2]) >= 0
+
             let a:outside = s:getNextUse(var[0])    
             if a:outside[1] != [0,0] && s:isBefore(a:outside[1],a:close) == 1 && s:getLatestDec(a:rels,var[0],a:outside[1]) == var[2]
+
                 let a:contain = s:getContainingBlock(var[2],a:ranges,a:ranges[0])
                 if a:contain[0] <= a:outer[0] || a:contain[1] >= a:outer[1]
                     let a:type = var[1]
@@ -1903,7 +1927,7 @@ function! s:buildNewMethod(lines,args,ranges,vars,rels,tab,close,...)
                     let i = 0
                     while i < len(a:lines)
                         let line = getline(a:lines[i])
-                        if match(line,';') >= 0 && match(line,'\<' . var[0] . '\>') >= 0
+                        if match(line,';') >= 0 && match(line,'[^.]\<' . var[0] . '\>[^.]') >= 0
                             break
                         endif
                         let i += 1
@@ -1917,8 +1941,13 @@ function! s:buildNewMethod(lines,args,ranges,vars,rels,tab,close,...)
                     if a:inner[1] - a:inner[0] > 0 && match(getline(a:inner[0]),'\<\(if\|else\)\>') >= 0
                         let a:removes = []
                         for j in range(i+1)
-                            if match(getline(a:lines[j]),'\<' . var[0] . '\>') >= 0
+                            if match(getline(a:lines[j]),'[^.]\<' . var[0] . '\>[^.][^=]*=') >= 0
                                 call add(a:removes,j)
+                                let k = j
+                                while match(getline(a:lines[k]),';') < 0
+                                    let k += 1
+                                    call add(a:removes,k)
+                                endwhile
                             endif
                         endfor
                         for rem in reverse(a:removes)
@@ -1929,7 +1958,9 @@ function! s:buildNewMethod(lines,args,ranges,vars,rels,tab,close,...)
                     endif
                     break
                 endif
+
             endif
+
         endif
     endfor
 
