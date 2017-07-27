@@ -24,6 +24,7 @@ Additionally, for C/C++, Factorus supports the following refactorings:
 Factorus also has commands for reverting changes and rebuilding projects, for stability and sanity testing.
 
 ## Examples
+(All code shown either from [spring-framework](https://github.com/spring-projects/spring-framework) or [git](https://github.com/git/git))
 
 ### Rename Class
 ![renameClass](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renameclass.gif)
@@ -33,6 +34,12 @@ Factorus also has commands for reverting changes and rebuilding projects, for st
 
 ### Rename Method
 ![renameMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamemethod.gif)
+
+### Rename Type
+![renameType](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamemacro.gif)
+
+### Rename Macro
+![renameMacro](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamemacro.gif)
 
 ### Rename Arg
 ![renameArg](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamearg.gif)
