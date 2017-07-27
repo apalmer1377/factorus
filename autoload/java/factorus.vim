@@ -439,13 +439,14 @@ function! s:getSubClasses(class_name)
     call system('> ' . a:temp_file)
 
     let a:sub = [expand('%:p')]
+    let a:subc = [expand('%:t:r')]
     let a:all = [expand('%:p')]
 
     while a:sub != []
-        let a:sub_classes = '\<\(' . join(map(a:sub,{n,file -> substitute(file,s:strip_dir . '\.java','\2','')}),'\|') . '\)\>'
+        let a:sub_classes = '\<\(' . join(a:subc) . '\)\>'
         let a:exclude = '[^\;}()=+\-\*/|&~!''\"]*'
         let a:fsearch = '^' . a:exclude . a:sub_classes . a:exclude . '$'
-        let a:search = s:class . '\_[^{]\{-\}' . s:sub_class . '\_[^{]\+' . a:sub_classes . '\_[^{]\{-\}{'
+        let a:search = '^.\{-\}' . s:class . '\_[^{;]\{-\}' . s:sub_class . '\_[^;{]\{-\}' . a:sub_classes . '\_[^;{]\{-\}{'
         call s:findTags(a:temp_file,a:fsearch,'no')
 
         let a:sub = []
@@ -453,8 +454,14 @@ function! s:getSubClasses(class_name)
             if index(a:all,file) < 0
                 execute 'silent tabedit! ' . file
                 call cursor(1,1)
-                if search(a:search,'Wn') > 0
+                let a:found = search(a:search,'W')
+                if a:found > 0
                     call add(a:sub,file)
+                    let a:new_sub = expand('%:t:r')
+                    if a:found != s:getClassTag()[0]
+                        let a:new_sub .= '\.' . substitute(getline('.'),'^.\{-\}' . s:class . '\s*\<\(' . s:java_identifier . '\)\>.*','\2','')
+                    endif
+                    call add(a:subc,a:new_sub)
                 endif
                 call s:safeClose()
             endif
@@ -463,7 +470,7 @@ function! s:getSubClasses(class_name)
     endwhile
 
     call system('rm -rf ' . a:temp_file)
-    return a:all
+    return [a:all,a:subc]
 endfunction
 
 " getSuperClasses {{{3
@@ -1105,9 +1112,9 @@ endfunction
 " updateSubClassFiles {{{3
 function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
 "    let a:pc = s:getPackageClasses(a:class_name,s:getPackage(expand('%:p')))
-    let a:sub_files = s:getSubClasses(a:class_name)
+    let [a:sub_files,a:sub_classes] = s:getSubClasses(a:class_name)
     let a:is_method = a:paren == '(' ? 1 : 0
-    let a:sub_classes = map(copy(a:sub_files),{n,val -> substitute(substitute(val,s:strip_dir,'\2',''),'\.java','','')})
+"    let a:sub_classes = map(copy(a:sub_files),{n,val -> substitute(substitute(val,s:strip_dir,'\2',''),'\.java','','')})
 
     try
         execute 'silent lvimgrep /\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/j ' . join(a:sub_files)
@@ -1319,8 +1326,8 @@ endfunction
 function! s:updateParamSubClassFiles(old_name,commas,default,param_name,param_type,is_static)
     let a:class_name = expand('%:t:r')
 "    let a:pc = s:getPackageClasses(a:class_name,s:getPackage(expand('%:p')))
-    let a:sub_files = s:getSubClasses(a:class_name)
-    let a:sub_classes = map(copy(a:sub_files),{n,val -> substitute(substitute(val,s:strip_dir,'\2',''),'\.java','','')})
+    let [a:sub_files,a:sub_classes] = s:getSubClasses(a:class_name)
+"    let a:sub_classes = map(copy(a:sub_files),{n,val -> substitute(substitute(val,s:strip_dir,'\2',''),'\.java','','')})
 
     try
         execute 'silent lvimgrep /\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:old_name . '\>(' . '/j ' . join(a:sub_files)
@@ -2298,7 +2305,7 @@ function! s:rollbackRename(new_name,type)
             execute 'silent tabedit! ' . file
             for line in a:files[file]
                 call cursor(line,1)
-                execute 's/\<' . a:new . '\>/' . a:old . '/ge'
+                execute 'silent! s/\<' . a:new . '\>/' . a:old . '/ge'
             endfor
             silent write!
             call s:safeClose()
@@ -2448,15 +2455,16 @@ function! java#factorus#addParam(param_name,param_type,...) abort
             echo 'Updating references...'
             call s:updateParamReferences(a:classes,a:name,a:count,a:default,a:is_static)
 
-            if g:factorus_show_changes > 0
-                call s:setChanges(a:name,'addParam')
-            endif
         endif
         redraw
         echo 'Added parameter ' . a:param_name . ' to method ' . a:name . '.'
 
         if a:top > 0
             call s:safeClose()
+        endif
+
+        if g:factorus_show_changes > 0
+            call s:setChanges(a:name,'addParam')
         endif
 
         call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,'addParam')

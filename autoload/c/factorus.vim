@@ -461,7 +461,7 @@ endfunction
 " getInclusions {{{3
 function! s:getInclusions(temp_file)
     let a:swap_file = '.FactorusIncSwap'
-    call system('> ' . a:temp_file)
+    call system('> ' . a:swap_file)
 
     let a:inc = [expand('%:p:t')]
     while a:inc != []
@@ -472,6 +472,7 @@ function! s:getInclusions(temp_file)
         call map(a:inc,{n,val -> substitute(val,'\(.*\/\)\=\(.*\)','\2','')})
     endwhile
 
+    call system('find ' . getcwd() . ' -name "*.h" >> ' . a:temp_file)
     call system('sort -u ' . a:temp_file . ' -o ' . a:temp_file)
     call system('rm -rf ' . a:swap_file)
 endfunction
@@ -2076,7 +2077,7 @@ function! s:rollbackRename()
         execute 'silent tabedit! ' . file
         for line in a:files[file]
             call cursor(line,1)
-            execute 's/\<' . a:new . '\>/' . a:old . '/ge'
+            execute 'silent! s/\<' . a:new . '\>/' . a:old . '/ge'
         endfor
         silent write!
         call s:safeClose()
