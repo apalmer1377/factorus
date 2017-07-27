@@ -24,6 +24,8 @@ Tasks
     Python: N/A (default param is already allowed via optional arguments)
 - Add comments to functions and make function names more understandable
 + Add examples to README (prelim 2017-07-26)
+- Improve FRebuild output (output now goes to file 2017-07-26)
+- look in project directory for build file before searching (DONE 2017-07-27)
 
 ====
 JAVA
@@ -61,6 +63,7 @@ Bugs
 - Struct definition with no name shouldn't be noticed as a tag (FIXED 2017-07-26)
 - renameType doesn't search all header files (header files don't need to include base file) (FIXED 2017-07-27)
 - rollbackRename sometimes throws 'unable to open swap file' error
+- rename needs to update include files in case of static (TESTING 2017-07-27)
 
 Tasks
 -----

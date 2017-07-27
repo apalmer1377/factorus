@@ -20,8 +20,7 @@ let s:langs = { 'java'      : 'Java',
             \   'php'       : 'Php',
             \   'rs'        : 'Rust',
             \   'js'        : 'Javascript',
-            \   'perl'      : 'Perl',
-            \   'vim'       : 'Vimscript'
+            \   'perl'      : 'Perl'
             \ }
 
 " Error Dictionary {{{2
@@ -41,7 +40,7 @@ let s:build_files = {
             \       'gradle'    : 'build.gradle'
             \}
 
-" Functions {{{1
+" Misc Functions {{{1
 
 function! factorus#isRollback(a)
     return (len(a:a) > 0 && a:a[-1] == 'factorusRollback')
@@ -58,7 +57,7 @@ function! s:handleError(func,ext,error,opt)
 
     let a:roll = index(keys(g:factorus_history),'old') >= 0 ? 1 : 0
     if match(a:exception,'Unknown function') >= 0
-        if match(a:exception,'\(\<' . a:func . '\>\|s:rename\)') >= 0
+        if match(a:exception,'\(\<' . a:func . '\>\|\(s:\|factorus#\)rename\)') >= 0
             let a:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
             let a:name = a:func == 'renameSomething' ? 'rename' . a:opt[-1] : a:func
             let a:err = 'Factorus: ' . a:name . ' is not available for ' . a:lang . '.'
@@ -89,6 +88,10 @@ endfunction
 
 " factorus#rebuild {{{2
 function! factorus#rebuild(...)
+    if exists('g:factorus_build_win')
+        execute 'bwipeout ' . g:factorus_build_win
+    endif
+
     let a:strip_dir = '\(.*\/\)\=\(.*\)'
     let a:prev_dir = getcwd()
     let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
@@ -104,10 +107,16 @@ function! factorus#rebuild(...)
     endtry
 
     try
-        let a:file = split(system('find ' . getcwd() . a:path_find . ' -name "' . a:file_find . '"'),'\n')[0]
+        let a:file = split(system('ls ' . a:file_find),'\n')[0]
+        if a:file != a:file_find
+            let a:file = split(system('find ' . getcwd() . a:path_find . ' -name "' . a:file_find . '"'),'\n')[0]
+        else
+            let a:file = expand('%:p:h') . '/' . a:file
+        endif
     catch /.*/
         execute 'cd ' . a:prev_dir
-        throw 'Factorus:' . v:exception
+        echom 'Factorus: build file not found'
+        return
     endtry
 
     let a:build_dir = substitute(a:file,a:strip_dir,'\1','')
@@ -115,15 +124,30 @@ function! factorus#rebuild(...)
 
     let a:build_task = a:0 > 0 ? a:1 : g:factorus_build_task
     let a:command = g:factorus_build_program . ' ' . a:build_task . ' ' . g:factorus_build_options
-    echo 'Running ' . a:command
-    let a:res = split(system(a:command),'\n')
 
-    echo 'Build Output:'
-    for line in a:res
-        echo line
-    endfor
+    redraw
+    echo 'Running ' . a:command
+    let a:res = ['Build Output',''] + split(system(a:command),'\n')
+    while match(a:res[-1],'^\s*$') >= 0
+        call remove(a:res,len(a:res)-1)
+    endwhile
+
+    let g:factorus_build_win = substitute('FRebuild_' . g:factorus_build_program,'\s','_','g')
+    execute 'silent keepalt botright vertical ' . winwidth(0) . 'split ' . g:factorus_build_win
+    call append(0,a:res)
+    d
+
+    setlocal noreadonly
+    setlocal buftype=nofile
+    setlocal bufhidden=hide
+    setlocal noswapfile
+    setlocal nobuflisted
+    setlocal nomodifiable
+    setlocal textwidth=0
 
     execute 'cd ' . a:prev_dir
+    redraw
+    echo 'Build completed.'
 endfunction
 
 " factorus#command {{{2

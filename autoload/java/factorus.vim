@@ -1592,7 +1592,7 @@ function! s:renameMethod(new_name,...) abort
     endwhile
 
     let s:all_funcs = {}
-    let a:is_static = match(getline('.'),'\s\+static\s\+[^)]\+(') >= 0 ? 1 : 0
+    let a:is_static = match(getline('.'),'\s*\<static\>\s*[^)]\+(') >= 0 ? 1 : 0
 
     redraw
     echo 'Updating hierarchy...'

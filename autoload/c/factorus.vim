@@ -11,9 +11,8 @@ let s:c_type = '\(enum\_s*\|struct\_s*\|union\_s*\|long\_s*\|short\_s*\)\=\<' . 
 let s:collection_identifier = '\([\[\*&]\=[[\]\*' . s:search_chars . '[:space:]&]*[\*\]]\)\='
 
 let s:c_keywords = '\<\(break\|case\|continue\|default\|do\|else\|for\|goto\|if\|return\|sizeof\|switch\|while\)\>'
-let s:c_allow = 'auto,char,const,double,enum,extern,float,inline,int,long,register,restrict,short,signed,static,struct,union,unsigned,void,volatile'
 
-let s:modifiers = '\(typedef\_s*\|extern\_s*\|static\_s*\|auto\_s*\|register\_s*\|const\_s*\|restrict\_s*\|volatile\_s*\|signed\_s*\|unsigned\_s*\)\='
+let s:modifiers = '\(inline\_s*\|typedef\_s*\|extern\_s*\|static\_s*\|auto\_s*\|register\_s*\|const\_s*\|restrict\_s*\|volatile\_s*\|signed\_s*\|unsigned\_s*\)\='
 let s:modifier_query = repeat(s:modifiers,3)
 
 let s:struct = '\<\(enum\|struct\|union\)\>\_s*\(' . s:c_identifier . '\)\=\_s*\({\|\<' . s:c_identifier . '\>\_s*;\)'
@@ -459,7 +458,7 @@ function! s:getAllIncluded()
 endfunction
 
 " getInclusions {{{3
-function! s:getInclusions(temp_file)
+function! s:getInclusions(temp_file,is_static)
     let a:swap_file = '.FactorusIncSwap'
     call system('> ' . a:swap_file)
 
@@ -472,7 +471,10 @@ function! s:getInclusions(temp_file)
         call map(a:inc,{n,val -> substitute(val,'\(.*\/\)\=\(.*\)','\2','')})
     endwhile
 
-    call system('find ' . getcwd() . ' -name "*.h" >> ' . a:temp_file)
+    if !a:is_static
+        call system('find ' . getcwd() . ' -name "*.h" >> ' . a:temp_file)
+    endif
+
     call system('sort -u ' . a:temp_file . ' -o ' . a:temp_file)
     call system('rm -rf ' . a:swap_file)
 endfunction
@@ -483,7 +485,7 @@ function! s:getTypeDefs(name,...)
     let a:type = a:0 > 0 ? '\_s*' . a:1 . '\_s*' : '\_s*'
 
     let a:temp_file = '.FactorusInc'
-    call s:getInclusions(a:temp_file)
+    call s:getInclusions(a:temp_file,0)
     let a:files = readfile(a:temp_file) + [expand('%:p')]
     call system('rm -rf ' . a:temp_file)
 
@@ -1229,7 +1231,7 @@ function! s:renameField(new_name,...) abort
     let a:unchanged = []
     if a:is_local == 1
         call s:updateFile(a:var,a:new_name,0,a:is_local)
-    elseif a:is_static == 0
+    else
         call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
         execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/e'
 
@@ -1272,7 +1274,7 @@ function! s:renameField(new_name,...) abort
         echo 'Updating references...'
 
         let a:temp_file = '.FactorusInc'
-        call s:getInclusions(a:temp_file)
+        call s:getInclusions(a:temp_file,a:is_static)
         call s:narrowTags(a:temp_file,'\(\.\|->\)' . a:var)
 
         let a:files = readfile(a:temp_file) + [expand('%:p')]
@@ -1303,7 +1305,7 @@ function! s:renameMacro(new_name,...) abort
     call s:updateFile(a:macro,a:new_name,0,0)
 
     let a:temp_file = '.FactorusMacro'
-    call s:getInclusions(a:temp_file)
+    call s:getInclusions(a:temp_file,0)
     call s:updateQuickFix(a:temp_file,'\<' . a:macro . '\>')
 
     call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:macro . '\>/' . a:new_name . '/g"')
@@ -1342,17 +1344,18 @@ function! s:renameMethod(new_name,...) abort
     endtry
 
     call s:updateFile(a:method_name,a:new_name,1,0)
-    if a:is_static == 0
-        let a:search = '\([^.]\)\<' . a:method_name . '\>('
-        let a:temp_file = '.FactorusInc'
 
-        call s:getInclusions(a:temp_file)
-        call s:updateQuickFix(a:temp_file,a:search)
+    redraw
+    echo 'Updating references...'
+    let a:search = '\([^.]\)\<' . a:method_name . '\>('
+    let a:temp_file = '.FactorusInc'
 
-        call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/\1' . a:new_name . '(/g"')
-        call system('rm -rf ' . a:temp_file)
-        let a:unchanged = s:getUnchanged('\<' . a:method_name . '\>')
-    endif
+    call s:getInclusions(a:temp_file,a:is_static)
+    call s:updateQuickFix(a:temp_file,a:search)
+
+    call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/\1' . a:new_name . '(/g"')
+    call system('rm -rf ' . a:temp_file)
+    let a:unchanged = s:getUnchanged('\<' . a:method_name . '\>')
 
     if a:swap == 1
         call s:safeClose()
@@ -1393,17 +1396,19 @@ function! s:renameType(new_name,...) abort
     endtry
 
     call s:updateFile(a:rep,a:new_rep,0,0)
-    if a:is_static == 0
-        let a:search = '\<' . a:type . '\>[[:space:]]*\<' . a:type_name . '\>'
-        let a:temp_file = '.FactorusInc'
 
-        call s:getInclusions(a:temp_file)
-        call s:updateQuickFix(a:temp_file,a:search)
+    redraw
+    echo 'Updating references...'
 
-        call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/' . a:new_rep . '/g"')
-        call system('rm -rf ' . a:temp_file)
-        let a:unchanged = s:getUnchanged(a:search)
-    endif
+    let a:search = '\<' . a:type . '\>[[:space:]]*\<' . a:type_name . '\>'
+    let a:temp_file = '.FactorusInc'
+
+    call s:getInclusions(a:temp_file,a:is_static)
+    call s:updateQuickFix(a:temp_file,a:search)
+
+    call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/' . a:new_rep . '/g"')
+    call system('rm -rf ' . a:temp_file)
+    let a:unchanged = s:getUnchanged(a:search)
 
     if a:swap == 1
         call s:safeClose()
@@ -2149,6 +2154,7 @@ function! c#factorus#addParam(param_name,param_type,...) abort
         let a:com = a:count > 0 ? ', ' : ''
 
         let a:next = searchpos(')','Wn')
+        let a:is_static = match(getline(a:next[0]),'\<static\>[^)]\+(') >= 0 ? 1 : 0
         let a:line = substitute(getline(a:next[0]), ')', a:com . a:param_type . ' ' . a:param_name . ')', '')
         call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
         execute 'silent ' .  a:next[0] . 'd'
@@ -2162,7 +2168,7 @@ function! c#factorus#addParam(param_name,param_type,...) abort
             let a:default = a:0 > 0 ? a:1 : 'null'
 
             let a:temp_file = '.FactorusParam'
-            call s:getInclusions(a:temp_file)
+            call s:getInclusions(a:temp_file,a:is_static)
             call s:narrowTags(a:temp_file,a:name)
             for file in readfile(a:temp_file)
                 execute 'silent tabedit! ' . file
