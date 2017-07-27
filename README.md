@@ -36,7 +36,7 @@ Factorus also has commands for reverting changes and rebuilding projects, for st
 ![renameMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamemethod.gif)
 
 ### Rename Type
-![renameType](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamemacro.gif)
+![renameType](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renametype.gif)
 
 ### Rename Macro
 ![renameMacro](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamemacro.gif)
