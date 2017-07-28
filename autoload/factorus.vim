@@ -11,16 +11,16 @@ let g:loaded_factorus = 1
 
 " Dictionaries {{{1
 " Language Dictionary {{{2
-let s:langs = { 'java'      : 'Java',
-            \   'python'    : 'Python',
-            \   'c'         : 'C',
-            \   'cpp'       : 'C++',
-            \   'go'        : 'Go',
-            \   'rb'        : 'Ruby',
-            \   'php'       : 'Php',
-            \   'rs'        : 'Rust',
-            \   'js'        : 'Javascript',
-            \   'perl'      : 'Perl'
+let s:langs = { 'java'          : 'Java',
+            \   'python'        : 'Python',
+            \   'c'             : 'C',
+            \   'cpp'           : 'C++',
+            \   'go'            : 'Go',
+            \   'ruby'          : 'Ruby',
+            \   'php'           : 'Php',
+            \   'rust'          : 'Rust',
+            \   'javascript'    : 'Javascript',
+            \   'perl'          : 'Perl'
             \ }
 
 " Error Dictionary {{{2
@@ -37,7 +37,8 @@ let s:build_files = {
             \       'make'      : 'Makefile',
             \       'ant'       : 'build.xml',
             \       'mvn'       : 'pom.xml',
-            \       'gradle'    : 'build.gradle'
+            \       'gradle'    : 'build.gradle',
+            \       'rake'      : 'Rakefile'
             \}
 
 " Misc Functions {{{1

@@ -25,7 +25,7 @@ Tasks
 - Add comments to functions and make function names more understandable
 + Add examples to README (prelim 2017-07-26)
 - Improve FRebuild output (output now goes to file 2017-07-26)
-- look in project directory for build file before searching (DONE 2017-07-27)
+- look in project root directory for build file before searching (DONE 2017-07-27)
 
 ====
 JAVA
@@ -38,6 +38,7 @@ Bugs
 
 Tasks
 -----
+- Add optional 'name' parameter for FEncapsulate (DONE 2017-07-28)
 
 ======
 PYTHON

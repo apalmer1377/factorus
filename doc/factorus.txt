@@ -21,13 +21,16 @@ Contents                                            *factorus* *factorus-help*
 
 Factorus is a lightweight Vim plugin for automated refactoring.  It's 
 written entirely in Vimscript, so there is no need for any external packages.
+However, Factorus does make use of system commands find, grep, sort, rm, cat,
+xargs, and ls.
 
 ==============================================================================
 2. Usage                                                      *factorus-usage*
 
 Factorus provides numerous functions for refactoring your code. The current
-functions are roughly grouped into four categories: extraction, insertion,
-modification, and miscellaneous.
+functions are roughly grouped into three categories: extraction, insertion,
+and modification. Factorus also provides |:FRollback|, for reverting unwanted
+changes, and |:FRebuild|, for rebuilding the project and validating changes.
 
 ------------------------------------------------------------------------------
 2.1 Extraction                                              *factorus-extract*
@@ -42,7 +45,7 @@ modification, and miscellaneous.
     code runs in the same way; therefore, it is hightly suggested that you 
     review the changes made before committing them.
 
-:FManualExtract [{new_name}]
+:FMExtractMethod [{new_name}]
     Extracts the visually selected text into a new method, which is then
     inserted directly below the current method. The return type and
     arguments of the new method are automatically determined, and the method
@@ -57,7 +60,7 @@ modification, and miscellaneous.
     the function definition. The use of {other} depends on what language
     is being used:
         
-        in Java, {other} is mandatory, and represents the type of the new
+        in Java/C, {other} is mandatory, and represents the type of the new
         parameter. The argument will be added to the end of the argument
         list.
 
@@ -71,9 +74,48 @@ modification, and miscellaneous.
     function calls.  If |g:factorus_add_default| == 1, but {default} is not
     supplied, then the default argument is 'null'.
 
-:FEncapsulate                                                  *:FEncapsulate*
+:FEncapsulate [{name}]                                         *:FEncapsulate*
     Creates getter and setter methods for the current variable, and sets 
-    the variable scope to private.
+    the variable scope to private. If the optional {name} argument is given,
+    then that name is used in the getter and setter methods; otherwise, the
+    variable name is used.
+
+    For example, say you have a variable like this:
+>
+        public String mName;
+<
+
+    If you run 
+>
+        :FEncapsulate
+<
+
+    the resulting getter-setter pair will look like this:
+>
+        public String getMName() {
+            return mName;
+        }
+
+        public void setMName(String mName) {
+            this.mName = mName;
+        }
+<
+
+    However, if you run 
+>
+        :FEncapsulate name
+<
+
+        the getter-setter pair will look like this:
+>
+        public String getName() {
+            return mName;
+        }
+
+        public void setName(String mName) {
+            this.mName = mName;
+        }
+<
 
 ------------------------------------------------------------------------------
 2.3 Modification                                             *factorus-modify*
@@ -85,8 +127,8 @@ modification, and miscellaneous.
     Renames the current class to {new_name}.
 
 :FRenameField {new_name}                                       *:FRenameField*
-    Renames the current variable to {new_name}. This function is actually
-    quite versatile, as it can provide several different functionalities:
+    Renames the current variable to {new_name}. This function provides 
+    multiple different functionalities:
         - Rename a variable within a function
         - Rename a class/struct field, and all of its instances
         - Rename a static variable, and all occurrences
@@ -123,20 +165,37 @@ modification, and miscellaneous.
     to set everything back to normal.  This only works for the most recent
     command, so changes made before then are permanent.
 
-    If a rename command throws an error or is interrupted, changes are rolled
+    If a command throws an error or is interrupted, changes are rolled
     back automatically.
 
+    NOTE: In some projects, running a rename command causes git to show some
+    files as changed, with the only change being a newline character at the
+    end. This is not rolled back by |:FRollback|, since it is a side effect
+    of editing in Vim as opposed to other text editors. However, these
+    changes make no functional difference to the file.
+
 :FRebuild [{build_task}]                                           *:FRebuild*
-    Rebuilds the current project. If {build_task} is given, the projects is
-    build according to that task; otherwise, |g:factorus_build_task| is used.
+    Rebuilds the current project, and displays the build output in a separate
+    window. If {build_task} is given, the projects is built according to that 
+    task; otherwise, |g:factorus_build_task| is used.
+
+    Default build-file names are available for make,ant,gradle, maven, and
+    rake; for example, if |g:factorus_build_program| == 'make', but 
+    |g:factorus_build_file| is not set, then the function will look for a
+    file called 'Makefile'.
    
+    NOTE: When searching for a build file, |:FRebuild| will first search the
+    project root directory, then in all subdirectories, and will use the first
+    build file it finds. If there are multiple build files in your project, 
+    you may want to specify which file to use with |g:factorus:build_file|.
+
 ==============================================================================
 3. Configuration                                          *factorus-configure*
 
 
                                                       *g:factorus_project_dir*
 g:factorus_project_dir~
-Default: empty
+Default: ''
 
 The project directory used to search for files when updating class or method
 names.  If empty, the current git root directory is used.  This option is 
@@ -149,7 +208,7 @@ Example:
 
                                               *g:factorus_min_extracted_lines*
 g:factorus_min_extracted_lines~
-Default: 2
+Default: 3
 
 The minimum number of lines required for a method to be extracted by
 |:FExtractMethod|.  If the number of lines found is less than this number,
@@ -164,7 +223,8 @@ Example:
 g:factorus_method_name~
 Default: 'newFactorusMethod'
 
-The default name for a new method created by |:FExtractMethod|.
+The default name for a new method created by |:FExtractMethod| and
+|:FManualExtract|.
 
 Example:
 >
@@ -259,7 +319,7 @@ Example:
 
                                                      *g:factorus_show_changes*
 g:factorus_show_changes~
-Default: 0
+Default: 1
 
 The behavior of |:FRenameMethod| changes based on the value of this variable.
 If
@@ -349,7 +409,7 @@ g:factorus_default_lang~
 Default: ''
 
 Used to distinguish which language to use in the case of ambigious file 
-extensions (.h in particular).  This option is really only usefult when
+extensions (.h in particular).  This option is really only useful when
 working in C, as the default filetype when editing header files is C++.
 
 Example:

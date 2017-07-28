@@ -9,11 +9,11 @@ and even method extraction, with a few very intutitive commands.
 The following table shows which features Factorus supports for
 which languages:
 
-|              |Add  Parameter|Encapsulate Variable|Extract Method(Automated)|Extract Method (Manual)|Rename  Argument|Rename Class|Rename Method |Rename Field|
-|:------------:|:------------:|:------------------:|:-----------------------:|:---------------------:|:--------------:|:----------:|:------------:|:----------:|
-|     Java     |   &#10003;   |      &#10003;      |         &#10003;        |        &#10003;       |    &#10003;    |  &#10003;  |   &#10003;   |  &#10003;  |
-|    Python    |   &#10003;   |         N/A        |         &#10003;        |        &#10003;       |    &#10003;    |  &#10003;  |   &#10003;   |     N/A    |
-|      C       |   &#10003;   |         N/A        |         &#10003;        |        &#10003;       |    &#10003;    |    N/A     |   &#10003;   |  &#10003;  |
+|              |Add  Parameter|Encapsulate Variable|Extract Method (Automated)|Extract Method (Manual)|Rename  Argument|Rename Class|Rename Method |Rename Field|
+|:------------:|:------------:|:------------------:|:------------------------:|:---------------------:|:--------------:|:----------:|:------------:|:----------:|
+|     Java     |   &#10003;   |      &#10003;      |         &#10003;         |        &#10003;       |    &#10003;    |  &#10003;  |   &#10003;   |  &#10003;  |
+|    Python    |   &#10003;   |         N/A        |         &#10003;         |        &#10003;       |    &#10003;    |  &#10003;  |   &#10003;   |     N/A    |
+|      C       |   &#10003;   |         N/A        |         &#10003;         |        &#10003;       |    &#10003;    |    N/A     |   &#10003;   |  &#10003;  |
 
 Additionally, for C/C++, Factorus supports the following refactorings:
 
@@ -56,7 +56,7 @@ of code that can be safely extracted:
 
 ![extractMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/extract.gif)
 
-If you prefer to manually extract a block of code, however, FManualExtract allows you to do that:
+If you prefer to manually extract a block of code, however, you can use FMExtractMethod:
 
 ![manualExtractMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/manualextract.gif)
 

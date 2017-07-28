@@ -2354,7 +2354,7 @@ function! java#factorus#encapsulateField(...) abort
     let a:is_static = substitute(a:line,a:search,'\2','')
     let a:type = substitute(a:line,a:search,'\4','')
     let a:var = substitute(a:line,a:search,'\6','')
-    let a:cap = substitute(a:var,'\(.\)\(.*\)','\U\1\E\2','')
+    let a:cap = a:0 > 0 ? substitute(a:1,'\(.\)\(.*\)','\U\1\E\2','') : substitute(a:var,'\(.\)\(.*\)','\U\1\E\2','')
 
     let a:is_local = s:getClassTag()[0] == s:getAdjacentTag('b') ? 0 : 1
     if a:is_local == 1
