@@ -27,38 +27,38 @@ Factorus also has commands for reverting changes and rebuilding projects, for st
 (All code shown either from [spring-framework](https://github.com/spring-projects/spring-framework) or [git](https://github.com/git/git))
 
 ### Rename Class
-![renameClass](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renameclass.gif)
+![renameClass](https://raw.githubusercontent.com/apalmer1377/factorus/master/media/renameclass.gif)
 
 ### Rename Field
-![renameField](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamefield.gif)
+![renameField](https://raw.githubusercontent.com/apalmer1377/factorus/master/media/renamefield.gif)
 
 ### Rename Method
-![renameMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamemethod.gif)
+![renameMethod](https://raw.githubusercontent.com/apalmer1377/factorus/master/media/renamemethod.gif)
 
 ### Rename Type
-![renameType](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renametype.gif)
+![renameType](https://raw.githubusercontent.com/apalmer1377/factorus/master/media/renametype.gif)
 
 ### Rename Macro
-![renameMacro](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamemacro.gif)
+![renameMacro](https://raw.githubusercontent.com/apalmer1377/factorus/master/media/renamemacro.gif)
 
 ### Rename Arg
-![renameArg](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/renamearg.gif)
+![renameArg](https://raw.githubusercontent.com/apalmer1377/factorus/master/media/renamearg.gif)
 
 ### Add Parameter
-![addParam](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/addparam.gif)
+![addParam](https://raw.githubusercontent.com/apalmer1377/factorus/master/media/addparam.gif)
 
 ### Encapsulate Field
-![encapsulateField](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/encapsulate.gif)
+![encapsulateField](https://raw.githubusercontent.com/apalmer1377/factorus/master/media/encapsulate.gif)
 
 ### Extract Method
 Factorus provides two functions for method extraction.  The first, FExtractMethod, automatically finds a block
 of code that can be safely extracted:
 
-![extractMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/extract.gif)
+![extractMethod](https://raw.githubusercontent.com/apalmer1377/factorus/master/media/extract.gif)
 
 If you prefer to manually extract a block of code, however, you can use FMExtractMethod:
 
-![manualExtractMethod](https://raw.githubusercontent.com/apalmer1377/factorus/language-upgrade/media/manualextract.gif)
+![manualExtractMethod](https://raw.githubusercontent.com/apalmer1377/factorus/master/media/manualextract.gif)
 
 ## Installation
 
