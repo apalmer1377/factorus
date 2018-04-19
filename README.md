@@ -21,6 +21,9 @@ Additionally, for C/C++, Factorus supports the following refactorings:
 |:------------:|:---------:|:----------:|:--------------:|
 |      C/C++       |  &#10003; |  &#10003;  |      N/A       |
 
+NOTE: Factorus support for C++ currently uses the same code as for C; as such, Factorus may not work properly for more complex C++ code.
+
+
 Factorus also has commands for reverting changes and rebuilding projects, for stability and sanity testing.
 
 ## Examples
