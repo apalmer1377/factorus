@@ -51,30 +51,30 @@ function! s:trim(string)
 endfunction
 
 function! s:merge(a,b)
-    let a:i = 0
-    let a:j = 0
-    let a:c = []
+    let l:i = 0
+    let l:j = 0
+    let l:c = []
 
-    while a:i < len(a:a) || a:j < len(a:b)
-        if a:j >= len(a:b)
-            call add(a:c,a:a[a:i])
-            let a:i += 1
-        elseif a:i >= len(a:a)
-            call add(a:c,a:b[a:j])
-            let a:j += 1
-        elseif a:j >= len(a:b) || a:a[a:i] < a:b[a:j]
-            call add(a:c,a:a[a:i])
-            let a:i += 1
-        elseif a:i >= len(a:a) || a:b[a:j] < a:a[a:i]
-            call add(a:c,a:b[a:j])
-            let a:j += 1
+    while l:i < len(a:a) || l:j < len(a:b)
+        if l:j >= len(a:b)
+            call add(l:c,a:a[l:i])
+            let l:i += 1
+        elseif l:i >= len(a:a)
+            call add(l:c,a:b[l:j])
+            let l:j += 1
+        elseif l:j >= len(a:b) || a:a[l:i] < a:b[l:j]
+            call add(l:c,a:a[l:i])
+            let l:i += 1
+        elseif l:i >= len(a:a) || a:b[l:j] < a:a[l:i]
+            call add(l:c,a:b[l:j])
+            let l:j += 1
         else
-            call add(a:c,a:a[a:i])
-            let a:i += 1
-            let a:j += 1
+            call add(l:c,a:a[l:i])
+            let l:i += 1
+            let l:j += 1
         endif
     endwhile
-    return a:c
+    return l:c
 endfunction
 
 function! s:compare(x,y)
@@ -96,10 +96,10 @@ endfunction
 " File Navigation {{{3
 
 function! s:isAlone(...)
-    let a:file = a:0 > 0 ? a:1 : expand('%:p')
-    let a:count = 0
+    let l:file = a:0 > 0 ? a:1 : expand('%:p')
+    let l:count = 0
     for buf in getbufinfo()
-        if buf['name'] == a:file
+        if buf['name'] == l:file
             if len(buf['windows']) > 1
                 return 0
             endif
@@ -110,138 +110,138 @@ function! s:isAlone(...)
 endfunction
 
 function! s:safeClose(...)
-    let a:prev = 0
-    let a:file = a:0 > 0 ? a:1 : expand('%:p')
-    if getbufinfo(a:file)[0]['loaded'] == 1 && winnr("$") == 1 && tabpagenr("$") > 1 && tabpagenr() > 1 && tabpagenr() < tabpagenr("$")
-        let a:prev = 1
+    let l:prev = 0
+    let l:file = a:0 > 0 ? a:1 : expand('%:p')
+    if getbufinfo(l:file)[0]['loaded'] == 1 && winnr("$") == 1 && tabpagenr("$") > 1 && tabpagenr() > 1 && tabpagenr() < tabpagenr("$")
+        let l:prev = 1
     endif
 
-    if index(s:open_bufs,a:file) < 0 && s:isAlone(a:file) == 1
-        execute 'bwipeout ' . a:file
-    elseif a:file == expand('%:p')
+    if index(s:open_bufs,l:file) < 0 && s:isAlone(l:file) == 1
+        execute 'bwipeout ' . l:file
+    elseif l:file == expand('%:p')
         q
     endif
 
-    if a:prev == 1
+    if l:prev == 1
         tabprev
     endif
 endfunction
 
 function! s:findTags(temp_file,search_string,append)
-    let a:fout = a:append == 'yes' ? ' >> ' : ' > '
-    call system('cat ' . s:temp_file . ' | xargs grep -l "' . a:search_string . '"' .  a:fout . a:temp_file . ' 2> /dev/null')
+    let l:fout = a:append == 'yes' ? ' >> ' : ' > '
+    call system('cat ' . s:temp_file . ' | xargs grep -l "' . a:search_string . '"' .  l:fout . a:temp_file . ' 2> /dev/null')
 endfunction
 
 function! s:narrowTags(temp_file,search_string)
-    let a:n_temp_file = a:temp_file . '.narrow'
-    call system('cat ' . a:temp_file . ' | xargs grep -l "' . a:search_string . '" {} + > ' . a:n_temp_file)
-    call system('mv ' . a:n_temp_file . ' ' . a:temp_file)
+    let l:n_temp_file = a:temp_file . '.narrow'
+    call system('cat ' . a:temp_file . ' | xargs grep -l "' . a:search_string . '" {} + > ' . l:n_temp_file)
+    call system('mv ' . l:n_temp_file . ' ' . a:temp_file)
 endfunction
 
 function! s:updateQuickFix(temp_file,search_string)
-    let a:res = split(system('cat ' . a:temp_file . ' | xargs grep -n "' . a:search_string . '"'),'\n')
-    call map(a:res,{n,val -> split(val,':')})
+    let l:res = split(system('cat ' . a:temp_file . ' | xargs grep -n "' . a:search_string . '"'),'\n')
+    call map(l:res,{n,val -> split(val,':')})
     if len(split(system('cat ' . a:temp_file),'\n')) == 1
-        call map(a:res,{n,val -> {'filename' : expand('%:p'), 'lnum' : val[0], 'text' : s:trim(join(val[1:],':'))}})
+        call map(l:res,{n,val -> {'filename' : expand('%:p'), 'lnum' : val[0], 'text' : s:trim(join(val[1:],':'))}})
     else
-        call map(a:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
+        call map(l:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
     endif
-    let g:factorus_qf += a:res
+    let g:factorus_qf += l:res
 endfunction
 
 function! s:setQuickFix(type,qf)
-    let a:title = a:type . ' : '
+    let l:title = a:type . ' : '
     if g:factorus_show_changes == 1
-        let a:title .= 'ChangedFiles'
+        let l:title .= 'ChangedFiles'
     elseif g:factorus_show_changes == 2
-        let a:title .= 'UnchangedFiles'
+        let l:title .= 'UnchangedFiles'
     else
-        let a:title .= 'AllFiles'
+        let l:title .= 'AllFiles'
     endif
 
     call setqflist(a:qf)
-    call setqflist(a:qf,'r',{'title' : a:title})
+    call setqflist(a:qf,'r',{'title' : l:title})
 endfunction
 
 function! s:setChanges(res,eun,func,...)
-    let a:qf = copy(g:factorus_qf)
-    let a:type = a:func == 'rename' ? a:1 : ''
+    let l:qf = copy(g:factorus_qf)
+    let l:type = a:func == 'rename' ? a:1 : ''
 
-    let a:un = deepcopy(a:eun)
-    let a:ch = len(g:factorus_qf)
-    let a:ch_i = a:ch == 1 ? ' instance ' : ' instances '
-    let a:un_l = len(a:un)
-    let a:un_i = a:un_l == 1 ? ' instance ' : ' instances '
+    let l:un = deepcopy(a:eun)
+    let l:ch = len(g:factorus_qf)
+    let l:ch_i = l:ch == 1 ? ' instance ' : ' instances '
+    let l:un_l = len(l:un)
+    let l:un_i = l:un_l == 1 ? ' instance ' : ' instances '
 
-    let a:first_line = a:ch . a:ch_i . 'modified'
-    let a:first_line .= (a:type == 'Arg' || a:func == 'addParam') ? '.' : ', ' . a:un_l . a:un_i . 'left unmodified.'
+    let l:first_line = l:ch . l:ch_i . 'modified'
+    let l:first_line .= (l:type == 'Arg' || a:func == 'addParam') ? '.' : ', ' . l:un_l . l:un_i . 'left unmodified.'
 
-    if g:factorus_show_changes > 1 && a:func != 'addParam' && a:type != 'Arg'
-        let a:un = [{'pattern' : 'Unmodified'}] + a:un
+    if g:factorus_show_changes > 1 && a:func != 'addParam' && l:type != 'Arg'
+        let l:un = [{'pattern' : 'Unmodified'}] + l:un
         if g:factorus_show_changes == 2
-            let a:qf = []
+            let l:qf = []
         endif
-        let a:qf += a:un
+        let l:qf += l:un
     endif
 
     if g:factorus_show_changes % 2 == 1
-        let a:qf = [{'pattern' : 'Modified'}] + a:qf
+        let l:qf = [{'pattern' : 'Modified'}] + l:qf
     endif
-    let a:qf = [{'text' : a:first_line,'pattern' : a:func . a:type}] + a:qf
+    let l:qf = [{'text' : l:first_line,'pattern' : a:func . l:type}] + l:qf
 
-    call s:setQuickFix(a:func . a:type,a:qf)
+    call s:setQuickFix(a:func . l:type,l:qf)
 endfunction
 
 function! s:getUnchanged(search)
-    let a:qf = []
+    let l:qf = []
 
-    let a:temp_file = '.FactorusUnchanged'
-    call s:findTags(a:temp_file,a:search,'no')
+    let l:temp_file = '.FactorusUnchanged'
+    call s:findTags(l:temp_file,a:search,'no')
 
-    let a:count = 0
-    for file in readfile(a:temp_file)
-        let a:lines = split(system('grep -n "' . a:search . '" ' . file),'\n')  
+    let l:count = 0
+    for file in readfile(l:temp_file)
+        let l:lines = split(system('grep -n "' . a:search . '" ' . file),'\n')  
 
-        let a:count += len(a:lines)
-        for line in a:lines
-            let a:un = split(line,':')
-            call add(a:qf,{'lnum' : a:un[0], 'filename' : file, 'text' : s:trim(join(a:un[1:],''))})
+        let l:count += len(l:lines)
+        for line in l:lines
+            let l:un = split(line,':')
+            call add(l:qf,{'lnum' : l:un[0], 'filename' : file, 'text' : s:trim(join(l:un[1:],''))})
         endfor
     endfor
 
-    call system('rm -rf ' . a:temp_file)
-    return a:qf
+    call system('rm -rf ' . l:temp_file)
+    return l:qf
 endfunction
 
 function! s:setEnvironment()
     let s:open_bufs = []
 
-    let a:prev_dir = getcwd()
-    let a:buf_nrs = []
+    let l:prev_dir = getcwd()
+    let l:buf_nrs = []
     for buf in getbufinfo()
         call add(s:open_bufs,buf['name'])
-        call add(a:buf_nrs,buf['bufnr'])
+        call add(l:buf_nrs,buf['bufnr'])
     endfor
-    let a:curr_buf = a:buf_nrs[index(s:open_bufs,expand('%:p'))]
+    let l:curr_buf = l:buf_nrs[index(s:open_bufs,expand('%:p'))]
 
     execute 'silent cd ' . expand('%:p:h')
-    let a:project_dir = g:factorus_project_dir == '' ? system('git rev-parse --show-toplevel') : g:factorus_project_dir
-    execute 'silent cd ' a:project_dir
+    let l:project_dir = factorus#projectDir()
+    execute 'silent cd ' l:project_dir
 
     let s:temp_file = '.FactorusTemp'
     call system('find ' . getcwd() . g:factorus_ignore_string . ' > ' . s:temp_file)
 
-    return [[line('.'),col('.')],a:prev_dir,a:curr_buf]
+    return [[line('.'),col('.')],l:prev_dir,l:curr_buf]
 endfunction
 
 function! s:resetEnvironment(orig,prev_dir,curr_buf,type)
-    let a:buf_setting = &switchbuf
+    let l:buf_setting = &switchbuf
     call system('rm -rf .Factorus*')
     execute 'silent cd ' a:prev_dir
     if a:type != 'Class'
         let &switchbuf = 'useopen,usetab'
         execute 'silent sbuffer ' . a:curr_buf
-        let &switchbuf = a:buf_setting
+        let &switchbuf = l:buf_setting
     endif
     call cursor(a:orig[0],a:orig[1])
 endfunction
@@ -249,7 +249,7 @@ endfunction
 " Utilities {{{2
 
 function! s:getClosingBracket(stack,...)
-    let a:orig = [line('.'),col('.')]
+    let l:orig = [line('.'),col('.')]
     if a:0 > 0
         call cursor(a:1[0],a:1[1])
     endif
@@ -259,43 +259,43 @@ function! s:getClosingBracket(stack,...)
         call search('{','Wc')
     endif
     normal %
-    let a:res = [line('.'),col('.')]
-    call cursor(a:orig[0],a:orig[1])
-    return a:res
+    let l:res = [line('.'),col('.')]
+    call cursor(l:orig[0],l:orig[1])
+    return l:res
 endfunction
 
 function! s:isQuoted(pat,state)
-    let a:temp = a:state
-    let a:mat = match(a:temp,a:pat)
-    let a:res = 1
-    while a:mat >= 0 && a:res == 1
-        let a:begin = strpart(a:temp,0,a:mat)
-        let a:quotes = len(a:begin) - len(substitute(a:begin,'"','','g'))
-        if a:quotes % 2 == 1
-            let a:res = 1
+    let l:temp = a:state
+    let l:mat = match(l:temp,a:pat)
+    let l:res = 1
+    while l:mat >= 0 && l:res == 1
+        let l:begin = strpart(l:temp,0,l:mat)
+        let l:quotes = len(l:begin) - len(substitute(l:begin,'"','','g'))
+        if l:quotes % 2 == 1
+            let l:res = 1
         else
-            let a:res = 0
+            let l:res = 0
         endif
-        let a:temp = substitute(a:temp,a:pat,'','')
-        let a:mat = match(a:temp,a:pat)
+        let l:temp = substitute(l:temp,a:pat,'','')
+        let l:mat = match(l:temp,a:pat)
     endwhile
-    return a:res
+    return l:res
 endfunction
 
 function! s:isWrapped(pat,state)
-    let a:match = match(a:state,a:pat)
-    let a:temp = a:state
-    let a:res = 1
-    while a:match >= 0
-        let a:begin = split(strpart(a:temp,0,a:match),'\zs')
-        if count(a:begin,'>') >= count(a:begin,'<')
-            let a:res = 0
+    let l:match = match(a:state,a:pat)
+    let l:temp = a:state
+    let l:res = 1
+    while l:match >= 0
+        let l:begin = split(strpart(l:temp,0,l:match),'\zs')
+        if count(l:begin,'>') >= count(l:begin,'<')
+            let l:res = 0
             break
         endif
-        let a:temp = substitute(a:temp,a:pat,'','')
-        let a:match = match(a:temp,a:pat)
+        let l:temp = substitute(l:temp,a:pat,'','')
+        let l:match = match(l:temp,a:pat)
     endwhile
-    return a:res
+    return l:res
 endfunction
 
 function! s:isCommented()
@@ -309,37 +309,37 @@ function! s:isCommented()
 endfunction
 
 function! s:getEndLine(start,search)
-    let a:orig = [line('.'),col('.')]
+    let l:orig = [line('.'),col('.')]
     call cursor(a:start[0],a:start[1])
-    let a:fin = searchpos(a:search,'Wen')
-    call cursor(a:orig[0],a:orig[1])
-    return a:fin
+    let l:fin = searchpos(a:search,'Wen')
+    call cursor(l:orig[0],l:orig[1])
+    return l:fin
 endfunction
 
 function! s:getStatement(line)
-    let a:i = a:line
-    while match(getline(a:i),'\({\|;$\)') < 0
-        let a:i += 1
+    let l:i = a:line
+    while match(getline(l:i),'\({\|;$\)') < 0
+        let l:i += 1
     endwhile
-    return join(getline(a:line,a:i))
+    return join(getline(a:line,l:i))
 endfunction
 
 " Tag Navigation {{{2
 " isValidTag {{{3
 function! s:isValidTag(line)
-    let a:first_char = strpart(substitute(getline(a:line),'\s*','','g'),0,1)   
-    if a:first_char == '*' || a:first_char == '/'
+    let l:first_char = strpart(substitute(getline(a:line),'\s*','','g'),0,1)   
+    if l:first_char == '*' || l:first_char == '/'
         return 0
     endif
 
-    let a:has_keyword = match(getline(a:line),s:cpp_keywords)
-    if a:has_keyword >= 0 && s:isQuoted(s:cpp_keywords,getline(a:line)) == 0
+    let l:has_keyword = match(getline(a:line),s:cpp_keywords)
+    if l:has_keyword >= 0 && s:isQuoted(s:cpp_keywords,getline(a:line)) == 0
         return 0
     endif
 
-    let a:gline = getline(a:line)
-    if match(a:gline,'\<typedef\>') < 0
-        if (match(a:gline,';') >= 0 && match(a:gline,'(') < 0) || (match(a:gline,'\<\(struct\|enum\|union\)\>\s*{') >= 0)
+    let l:gline = getline(a:line)
+    if match(l:gline,'\<typedef\>') < 0
+        if (match(l:gline,';') >= 0 && match(l:gline,'(') < 0) || (match(l:gline,'\<\(struct\|enum\|union\)\>\s*{') >= 0)
             return 0
         endif
     endif
@@ -349,24 +349,24 @@ endfunction
 
 " getAdjacentTag {{{3
 function! s:getAdjacentTag(dir)
-    let [a:oline,a:ocol] = [line('.'),col('.')]
-    call cursor(a:oline + 1,a:ocol)
+    let [l:oline,l:ocol] = [line('.'),col('.')]
+    call cursor(l:oline + 1,l:ocol)
 
-    let a:func = searchpos(s:tag_query,'Wn' . a:dir)
-    let a:is_valid = 0
-    while a:func != [0,0]
-        let a:is_valid = s:isValidTag(a:func[0])
-        if a:is_valid == 1
+    let l:func = searchpos(s:tag_query,'Wn' . a:dir)
+    let l:is_valid = 0
+    while l:func != [0,0]
+        let l:is_valid = s:isValidTag(l:func[0])
+        if l:is_valid == 1
             break
         endif
 
-        call cursor(a:func[0],a:func[1])
-        let a:func = searchpos(s:tag_query,'Wn' . a:dir)
+        call cursor(l:func[0],l:func[1])
+        let l:func = searchpos(s:tag_query,'Wn' . a:dir)
     endwhile
-    call cursor(a:oline,a:ocol)
+    call cursor(l:oline,l:ocol)
 
-    if a:is_valid == 1
-        return a:func[0]
+    if l:is_valid == 1
+        return l:func[0]
     endif
     return 0
 endfunction
@@ -378,33 +378,33 @@ endfunction
 
 " getTypeTag {{{3
 function! s:getTypeTag()
-    let [a:line,a:col] = [line('.'),col('.')]
+    let [l:line,l:col] = [line('.'),col('.')]
     call cursor(1,1)
-    let a:class_tag = search(s:tag_query,'n')
-    let a:tag_end = search(s:tag_query,'ne')
-    call cursor(a:line,a:col)
-    return [a:class_tag,a:tag_end]
+    let l:class_tag = search(s:tag_query,'n')
+    let l:tag_end = search(s:tag_query,'ne')
+    call cursor(l:line,l:col)
+    return [l:class_tag,l:tag_end]
 endfunction
 
 "isInType {{{3
 function! s:isInType()
-    let a:orig = [line('.'),col('.')]
-    let a:close = s:getClosingBracket(0)
+    let l:orig = [line('.'),col('.')]
+    let l:close = s:getClosingBracket(0)
     call s:gotoTag()
 
-    let a:res = 0
-    if s:isBefore(searchpos('{','Wn'),searchpos('(','Wn')) && s:getClosingBracket(1)[0] >= a:close[0]
-        let a:res = 1
+    let l:res = 0
+    if s:isBefore(searchpos('{','Wn'),searchpos('(','Wn')) && s:getClosingBracket(1)[0] >= l:close[0]
+        let l:res = 1
     endif
-    call cursor(a:orig[0],a:orig[1])
-    return a:res
+    call cursor(l:orig[0],l:orig[1])
+    return l:res
 endfunction
 
 " gotoTag {{{3
 function! s:gotoTag()
-    let a:tag = s:getAdjacentTag('b')
-    if a:tag != 0
-        call cursor(a:tag,1)
+    let l:tag = s:getAdjacentTag('b')
+    if l:tag != 0
+        call cursor(l:tag,1)
     else
         echo 'No tag found'
     endif
@@ -413,29 +413,29 @@ endfunction
 " Class Hierarchy {{{2
 " getIncluded {{{3
 function! s:getIncluded()
-    let a:orig = [line('.'),col('.')]
+    let l:orig = [line('.'),col('.')]
     call cursor(1,1)
 
-    let a:files = []
-    let a:include = '^#\<include\>\s*"'
-    let a:next = search(a:include,'Wc')
-    while a:next > 0
-        if match(getline(a:next),'<.*>$') < 0
-            call add(a:files,substitute(getline(a:next),'^.*"\(.*\/\)\=\(.*\)".*$','\2',''))
+    let l:files = []
+    let l:include = '^#\<include\>\s*"'
+    let l:next = search(l:include,'Wc')
+    while l:next > 0
+        if match(getline(l:next),'<.*>$') < 0
+            call add(l:files,substitute(getline(l:next),'^.*"\(.*\/\)\=\(.*\)".*$','\2',''))
         endif
         call cursor(line('.') + 1,1)
-        let a:next = search(a:include,'Wc')
+        let l:next = search(l:include,'Wc')
     endwhile
-    if a:files == []
+    if l:files == []
         return []
     endif
 
-    call map(a:files,{n,val -> '\/' . substitute(val,'\(.*\/\)\=\(.*\)','\2','')})
-    let a:or = substitute(' "\(' . join(a:files,'\|') . '\)" ','\.','\\.','g')
-    let a:fin = split(system('grep' . a:or . s:temp_file . ' 2> /dev/null'),'\n')
+    call map(l:files,{n,val -> '\/' . substitute(val,'\(.*\/\)\=\(.*\)','\2','')})
+    let l:or = substitute(' "\(' . join(l:files,'\|') . '\)" ','\.','\\.','g')
+    let l:fin = split(system('grep' . l:or . s:temp_file . ' 2> /dev/null'),'\n')
 
-    call cursor(a:orig[0],a:orig[1])
-    return a:fin
+    call cursor(l:orig[0],l:orig[1])
+    return l:fin
 endfunction
 
 " getAllIncluded {{{3 
@@ -444,31 +444,31 @@ function! s:getAllIncluded()
         return s:all_inc[expand('%:p')]
     endif
 
-    let a:fin = s:getIncluded()
-    let a:files = copy(a:fin)
+    let l:fin = s:getIncluded()
+    let l:files = copy(l:fin)
 
-    for file in a:files
+    for file in l:files
         execute 'silent tabedit! ' . file
-        let a:fin += s:getAllIncluded()
+        let l:fin += s:getAllIncluded()
         call s:safeClose()
     endfor
 
-    let s:all_inc[expand('%:p')] = a:fin
-    return a:fin
+    let s:all_inc[expand('%:p')] = l:fin
+    return l:fin
 endfunction
 
 " getInclusions {{{3
 function! s:getInclusions(temp_file,is_static)
-    let a:swap_file = '.FactorusIncSwap'
-    call system('> ' . a:swap_file)
+    let l:swap_file = '.FactorusIncSwap'
+    call system('> ' . l:swap_file)
 
-    let a:inc = [expand('%:p:t')]
-    while a:inc != []
-        let a:search = '^#include\s*\".*\(' . join(a:inc,'\|') . '\)\"'
-        call s:findTags(a:swap_file,a:search,'no')
-        call system('cat ' . a:swap_file . ' >> ' . a:temp_file)
-        let a:inc = filter(readfile(a:swap_file),'index(a:inc,v:val) < 0')
-        call map(a:inc,{n,val -> substitute(val,'\(.*\/\)\=\(.*\)','\2','')})
+    let l:inc = [expand('%:p:t')]
+    while l:inc != []
+        let l:search = '^#include\s*\".*\(' . join(l:inc,'\|') . '\)\"'
+        call s:findTags(l:swap_file,l:search,'no')
+        call system('cat ' . l:swap_file . ' >> ' . a:temp_file)
+        let l:inc = filter(readfile(l:swap_file),'index(l:inc,v:val) < 0')
+        call map(l:inc,{n,val -> substitute(val,'\(.*\/\)\=\(.*\)','\2','')})
     endwhile
 
     if !a:is_static
@@ -476,30 +476,30 @@ function! s:getInclusions(temp_file,is_static)
     endif
 
     call system('sort -u ' . a:temp_file . ' -o ' . a:temp_file)
-    call system('rm -rf ' . a:swap_file)
+    call system('rm -rf ' . l:swap_file)
 endfunction
 
 " Declarations {{{2
 " getTypeDefs {{{3
 function! s:getTypeDefs(name,...)
-    let a:type = a:0 > 0 ? '\_s*' . a:1 . '\_s*' : '\_s*'
+    let l:type = a:0 > 0 ? '\_s*' . a:1 . '\_s*' : '\_s*'
 
-    let a:temp_file = '.FactorusInc'
-    call s:getInclusions(a:temp_file,0)
-    let a:files = readfile(a:temp_file) + [expand('%:p')]
-    call system('rm -rf ' . a:temp_file)
+    let l:temp_file = '.FactorusInc'
+    call s:getInclusions(l:temp_file,0)
+    let l:files = readfile(l:temp_file) + [expand('%:p')]
+    call system('rm -rf ' . l:temp_file)
 
-    let a:search = '\<typedef\>' . a:type . a:name . '\_s*\<\(' . s:cpp_identifier . '\)\>'
+    let l:search = '\<typedef\>' . l:type . a:name . '\_s*\<\(' . s:cpp_identifier . '\)\>'
     try
-        execute 'silent lvimgrep /' . a:search . '/j ' . join(a:files)
-        let a:res = []
+        execute 'silent lvimgrep /' . l:search . '/j ' . join(l:files)
+        let l:res = []
         for grep in getloclist(0)
-            let a:def = substitute(grep['text'],a:search,'\1','')
-            if index(a:res,a:def) < 0
-                call add(a:res,a:def)
+            let l:def = substitute(grep['text'],l:search,'\1','')
+            if index(l:res,l:def) < 0
+                call add(l:res,l:def)
             endif
         endfor
-        return a:res
+        return l:res
     catch /.*/
         return []
     endtry
@@ -508,42 +508,42 @@ endfunction
 " parseStruct {{{3
 function! cpp#factorus#parseStruct(struct)
     if match(a:struct,'{') < 0
-        let a:res = substitute(a:struct,'\[.*\]','','g')
-        let a:res = substitute(a:res,'\*','','g')
-        let a:res = split(a:res)
-        return [join(a:res[:-2]),a:res[-1]]
+        let l:res = substitute(a:struct,'\[.*\]','','g')
+        let l:res = substitute(l:res,'\*','','g')
+        let l:res = split(l:res)
+        return [join(l:res[:-2]),l:res[-1]]
     elseif match(a:struct,'^enum') >= 0
-        let a:res = s:trim(substitute(a:struct,'^\([^{]*\){\(.*\)}\([^}]*\)$','\1 \3',''))
-        return split(a:res)
+        let l:res = s:trim(substitute(a:struct,'^\([^{]*\){\(.*\)}\([^}]*\)$','\1 \3',''))
+        return split(l:res)
     endif
 
-    let a:res = s:trim(substitute(a:struct,'^[^{]*{\(.*\)}[^}]*$','\1',''))
-    let a:res = s:trim(substitute(a:res,'\/\*.\{-\}\*\/','','g'))
-    let a:name = s:trim(substitute(a:struct,'^[^{]*{\(.*\)}\([^}]*\)$','\2',''))
+    let l:res = s:trim(substitute(a:struct,'^[^{]*{\(.*\)}[^}]*$','\1',''))
+    let l:res = s:trim(substitute(l:res,'\/\*.\{-\}\*\/','','g'))
+    let l:name = s:trim(substitute(a:struct,'^[^{]*{\(.*\)}\([^}]*\)$','\2',''))
 
-    let a:items = []
-    let a:brack = 0
-    let a:count = 1
-    let a:i = 0
-    let a:prev = 0
-    while a:i < len(a:res)
-        let char = a:res[a:i]
-        if char == ';' && a:brack == 0
-            call add(a:items,s:trim(strpart(a:res,a:prev,a:i - a:prev)))
-            let a:prev = a:i + 1
+    let l:items = []
+    let l:brack = 0
+    let l:count = 1
+    let l:i = 0
+    let l:prev = 0
+    while l:i < len(l:res)
+        let char = l:res[l:i]
+        if char == ';' && l:brack == 0
+            call add(l:items,s:trim(strpart(l:res,l:prev,l:i - l:prev)))
+            let l:prev = l:i + 1
         elseif char == '}'
-            let a:brack -= 1
+            let l:brack -= 1
         elseif char == '{'
-            let a:brack += 1
+            let l:brack += 1
         endif
-        let a:i += 1
+        let l:i += 1
     endwhile
 
-    for i in range(len(a:items))
-        let a:items[i] = cpp#factorus#parseStruct(a:items[i])
+    for i in range(len(l:items))
+        let l:items[i] = cpp#factorus#parseStruct(l:items[i])
     endfor
 
-    return [a:items,a:name]
+    return [l:items,l:name]
 endfunction
 
 " getStructDef {{{3
@@ -552,22 +552,22 @@ function! s:getStructDef(type)
         return s:all_structs[expand('%:p') . '-' . a:type]
     endif
 
-    let a:files = s:getAllIncluded() + [expand('%:p')]
-    let [a:prev_file,a:res] = ['',[]]
+    let l:files = s:getAllIncluded() + [expand('%:p')]
+    let [l:prev_file,l:res] = ['',[]]
     if match(a:type,'\<\(struct\|union\)\>') >= 0
         try
-            execute 'silent lvimgrep! /' . a:type . '\_s*{/j ' . join(a:files)
+            execute 'silent lvimgrep! /' . a:type . '\_s*{/j ' . join(l:files)
             execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
             call cursor(1,1)
-            let a:find = search(a:type . '\_s*{','W')
-            if a:find != 0
-                let a:prev_file = expand('%:p')
+            let l:find = search(a:type . '\_s*{','W')
+            if l:find != 0
+                let l:prev_file = expand('%:p')
                 call search('{')
-                let a:start = line('.')
+                let l:start = line('.')
                 normal %
-                let a:end = line('.')
-                let a:def = join(getline(a:start,a:end))
-                let a:res = cpp#factorus#parseStruct(a:def)[0]
+                let l:end = line('.')
+                let l:def = join(getline(l:start,l:end))
+                let l:res = cpp#factorus#parseStruct(l:def)[0]
             endif
             call s:safeClose()
         catch /.*/
@@ -575,24 +575,24 @@ function! s:getStructDef(type)
     else
     endif
 
-    let s:all_structs[expand('%:p') . '-' . a:type] = [a:prev_file,a:type,deepcopy(a:res)]
-    return [a:prev_file,a:type,a:res]
+    let s:all_structs[expand('%:p') . '-' . a:type] = [l:prev_file,a:type,deepcopy(l:res)]
+    return [l:prev_file,a:type,l:res]
 endfunction
 
 " getNextArg {{{3
 function! s:getNextArg(...)
-    let a:get_variable = '^[^/*].*(.*\<\(' . a:1 . '\)\>' . s:collection_identifier . '\=\s\+\(\<' . a:2 . '\).*).*'
-    let a:index = '\3'
+    let l:get_variable = '^[^/*].*(.*\<\(' . a:1 . '\)\>' . s:collection_identifier . '\=\s\+\(\<' . a:2 . '\).*).*'
+    let l:index = '\3'
 
-    let a:line = line('.')
-    let a:col = col('.')
+    let l:line = line('.')
+    let l:col = col('.')
 
-    let a:match = searchpos(a:get_variable,'Wn')
-    let a:end_match = searchpos(a:get_variable,'Wnze')
+    let l:match = searchpos(l:get_variable,'Wn')
+    let l:end_match = searchpos(l:get_variable,'Wnze')
 
-    if s:isBefore([a:line,a:col],a:match) == 1
-        let a:var = substitute(getline(a:match[0]),a:get_variable,a:index,'')
-        return [a:var,a:match]
+    if s:isBefore([l:line,l:col],l:match) == 1
+        let l:var = substitute(getline(l:match[0]),l:get_variable,l:index,'')
+        return [l:var,l:match]
     endif
 
     return ['none',[0,0]]
@@ -600,57 +600,57 @@ endfunction
 
 " getParams {{{3
 function! s:getParams() abort
-    let a:prev = [line('.'),col('.')]
+    let l:prev = [line('.'),col('.')]
     call s:gotoTag()
-    let a:oparen = search('(','Wn')
-    let a:cparen = search(')','Wn')
+    let l:oparen = search('(','Wn')
+    let l:cparen = search(')','Wn')
     
-    let a:dec = join(getline(a:oparen,a:cparen))
-    let a:dec = substitute(a:dec,'.*(\(.*\)).*','\1','')
-    if a:dec == ''
+    let l:dec = join(getline(l:oparen,l:cparen))
+    let l:dec = substitute(l:dec,'.*(\(.*\)).*','\1','')
+    if l:dec == ''
         return []
     endif
 
-    let a:args = split(a:dec,',')
-    call map(a:args, {n,arg -> split(substitute(s:trim(arg),'\(.*\)\(\<' . s:cpp_identifier . '\>\)$','\1|\2',''),'|')})
-    call map(a:args, {n,arg -> [s:trim(arg[1]),s:trim(arg[0]),line('.')]})
+    let l:args = split(l:dec,',')
+    call map(l:args, {n,arg -> split(substitute(s:trim(arg),'\(.*\)\(\<' . s:cpp_identifier . '\>\)$','\1|\2',''),'|')})
+    call map(l:args, {n,arg -> [s:trim(arg[1]),s:trim(arg[0]),line('.')]})
 
-    call cursor(a:prev[0],a:prev[1])
-    return a:args
+    call cursor(l:prev[0],l:prev[1])
+    return l:args
 endfunction
 
 " getNextDec {{{3
 function! s:getNextDec()
-    let a:get_variable = '^\s*\(' . s:modifier_query . '\|for\s*(\)\s*\(' . s:cpp_type . '\_s*' . 
+    let l:get_variable = '^\s*\(' . s:modifier_query . '\|for\s*(\)\s*\(' . s:cpp_type . '\_s*' . 
                 \ s:collection_identifier . '\)\s*\(\<' . s:cpp_identifier . '\>[^=;]*\)[;=].*'
     
-    let a:alt_get = '^\s*' . s:modifier_query . '\s*\(' . s:cpp_type . '\_s*' . 
+    let l:alt_get = '^\s*' . s:modifier_query . '\s*\(' . s:cpp_type . '\_s*' . 
                 \ s:collection_identifier . '\)\s*\(\<' . s:cpp_identifier . '\>[^=;]*\)[=;].*'
 
-    let [a:line,a:col] = [line('.'),col('.')]
-    let a:match = searchpos(a:get_variable,'Wn')
+    let [l:line,l:col] = [line('.'),col('.')]
+    let l:match = searchpos(l:get_variable,'Wn')
 
     if a:0 == 0
-        while a:match != [0,0] && match(getline(a:match[0]),'\<return\>') >= 0
-            call cursor(a:match[0],a:match[1])
-            let a:match = searchpos(a:get_variable,'Wn')
+        while l:match != [0,0] && match(getline(l:match[0]),'\<return\>') >= 0
+            call cursor(l:match[0],l:match[1])
+            let l:match = searchpos(l:get_variable,'Wn')
         endwhile
-        call cursor(a:line,a:col)
+        call cursor(l:line,l:col)
     endif
 
-    if s:isBefore([a:line,a:col],a:match) == 1
-        if match(getline(a:match[0]),'\<for\>') >= 0
-            let a:var = substitute(getline(a:match[0]),a:get_variable,'\5','')
-            let a:fline = split(substitute(getline(a:match[0]),a:get_variable,'\8',''),',')
+    if s:isBefore([l:line,l:col],l:match) == 1
+        if match(getline(l:match[0]),'\<for\>') >= 0
+            let l:var = substitute(getline(l:match[0]),l:get_variable,'\5','')
+            let l:fline = split(substitute(getline(l:match[0]),l:get_variable,'\8',''),',')
         else
-            let a:var = s:trim(substitute(getline(a:match[0]),a:alt_get,'\1 \2 \3 \4',''))
-            let a:var = substitute(a:var,'\s\+',' ','g')
-            let a:fline = split(substitute(getline(a:match[0]),a:alt_get,'\7',''),',')
+            let l:var = s:trim(substitute(getline(l:match[0]),l:alt_get,'\1 \2 \3 \4',''))
+            let l:var = substitute(l:var,'\s\+',' ','g')
+            let l:fline = split(substitute(getline(l:match[0]),l:alt_get,'\7',''),',')
         endif
-        call map(a:fline,{n,var -> s:trim(var)})
-        call map(a:fline,{n,var -> substitute(var,'^\<\(' . s:cpp_identifier . '\)\>.*','\1','')})
+        call map(l:fline,{n,var -> s:trim(var)})
+        call map(l:fline,{n,var -> substitute(var,'^\<\(' . s:cpp_identifier . '\)\>.*','\1','')})
 
-        return [a:var,a:fline,a:match]
+        return [l:var,l:fline,l:match]
     endif
 
     return ['none',[],[0,0]]
@@ -658,58 +658,58 @@ endfunction
 
 " getLocalDecs {{{3
 function! s:getLocalDecs(close)
-    let a:orig = [line('.'),col('.')]
-    let a:here = [line('.'),col('.')]
-    let a:next = s:getNextDec()
+    let l:orig = [line('.'),col('.')]
+    let l:here = [line('.'),col('.')]
+    let l:next = s:getNextDec()
 
-    let a:vars = s:getParams()
-    while s:isBefore(a:next[2],a:close)
-        if a:next[2] == [0,0]
+    let l:vars = s:getParams()
+    while s:isBefore(l:next[2],a:close)
+        if l:next[2] == [0,0]
             break
         endif
         
-        let a:type = a:next[0]
-        for name in a:next[1]
-            call add(a:vars,[name,a:type,a:next[2][0]])
+        let l:type = l:next[0]
+        for name in l:next[1]
+            call add(l:vars,[name,l:type,l:next[2][0]])
         endfor
 
-        call cursor(a:next[2][0],a:next[2][1])
-        let a:next = s:getNextDec()
+        call cursor(l:next[2][0],l:next[2][1])
+        let l:next = s:getNextDec()
     endwhile
-    call cursor(a:orig[0],a:orig[1])
+    call cursor(l:orig[0],l:orig[1])
 
-    return a:vars
+    return l:vars
 endfunction
 
 " getFunctionDecs {{{3
 function! s:getFunctionDecs()
-    let a:query = '^\s*' . s:modifier_query . '\s*\(' .  s:cpp_type . '\_s*' . s:collection_identifier . '\)\_s*\(' . s:cpp_identifier . '\)\_s*\([;(]\).*'
-    let a:decs = {'types' : [], 'names' : []}
+    let l:query = '^\s*' . s:modifier_query . '\s*\(' .  s:cpp_type . '\_s*' . s:collection_identifier . '\)\_s*\(' . s:cpp_identifier . '\)\_s*\([;(]\).*'
+    let l:decs = {'types' : [], 'names' : []}
     try
-        execute 'silent vimgrep /' . a:query . '/j %:p'
-        let a:greps = getqflist()
+        execute 'silent vimgrep /' . l:query . '/j %:p'
+        let l:greps = getqflist()
 
-        for g in a:greps
-            let a:fname = substitute(g['text'],a:query,'\4|\7\8','')
-            if match(a:fname,s:cpp_keywords) >= 0
+        for g in l:greps
+            let l:fname = substitute(g['text'],l:query,'\4|\7\8','')
+            if match(l:fname,s:cpp_keywords) >= 0
                 continue
             endif
 
-            if a:fname[len(a:fname)-1] == '('
-                let [a:type,a:name] = split(a:fname,'|')
+            if l:fname[len(l:fname)-1] == '('
+                let [l:type,l:name] = split(l:fname,'|')
             else
-                let [a:type,a:name] = split(a:fname[:-2],'|')
-                let a:name = substitute(a:name,';','(','')
+                let [l:type,l:name] = split(l:fname[:-2],'|')
+                let l:name = substitute(l:name,';','(','')
             endif
 
-            call add(a:decs['types'],a:type)
-            call add(a:decs['names'],a:name)
+            call add(l:decs['types'],l:type)
+            call add(l:decs['names'],l:name)
         endfor
 
     catch /.*No match.*/
     endtry
 
-    return a:decs
+    return l:decs
 endfunction
 
 " getAllFunctions {{{3
@@ -718,20 +718,20 @@ function! s:getAllFunctions()
         return s:all_funcs[expand('%:p')]
     endif
 
-    let a:use = s:getAllIncluded()
+    let l:use = s:getAllIncluded()
 
-    let a:defs = {'types' : [], 'names' : []}
-    for class in a:use
+    let l:defs = {'types' : [], 'names' : []}
+    for class in l:use
         execute 'silent tabedit! ' . class
-        let a:funcs = s:getFunctionDecs()
-        let a:defs['types'] += a:funcs['types']
-        let a:defs['names'] += a:funcs['names']
+        let l:funcs = s:getFunctionDecs()
+        let l:defs['types'] += l:funcs['types']
+        let l:defs['names'] += l:funcs['names']
         call s:safeClose()
     endfor
     silent edit!
 
-    let s:all_funcs[expand('%:p')] = a:defs
-    return a:defs
+    let s:all_funcs[expand('%:p')] = l:defs
+    return l:defs
 endfunction
 
 " getStructVars {{{3
@@ -743,121 +743,121 @@ function! s:getStructVars(var,dec,funcs)
         call add(a:funcs[0],old)
     endif
 
-    let a:orig = substitute(a:dec,'^\([^<]*\)<.*','\1','')
-    let a:res = substitute(a:dec,'^.*<','','')
-    let a:res = substitute(a:res,'\(<\|>\|\s\)','','g')
-    return [a:orig] + split(a:res,',')
+    let l:orig = substitute(a:dec,'^\([^<]*\)<.*','\1','')
+    let l:res = substitute(a:dec,'^.*<','','')
+    let l:res = substitute(l:res,'\(<\|>\|\s\)','','g')
+    return [l:orig] + split(l:res,',')
 endfunction
 
 " getFuncDec {{{3
 function! s:getFuncDec(func)
-    let a:orig = [line('.'),col('.')]
+    let l:orig = [line('.'),col('.')]
     call cursor(1,1)
-    let a:search = s:no_comment . s:modifier_query . '\(' . s:cpp_type . '\_s*' . s:collection_identifier . '\)\_s\+\<' . a:func . '\(\<\|\>\|)\|\s\).*'
-    let a:find =  search(a:search)
-    let a:next = ''
-    if a:find > 0
+    let l:search = s:no_comment . s:modifier_query . '\(' . s:cpp_type . '\_s*' . s:collection_identifier . '\)\_s\+\<' . a:func . '\(\<\|\>\|)\|\s\).*'
+    let l:find =  search(l:search)
+    let l:next = ''
+    if l:find > 0
         call cursor(line('.'),1)
-        let a:next = substitute(getline('.'),a:search,'\4','')
+        let l:next = substitute(getline('.'),l:search,'\4','')
     else
-        let a:all_funcs = s:getAllFunctions()
-        let a:ind = match(a:all_funcs['names'],a:func)
-        if a:ind >= 0
-            let a:next = a:all_funcs['types'][a:ind]
+        let l:all_funcs = s:getAllFunctions()
+        let l:ind = match(l:all_funcs['names'],a:func)
+        if l:ind >= 0
+            let l:next = l:all_funcs['types'][l:ind]
         endif
     endif
-    call cursor(a:orig[0],a:orig[1])
-    return a:next
+    call cursor(l:orig[0],l:orig[1])
+    return l:next
 endfunction
 
 " getVarDec {{{3
 function! s:getVarDec(var)
-    let a:orig = [line('.'),col('.')]
-    let a:search = s:no_comment  . '.\{-\}\(' . s:modifier_query . '\|for\s*(\)\s*\(' . s:cpp_type . '\_s*' .
+    let l:orig = [line('.'),col('.')]
+    let l:search = s:no_comment  . '.\{-\}\(' . s:modifier_query . '\|for\s*(\)\s*\(' . s:cpp_type . '\_s*' .
                 \ s:collection_identifier . '\)\s*\<' . a:var . '\>.*'
-    let a:jump = '\<' . a:var . '\>'
+    let l:jump = '\<' . a:var . '\>'
 
-    let a:pos = search(a:search,'Wb')
-    call search(a:jump)
-    let a:res = substitute(substitute(getline(a:pos),a:search,'\5',''),'\*','','g')
-    while s:isQuoted(a:res,getline(a:pos)) == 1 || s:isCommented() == 1 || match(a:res,s:cpp_keywords) >= 0
-        if a:pos == 0
+    let l:pos = search(l:search,'Wb')
+    call search(l:jump)
+    let l:res = substitute(substitute(getline(l:pos),l:search,'\5',''),'\*','','g')
+    while s:isQuoted(l:res,getline(l:pos)) == 1 || s:isCommented() == 1 || match(l:res,s:cpp_keywords) >= 0
+        if l:pos == 0
             return ''
         endif
-        call cursor(a:pos-1,a:pos)
-        let a:pos = search(a:search,'Wb')
-        call search(a:jump)
-        let a:res = substitute(substitute(getline(a:pos),a:search,'\5',''),'\*','','g')
+        call cursor(l:pos-1,l:pos)
+        let l:pos = search(l:search,'Wb')
+        call search(l:jump)
+        let l:res = substitute(substitute(getline(l:pos),l:search,'\5',''),'\*','','g')
     endwhile
 
-    call cursor(a:orig[0],a:orig[1])
-    return a:res
+    call cursor(l:orig[0],l:orig[1])
+    return l:res
 endfunction
 
 " getUsingVar {{{3
 function! s:getUsingVar()
-    let a:orig = [line('.'),col('.')]
+    let l:orig = [line('.'),col('.')]
 
-    let a:search = '\(\.\|->\)'
+    let l:search = '\(\.\|->\)'
     while 1 == 1
-        let a:adj = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
-        if a:adj == ')' || a:adj == ']'
+        let l:adj = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
+        if l:adj == ')' || l:adj == ']'
             call cursor(line('.'),col('.')-1)
             normal %
-            if searchpos(a:search,'bn') == searchpos('[^[:space:]]\_s*\<' . s:cpp_identifier . '\>','bn')
-                call search(a:search,'b')
+            if searchpos(l:search,'bn') == searchpos('[^[:space:]]\_s*\<' . s:cpp_identifier . '\>','bn')
+                call search(l:search,'b')
             elseif s:isBefore(searchpos('\<' . s:cpp_identifier . '\>\((\|\[\)','bn'),searchpos('[^[:space:]' . s:search_chars . ']','bn'))
                 call search('\<' . s:cpp_identifier . '\>','')
-                let a:var = expand('<cword>')
-                let a:dec = s:getVarDec(a:var)
+                let l:var = expand('<cword>')
+                let l:dec = s:getVarDec(l:var)
             else
-                let a:end = col('.')
+                let l:end = col('.')
                 call search('\<' . s:cpp_identifier . '\>','b')
-                let a:begin = col('.') - 1
-                let a:var = strpart(getline('.'),a:begin,a:end - a:begin)
-                let a:dec = s:getFuncDec(a:var)
-                let a:var = substitute(a:var,'\(\[\|(\)','','')
+                let l:begin = col('.') - 1
+                let l:var = strpart(getline('.'),l:begin,l:end - l:begin)
+                let l:dec = s:getFuncDec(l:var)
+                let l:var = substitute(l:var,'\(\[\|(\)','','')
                 break
             endif
         else
-            let a:end = col('.') - 1
+            let l:end = col('.') - 1
             call search('\<' . s:cpp_identifier . '\>','b')
-            let a:dot = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
-            if a:dot != '.' && a:dot != '>'
-                let a:begin = col('.') - 1
-                let a:var = strpart(getline('.'),a:begin,a:end - a:begin)
-                let a:var = substitute(a:var,'-','','g')
-                let a:dec = s:getVarDec(a:var)
+            let l:dot = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
+            if l:dot != '.' && l:dot != '>'
+                let l:begin = col('.') - 1
+                let l:var = strpart(getline('.'),l:begin,l:end - l:begin)
+                let l:var = substitute(l:var,'-','','g')
+                let l:dec = s:getVarDec(l:var)
                 break
             endif
-            call search(a:search,'b')
+            call search(l:search,'b')
         endif 
     endwhile
 
-    let a:funcs = []
-    let a:search = a:search . '\<' . s:cpp_identifier . '\>[([]\='
-    let a:next = searchpos(a:search,'W')
-    let a:next_end = searchpos(a:search,'Wnez')
+    let l:funcs = []
+    let l:search = l:search . '\<' . s:cpp_identifier . '\>[([]\='
+    let l:next = searchpos(l:search,'W')
+    let l:next_end = searchpos(l:search,'Wnez')
 
-    while s:isBefore(a:next,a:orig)
-        call cursor(a:next[0],a:next[1])
+    while s:isBefore(l:next,l:orig)
+        call cursor(l:next[0],l:next[1])
 
-        let a:func = substitute(strpart(getline('.'),a:next[1], a:next_end[1] - a:next[1]),'^>','','')
-        call add(a:funcs,a:func)
-        if matchstr(getline('.'), '\%' . a:next_end[1] . 'c.') == '('
+        let l:func = substitute(strpart(getline('.'),l:next[1], l:next_end[1] - l:next[1]),'^>','','')
+        call add(l:funcs,l:func)
+        if matchstr(getline('.'), '\%' . l:next_end[1] . 'c.') == '('
             call search('(')
             normal %
-        elseif matchstr(getline('.'), '\%' . a:next_end[1] . 'c.') == '['
+        elseif matchstr(getline('.'), '\%' . l:next_end[1] . 'c.') == '['
             call search('[')
             normal %
         endif
-        let a:next = searchpos(a:search,'W')
-        let a:next_end = searchpos(a:search,'Wnez')
+        let l:next = searchpos(l:search,'W')
+        let l:next_end = searchpos(l:search,'Wnez')
     endwhile
-    call cursor(a:orig[0],a:orig[1])
+    call cursor(l:orig[0],l:orig[1])
 
-    let a:dec = [a:dec]
-    return [a:var,a:dec,a:funcs]
+    let l:dec = [l:dec]
+    return [l:var,l:dec,l:funcs]
 endfunction
 
 " followChain {{{3
@@ -867,37 +867,37 @@ function! s:followChain(types,funcs,type_name)
     let s:all_structs = {}
     let s:all_funcs = {}
 
-    let a:orig = [line('.'),col('.')]
+    let l:orig = [line('.'),col('.')]
 
-    let a:func_search = '\(' . s:cpp_type . '\_s*' . s:collection_identifier . '\)\_s*\<' . a:funcs[0]
-    let [a:prev_file,a:prev_struct,a:fields] = s:getStructDef('\(' . join(a:types,'\|') . '\)')
+    let l:func_search = '\(' . s:cpp_type . '\_s*' . s:collection_identifier . '\)\_s*\<' . a:funcs[0]
+    let [l:prev_file,l:prev_struct,l:fields] = s:getStructDef('\(' . join(a:types,'\|') . '\)')
 
     while len(a:funcs) > 0
         if match(a:funcs[0],'(') >= 0
             try
-                let a:included = s:getAllIncluded() + [expand('%:p')]
-                execute 'silent lvimgrep /' . a:func_search . '/j ' . join(a:included)
+                let l:included = s:getAllIncluded() + [expand('%:p')]
+                execute 'silent lvimgrep /' . l:func_search . '/j ' . join(l:included)
             catch /.*/
             endtry
         else
-            let a:ind = index(map(deepcopy(a:fields),{n,val -> val[1]}),a:funcs[0])
-            if a:ind < 0
+            let l:ind = index(map(deepcopy(l:fields),{n,val -> val[1]}),a:funcs[0])
+            if l:ind < 0
                 break
             endif
 
-            execute 'silent tabedit! ' . a:prev_file
+            execute 'silent tabedit! ' . l:prev_file
             try
-                let a:new_struct = split(a:fields[a:ind][0],' ')
-                if len(a:new_struct) == 1
-                    let a:type_defs = s:getTypeDefs(a:new_struct[0])
+                let l:new_struct = split(l:fields[l:ind][0],' ')
+                if len(l:new_struct) == 1
+                    let l:type_defs = s:getTypeDefs(l:new_struct[0])
                 else
-                    let a:type_defs = s:getTypeDefs(join(a:new_struct[1:],'\_s*'),a:new_struct[0])
+                    let l:type_defs = s:getTypeDefs(join(l:new_struct[1:],'\_s*'),l:new_struct[0])
                 endif
 
-                let a:struct_find = len(a:type_defs) == 0 ? a:fields[a:ind][0] : '\(' . a:fields[a:ind][0] . '\|' . join(a:type_defs,'\|') . '\)'
-                let [a:prev_file,a:prev_struct,a:fields] = s:getStructDef(a:struct_find)
+                let l:struct_find = len(l:type_defs) == 0 ? l:fields[l:ind][0] : '\(' . l:fields[l:ind][0] . '\|' . join(l:type_defs,'\|') . '\)'
+                let [l:prev_file,l:prev_struct,l:fields] = s:getStructDef(l:struct_find)
             catch /^Vim\((\a\+)\)\=:E730.*/
-                let [a:prev_file,a:prev_struct,a:fields] = [a:prev_file,a:fields[a:ind][1],a:fields[a:ind][0]]
+                let [l:prev_file,l:prev_struct,l:fields] = [l:prev_file,l:fields[l:ind][1],l:fields[l:ind][0]]
             endtry
             call s:safeClose()
         endif
@@ -905,75 +905,75 @@ function! s:followChain(types,funcs,type_name)
             call remove(a:funcs,0)
         endif
     endwhile
-    call cursor(a:orig[0],a:orig[1])
+    call cursor(l:orig[0],l:orig[1])
 
-    if a:ind >= 0
-        let a:ind = match(map(a:fields,{n,val -> val[1]}),'\<' . a:type_name . '\>')
+    if l:ind >= 0
+        let l:ind = match(map(l:fields,{n,val -> val[1]}),'\<' . a:type_name . '\>')
     endif
 
-    return (a:ind >= 0)
+    return (l:ind >= 0)
 endfunction
 
 " References {{{2
 " getNextReference {{{3
 function! s:getNextReference(var,type,...)
     if a:type == 'right'
-        let a:search = s:no_comment . s:modifier_query . '\s*\(' . s:cpp_type . '\_s*' . s:collection_identifier . 
+        let l:search = s:no_comment . s:modifier_query . '\s*\(' . s:cpp_type . '\_s*' . s:collection_identifier . 
                     \ '\)\=\s*\(' . s:cpp_identifier . '\)\s*[(.=]\_[^{;]*\<\(' . a:var . '\)\>\_.\{-\};$'
-        let a:index = '\7'
-        let a:alt_index = '\8'
+        let l:index = '\7'
+        let l:alt_index = '\8'
     elseif a:type == 'left'
-        let a:search = s:no_comment . '\(.\{-\}\[[^]]\{-\}\<\(' . a:var . '\)\>.\{-\}]\|\<\(' . a:var . '\)\>\)\s*\(++\_s*;\|--\_s*;\|[-\^|&~+*/]\=[.=][^=]\).*'
-        let a:index = '\1'
-        let a:alt_index = '\1'
+        let l:search = s:no_comment . '\(.\{-\}\[[^]]\{-\}\<\(' . a:var . '\)\>.\{-\}]\|\<\(' . a:var . '\)\>\)\s*\(++\_s*;\|--\_s*;\|[-\^|&~+*/]\=[.=][^=]\).*'
+        let l:index = '\1'
+        let l:alt_index = '\1'
     elseif a:type == 'cond'
-        let a:search = s:no_comment . '\<\(switch\|while\|for\|if\|else\s\+if\)\>\_s*(\_[^{;]*\<\(' . a:var . '\)\>\_[^{;]*).*'
-        let a:index = '\1'
-        let a:alt_index = '\2'
+        let l:search = s:no_comment . '\<\(switch\|while\|for\|if\|else\s\+if\)\>\_s*(\_[^{;]*\<\(' . a:var . '\)\>\_[^{;]*).*'
+        let l:index = '\1'
+        let l:alt_index = '\2'
     elseif a:type == 'return'
-        let a:search = s:no_comment . '\s*\<return\>\_[^;]*\<\(' . a:var . '\)\>.*'
-        let a:index = '\1'
-        let a:alt_index = '\1'
+        let l:search = s:no_comment . '\s*\<return\>\_[^;]*\<\(' . a:var . '\)\>.*'
+        let l:index = '\1'
+        let l:alt_index = '\1'
     endif
 
-    let a:line = searchpos(a:search,'Wn')
-    let a:endline = s:getEndLine(a:line,a:search)
+    let l:line = searchpos(l:search,'Wn')
+    let l:endline = s:getEndLine(l:line,l:search)
     if a:type == 'right'
-        let a:prev = [line('.'),col('.')]
-        while s:isValidTag(a:line[0]) == 0
-            if a:line == [0,0]
+        let l:prev = [line('.'),col('.')]
+        while s:isValidTag(l:line[0]) == 0
+            if l:line == [0,0]
                 break
             endif
 
-            if match(getline(a:line[0]),';') >= 0
+            if match(getline(l:line[0]),';') >= 0
                 break
             endif
 
-            if match(getline(a:line[0]),'\<\(true\|false\)\>') >= 0 
+            if match(getline(l:line[0]),'\<\(true\|false\)\>') >= 0 
                 break
             endif
 
-            call cursor(a:line[0],a:line[1])
-            let a:line = searchpos(a:search,'Wn')
-            let a:endline = s:getEndLine(a:line,a:search)
+            call cursor(l:line[0],l:line[1])
+            let l:line = searchpos(l:search,'Wn')
+            let l:endline = s:getEndLine(l:line,l:search)
         endwhile
-        call cursor(a:prev[0],a:prev[1])
+        call cursor(l:prev[0],l:prev[1])
     endif
 
-    if a:line[0] > line('.')
-        let a:state = join(getline(a:line[0],a:endline[0]))
-        let a:loc = substitute(a:state,a:search,a:index,'')
+    if l:line[0] > line('.')
+        let l:state = join(getline(l:line[0],l:endline[0]))
+        let l:loc = substitute(l:state,l:search,l:index,'')
         if a:type == 'left'
-            let a:loc = substitute(a:loc,'.*\<\(' . a:var . '\)\>.*','\1','')
+            let l:loc = substitute(l:loc,'.*\<\(' . a:var . '\)\>.*','\1','')
         endif
         if a:0 > 0 && a:1 == 1
-            let a:name = substitute(a:state,a:search,a:alt_index,'')
+            let l:name = substitute(l:state,l:search,l:alt_index,'')
             if a:type == 'left'
-                let a:name = a:loc
+                let l:name = l:loc
             endif
-            return [a:loc,a:line,a:name]
+            return [l:loc,l:line,l:name]
         endif
-        return [a:loc,a:line]
+        return [l:loc,l:line]
     endif
         
     return (a:0 > 0 && a:1 == 1) ? ['none',[0,0],'none'] : ['none',[0,0]]
@@ -981,60 +981,60 @@ endfunction
 
 " getNextUse {{{3
 function! s:getNextUse(var,...)
-    let a:right = s:getNextReference(a:var,'right',a:0)
-    let a:left = s:getNextReference(a:var,'left',a:0)
-    let a:cond = s:getNextReference(a:var,'cond',a:0)
-    let a:return = s:getNextReference(a:var,'return',a:0)
+    let l:right = s:getNextReference(a:var,'right',a:0)
+    let l:left = s:getNextReference(a:var,'left',a:0)
+    let l:cond = s:getNextReference(a:var,'cond',a:0)
+    let l:return = s:getNextReference(a:var,'return',a:0)
 
-    let a:min = [a:right[0],copy(a:right[1]),'right']
-    let a:min_name = a:0 > 0 ? a:right[2] : ''
+    let l:min = [l:right[0],copy(l:right[1]),'right']
+    let l:min_name = a:0 > 0 ? l:right[2] : ''
 
-    let a:poss = [a:right,a:left,a:cond,a:return]
-    let a:idents = ['right','left','cond','return']
+    let l:poss = [l:right,l:left,l:cond,l:return]
+    let l:idents = ['right','left','cond','return']
     for i in range(4)
-        let temp = a:poss[i]
-        if temp[1] != [0,0] && (s:isBefore(temp[1],a:min[1]) == 1 || a:min[1] == [0,0])
-            let a:min = [temp[0],copy(temp[1]),a:idents[i]]
+        let temp = l:poss[i]
+        if temp[1] != [0,0] && (s:isBefore(temp[1],l:min[1]) == 1 || l:min[1] == [0,0])
+            let l:min = [temp[0],copy(temp[1]),l:idents[i]]
             if a:0 > 0
-                let a:min_name = temp[2]
+                let l:min_name = temp[2]
             endif
         endif
     endfor
 
     if a:0 > 0
-        call add(a:min,a:min_name)
+        call add(l:min,l:min_name)
     endif
 
-    return a:min
+    return l:min
 endfunction
 
 " File-Updating {{{2
 " updateUsingFile {{{3
 function! s:updateUsingFile(type_name,old_name,new_name,paren) abort
     call cursor(1,1)
-    let a:here = [line('.'),col('.')]
-    let a:types = '\<\(' . a:type_name . '\)\>'
-    let a:search = '\(\.\|->\)\<' . a:old_name . '\>' . a:paren
+    let l:here = [line('.'),col('.')]
+    let l:types = '\<\(' . a:type_name . '\)\>'
+    let l:search = '\(\.\|->\)\<' . a:old_name . '\>' . a:paren
 
-    let a:next = searchpos(a:search,'Wn')
-    while a:next != [0,0]
-        call cursor(a:next[0],a:next[1])
-        let [a:var,a:dec,a:funcs] = s:getUsingVar()
-        if len(a:funcs) == 0
-            let a:dec = join(a:dec,'|')
-            if match(a:dec,a:types) >= 0
+    let l:next = searchpos(l:search,'Wn')
+    while l:next != [0,0]
+        call cursor(l:next[0],l:next[1])
+        let [l:var,l:dec,l:funcs] = s:getUsingVar()
+        if len(l:funcs) == 0
+            let l:dec = join(l:dec,'|')
+            if match(l:dec,l:types) >= 0
                 call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
                 execute 'silent s/\(\.\|->\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/e'
             endif
         else
-            let a:chain = '\(' . join([a:var] + a:funcs,'\(\.\|->\)') . '\(\.\|->\)\)' . '\<' . a:old_name . '\>' . a:paren
-            if s:followChain(a:dec,a:funcs,a:new_name) == 1 && match(getline('.'),a:chain) >= 0
+            let l:chain = '\(' . join([l:var] + l:funcs,'\(\.\|->\)') . '\(\.\|->\)\)' . '\<' . a:old_name . '\>' . a:paren
+            if s:followChain(l:dec,l:funcs,a:new_name) == 1 && match(getline('.'),l:chain) >= 0
                 call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-                execute 'silent s/' . a:chain . '/\1' . a:new_name . a:paren . '/e'
+                execute 'silent s/' . l:chain . '/\1' . a:new_name . a:paren . '/e'
             endif
         endif
-        call cursor(a:next[0],a:next[1])
-        let a:next = searchpos(a:search,'Wn')
+        call cursor(l:next[0],l:next[1])
+        let l:next = searchpos(l:search,'Wn')
     endwhile
 
     silent write!
@@ -1052,89 +1052,89 @@ endfunction
 
 " getArgs {{{3
 function! s:getArgs() abort
-    let a:prev = [line('.'),col('.')]
+    let l:prev = [line('.'),col('.')]
     if matchstr(getline('.'), '\%' . col('.') . 'c.') != '('
         call search('(')
     endif
-    let a:start = strpart(getline('.'),0,col('.')-1)
+    let l:start = strpart(getline('.'),0,col('.')-1)
     normal %
-    let a:leftover = strpart(getline('.'),col('.'))
-    let a:end = line('.')
-    call cursor(a:prev[0],a:prev[1])
+    let l:leftover = strpart(getline('.'),col('.'))
+    let l:end = line('.')
+    call cursor(l:prev[0],l:prev[1])
 
-    let a:start = substitute(a:start,s:special_chars,'\\\1','g')
-    let a:leftover = substitute(a:leftover,s:special_chars,'\\\1','g')
+    let l:start = substitute(l:start,s:special_chars,'\\\1','g')
+    let l:leftover = substitute(l:leftover,s:special_chars,'\\\1','g')
 
-    let a:args = join(getline(a:prev[0],a:end))
-    let a:args = substitute(a:args,a:start . '(\(.*\))' . a:leftover,'\1','')
+    let l:args = join(getline(l:prev[0],l:end))
+    let l:args = substitute(l:args,l:start . '(\(.*\))' . l:leftover,'\1','')
 
-    if a:args == ''
+    if l:args == ''
         return 0
     endif
 
-    let a:car = 0
-    let a:par = 0
-    let a:count = 1
-    let a:i = 0
-    let a:prev = 0
-    while a:i < len(a:args)
-        let char = a:args[a:i]
-        if char == ',' && a:car == 0 && a:par == 0
-            let a:count += 1
+    let l:car = 0
+    let l:par = 0
+    let l:count = 1
+    let l:i = 0
+    let l:prev = 0
+    while l:i < len(l:args)
+        let char = l:args[l:i]
+        if char == ',' && l:car == 0 && l:par == 0
+            let l:count += 1
         elseif char == '>'
-            let a:car -= 1
+            let l:car -= 1
         elseif char == '<'
-            let a:car += 1
+            let l:car += 1
         elseif char == ')'
-            let a:par -= 1
+            let l:par -= 1
         elseif char == '('
-            let a:par += 1
+            let l:par += 1
         endif
-        let a:i += 1
+        let l:i += 1
     endwhile
-    return a:count
+    return l:count
 endfunction
 
 " updateParamFile {{{3
 function! s:updateParamFile(method_name,commas,default,param_name,param_type) abort
     call cursor(1,1)
-    let a:search = a:method_name . '('
+    let l:search = a:method_name . '('
 
-    let a:next = searchpos(a:search,'Wn')
-    let [a:param_search,a:insert] = ['',a:default . ')']
-    let a:com = a:commas > 0 ? ', ' : ''
+    let l:next = searchpos(l:search,'Wn')
+    let [l:param_search,l:insert] = ['',a:default . ')']
+    let l:com = a:commas > 0 ? ', ' : ''
     if a:commas > 0
-        let a:insert = ', ' . a:insert
-        let a:param_search = '\_[^;]\{-\}'
-        let a:param_search .= repeat(',' . '\_[^;]\{-\}',a:commas - 1)
+        let l:insert = ', ' . l:insert
+        let l:param_search = '\_[^;]\{-\}'
+        let l:param_search .= repeat(',' . '\_[^;]\{-\}',a:commas - 1)
     endif
-    let a:param_search = '\((' . a:param_search . '\))'
+    let l:param_search = '\((' . l:param_search . '\))'
 
-    while a:next != [0,0]
-        call cursor(a:next[0],a:next[1])
+    while l:next != [0,0]
+        call cursor(l:next[0],l:next[1])
         if s:getArgs() == a:commas
-            let a:func = s:cpp_type . '\_s*' . s:collection_identifier . '\<' . a:method_name . '\>\_s*('
-            if match(getline('.'),a:func) >= 0
-                let a:end = searchpos(')','Wn')
+            let l:func = s:cpp_type . '\_s*' . s:collection_identifier . '\<' . a:method_name . '\>\_s*('
+            if match(getline('.'),l:func) >= 0
+                let l:end = searchpos(')','Wn')
 
-                let a:line = substitute(getline(a:end[0]), ')', a:com . a:param_type . ' ' . a:param_name . ')', '')
+                let l:line = substitute(getline(l:end[0]), ')', l:com . a:param_type . ' ' . a:param_name . ')', '')
                 call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-                execute 'silent ' .  a:end[0] . 'd'
-                call append(a:end[0] - 1,a:line)
+                execute 'silent ' .  l:end[0] . 'd'
+                call append(l:end[0] - 1,l:line)
             else
                 call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
                 call search('(')
                 normal %
-                let a:end = line('.')
-                let a:leftover = strpart(getline('.'),col('.'))
-                call cursor(a:next[0],a:next[1])
-                execute 'silent ' . line('.') . ',' . a:end . 's/\<' .a:method_name . '\>' . a:param_search . '\(' . a:leftover . '\)/' . 
-                            \ a:method_name . '\1' . a:insert . '\2/e'
+                let l:end = line('.')
+                let l:leftover = strpart(getline('.'),col('.'))
+                call cursor(l:next[0],l:next[1])
+                execute 'silent ' . line('.') . ',' . l:end . 's/\<' .a:method_name . '\>' . l:param_search . '\(' . l:leftover . '\)/' . 
+                            \ a:method_name . '\1' . l:insert . '\2/e'
             endif
 
-            call cursor(a:next[0],a:next[1])
+            call cursor(l:next[0],l:next[1])
         endif
-        let a:next = searchpos(a:search,'Wn')
+        let l:next = searchpos(l:search,'Wn')
     endwhile
 
     silent write!
@@ -1142,285 +1142,285 @@ endfunction
 
 " updateFile {{{3
 function! s:updateFile(old_name,new_name,is_method,is_local)
-    let a:orig = [line('.'),col('.')]
+    let l:orig = [line('.'),col('.')]
 
     if a:is_local == 1
-        let a:query = '\(^\|[^.]\)\<' . a:old_name . '\>'
+        let l:query = '\(^\|[^.]\)\<' . a:old_name . '\>'
         call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-        execute 'silent s/' . a:query . '/\1' . a:new_name . '/g'
+        execute 'silent s/' . l:query . '/\1' . a:new_name . '/g'
 
         call s:gotoTag()
-        let a:closing = s:getClosingBracket(1)
+        let l:closing = s:getClosingBracket(1)
 
-        let a:next = searchpos(a:query,'Wn')
-        while s:isBefore(a:next,a:closing)
-            if a:next == [0,0]
+        let l:next = searchpos(l:query,'Wn')
+        while s:isBefore(l:next,l:closing)
+            if l:next == [0,0]
                 break
             endif
-            call cursor(a:next[0],a:next[1])
+            call cursor(l:next[0],l:next[1])
             call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-            execute 'silent s/' . a:query . '/\1' . a:new_name . '/g'
+            execute 'silent s/' . l:query . '/\1' . a:new_name . '/g'
 
-            let a:next = searchpos(a:query,'Wn')
+            let l:next = searchpos(l:query,'Wn')
         endwhile
     else
-        let a:paren = a:is_method == 1 ? '(' : ''
+        let l:paren = a:is_method == 1 ? '(' : ''
         try
-            execute 'silent lvimgrep /\(^\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/j %:p'
+            execute 'silent lvimgrep /\(^\|[^.]\)\<' . a:old_name . '\>' . l:paren . '/j %:p'
             let g:factorus_qf += map(getloclist(0),{n,val -> {'filename' : expand('%:p'), 'lnum' : val['lnum'], 'text' : s:trim(val['text'])}})
         catch /.*/
         endtry
         call setloclist(0,[])
 
-        execute 'silent %s/\(^\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/ge'
+        execute 'silent %s/\(^\|[^.]\)\<' . a:old_name . '\>' . l:paren . '/\1' . a:new_name . l:paren . '/ge'
     endif
 
-    call cursor(a:orig[0],a:orig[1])
+    call cursor(l:orig[0],l:orig[1])
     silent write!
 endfunction
 
 " Renaming {{{2
 " renameArg {{{3
 function! s:renameArg(new_name,...) abort
-    let a:var = expand('<cword>')
-    let g:factorus_history['old'] = a:var
-    call s:updateFile(a:var,a:new_name,0,1)
+    let l:var = expand('<cword>')
+    let g:factorus_history['old'] = l:var
+    call s:updateFile(l:var,a:new_name,0,1)
 
     if !factorus#isRollback(a:000)
         redraw
-        echo 'Re-named ' . a:var . ' to ' . a:new_name
+        echo 'Re-named ' . l:var . ' to ' . a:new_name
     endif
-    return [a:var,[]]
+    return [l:var,[]]
 endfunction
 
 " renameField {{{3
 function! s:renameField(new_name,...) abort
-    let a:search = '^\s*' . s:modifier_query . '\(' . s:cpp_type . s:collection_identifier . '\)\=\s*\(' . s:cpp_identifier . '\)\s*[;=].*'
+    let l:search = '^\s*' . s:modifier_query . '\(' . s:cpp_type . s:collection_identifier . '\)\=\s*\(' . s:cpp_identifier . '\)\s*[;=].*'
 
-    let a:line = getline('.')
-    let a:is_static = match(a:line,'\<static\>') >= 0 ? 1 : 0
-    let a:is_local = !s:isInType()
-    let a:type = substitute(a:line,a:search,'\4','')
-    let a:var = s:trim(substitute(a:line,a:search,'\7',''))
-    if a:var == '' || a:type == '' || match(a:var,'[^' . s:search_chars . ']') >= 0
-        if a:is_local == 1 || match(getline(s:getAdjacentTag('b')),'\<enum\>') < 0
+    let l:line = getline('.')
+    let l:is_static = match(l:line,'\<static\>') >= 0 ? 1 : 0
+    let l:is_local = !s:isInType()
+    let l:type = substitute(l:line,l:search,'\4','')
+    let l:var = s:trim(substitute(l:line,l:search,'\7',''))
+    if l:var == '' || l:type == '' || match(l:var,'[^' . s:search_chars . ']') >= 0
+        if l:is_local == 1 || match(getline(s:getAdjacentTag('b')),'\<enum\>') < 0
             throw 'Factorus:Invalid'
         endif
-        let a:var = expand('<cword>')
+        let l:var = expand('<cword>')
         call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-        execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/e'
+        execute 'silent s/\<' . l:var . '\>/' . a:new_name . '/e'
         silent write!
 
-        let a:temp_file = '.FactorusEnum'
+        let l:temp_file = '.FactorusEnum'
         
         echo 'Updating enum...'
-        call s:findTags(a:temp_file,'\<' . a:var . '\>','no')
-        call s:updateQuickFix(a:temp_file,'\<' . a:var . '\>')
-        call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:var . '\>/' . a:new_name . '/g"')
-        call system('rm -rf ' . a:temp_file)
+        call s:findTags(l:temp_file,'\<' . l:var . '\>','no')
+        call s:updateQuickFix(l:temp_file,'\<' . l:var . '\>')
+        call system('cat ' . l:temp_file . ' | xargs sed -i "s/\<' . l:var . '\>/' . a:new_name . '/g"')
+        call system('rm -rf ' . l:temp_file)
 
-        let a:unchanged = s:getUnchanged('\<' . a:var . '\>')
+        let l:unchanged = s:getUnchanged('\<' . l:var . '\>')
         redraw
-        echo 'Renamed enum field ' . a:var . ' to ' . a:new_name . '.'
-        return [a:var,a:unchanged]
-    elseif a:var == a:new_name
+        echo 'Renamed enum field ' . l:var . ' to ' . a:new_name . '.'
+        return [l:var,l:unchanged]
+    elseif l:var == a:new_name
         throw 'Factorus:Duplicate'
     endif
-    let g:factorus_history['old'] = a:var
+    let g:factorus_history['old'] = l:var
 
-    let a:unchanged = []
-    if a:is_local == 1
-        call s:updateFile(a:var,a:new_name,0,a:is_local)
+    let l:unchanged = []
+    if l:is_local == 1
+        call s:updateFile(l:var,a:new_name,0,l:is_local)
     else
         call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-        execute 'silent s/\<' . a:var . '\>/' . a:new_name . '/e'
+        execute 'silent s/\<' . l:var . '\>/' . a:new_name . '/e'
 
         call s:gotoTag()
 
-        let a:search = '^\s*\(\<typedef\>\)\=\_s*\<\(struct\|union\)\>\_s*\(' . s:cpp_identifier . '\)\=\_s*{\=.*'
-        let a:type_type = substitute(getline('.'),a:search,'\2','')
-        if a:type_type == ''
+        let l:search = '^\s*\(\<typedef\>\)\=\_s*\<\(struct\|union\)\>\_s*\(' . s:cpp_identifier . '\)\=\_s*{\=.*'
+        let l:type_type = substitute(getline('.'),l:search,'\2','')
+        if l:type_type == ''
             throw 'Factorus:Invalid'
         endif
 
-        let a:type_defs = []
-        let a:type_name = ''
-        if substitute(getline('.'),a:search,'\3','') != ''
-            let a:type_name = substitute(getline('.'),a:search,'\3','')
+        let l:type_defs = []
+        let l:type_name = ''
+        if substitute(getline('.'),l:search,'\3','') != ''
+            let l:type_name = substitute(getline('.'),l:search,'\3','')
         endif
 
         if match(getline('.'),'\<typedef\>') >= 0
-            let a:prev = [line('.'),col('.')]
+            let l:prev = [line('.'),col('.')]
             call search('{')
             normal %
             if match(getline('.'),'\<\(' . s:cpp_identifier . '\)\>') >= 0
-                call add(a:type_defs,substitute(getline('.'),'.*\<\(' . s:cpp_identifier . '\)\>.*','\1',''))
+                call add(l:type_defs,substitute(getline('.'),'.*\<\(' . s:cpp_identifier . '\)\>.*','\1',''))
             endif
-            call cursor(a:prev[0],a:prev[1])
+            call cursor(l:prev[0],l:prev[1])
         endif
 
-        let a:includes = s:getAllIncluded()
+        let l:includes = s:getAllIncluded()
 
         try
-            execute 'silent lvimgrep /\<' . a:method_name . '\>(/j ' . join(a:includes)
+            execute 'silent lvimgrep /\<' . l:method_name . '\>(/j ' . join(l:includes)
             execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
             call setloclist(0,[])
-            let a:swap = 1
+            let l:swap = 1
         catch /.*/
-            let a:swap = 0
+            let l:swap = 0
         endtry
 
         redraw
         echo 'Updating references...'
 
-        let a:temp_file = '.FactorusInc'
-        call s:getInclusions(a:temp_file,a:is_static)
-        call s:narrowTags(a:temp_file,'\(\.\|->\)' . a:var)
+        let l:temp_file = '.FactorusInc'
+        call s:getInclusions(l:temp_file,l:is_static)
+        call s:narrowTags(l:temp_file,'\(\.\|->\)' . l:var)
 
-        let a:files = readfile(a:temp_file) + [expand('%:p')]
-        if a:type_name != ''
-            let a:type_defs += s:getTypeDefs(a:type_name,a:type_type)
-            let a:find_name = a:type_type . '\_s*' . a:type_name
-            call add(a:type_defs,a:find_name)
+        let l:files = readfile(l:temp_file) + [expand('%:p')]
+        if l:type_name != ''
+            let l:type_defs += s:getTypeDefs(l:type_name,l:type_type)
+            let l:find_name = l:type_type . '\_s*' . l:type_name
+            call add(l:type_defs,l:find_name)
         endif
 
-        let a:def_find = join(a:type_defs,'\|')
-        call s:updateUsingFiles(a:files,a:def_find,a:var,a:new_name,'')
-        call system('rm -rf ' . a:temp_file)
-        let a:unchanged = s:getUnchanged('\(\.\|->\)\<' . a:var . '\>')
+        let l:def_find = join(l:type_defs,'\|')
+        call s:updateUsingFiles(l:files,l:def_find,l:var,a:new_name,'')
+        call system('rm -rf ' . l:temp_file)
+        let l:unchanged = s:getUnchanged('\(\.\|->\)\<' . l:var . '\>')
     endif
 
     redraw
-    echo 'Re-named ' . a:var . ' to ' . a:new_name
-    return [a:var,a:unchanged]
+    echo 'Re-named ' . l:var . ' to ' . a:new_name
+    return [l:var,l:unchanged]
 endfunction
 
 " renameMacro {{{3
 function! s:renameMacro(new_name,...) abort
-    let a:search = '^#define \<\(' . s:cpp_identifier . '\)\>.*'
-    let a:macro = substitute(getline('.'),a:search,'\1','')
-    if a:macro == '' || a:macro == getline('.')
+    let l:search = '^#define \<\(' . s:cpp_identifier . '\)\>.*'
+    let l:macro = substitute(getline('.'),l:search,'\1','')
+    if l:macro == '' || l:macro == getline('.')
         throw 'Factorus:Invalid'
     endif
-    call s:updateFile(a:macro,a:new_name,0,0)
+    call s:updateFile(l:macro,a:new_name,0,0)
 
-    let a:temp_file = '.FactorusMacro'
-    call s:getInclusions(a:temp_file,0)
-    call s:updateQuickFix(a:temp_file,'\<' . a:macro . '\>')
+    let l:temp_file = '.FactorusMacro'
+    call s:getInclusions(l:temp_file,0)
+    call s:updateQuickFix(l:temp_file,'\<' . l:macro . '\>')
 
-    call system('cat ' . a:temp_file . ' | xargs sed -i "s/\<' . a:macro . '\>/' . a:new_name . '/g"')
-    call system('rm -rf ' . a:temp_file)
-    let a:unchanged = s:getUnchanged('\<' . a:macro . '\>')
+    call system('cat ' . l:temp_file . ' | xargs sed -i "s/\<' . l:macro . '\>/' . a:new_name . '/g"')
+    call system('rm -rf ' . l:temp_file)
+    let l:unchanged = s:getUnchanged('\<' . l:macro . '\>')
 
     silent edit!
     redraw
-    echo 'Renamed macro ' . a:macro . ' to ' . a:new_name . '.'
+    echo 'Renamed macro ' . l:macro . ' to ' . a:new_name . '.'
 
-    return [a:macro,a:unchanged]
+    return [l:macro,l:unchanged]
 endfunction
 
 " renameMethod {{{3
 function! s:renameMethod(new_name,...) abort
     call s:gotoTag()
 
-    let a:unchanged = []
-    let a:method_name = matchstr(getline('.'),'\<' . s:cpp_identifier . '\>\s*(')
-    let a:method_name = matchstr(a:method_name,'[^[:space:](]\+')
-    if a:method_name == a:new_name
+    let l:unchanged = []
+    let l:method_name = matchstr(getline('.'),'\<' . s:cpp_identifier . '\>\s*(')
+    let l:method_name = matchstr(l:method_name,'[^[:space:](]\+')
+    if l:method_name == a:new_name
         throw 'Factorus:Duplicate'
     endif
-    let g:factorus_history['old'] = a:method_name
+    let g:factorus_history['old'] = l:method_name
 
-    let a:is_static = match(getline('.'),'\<static\>[^)]\+(') >= 0 ? 1 : 0
+    let l:is_static = match(getline('.'),'\<static\>[^)]\+(') >= 0 ? 1 : 0
 
-    let a:includes = s:getAllIncluded()
+    let l:includes = s:getAllIncluded()
     try
-        execute 'silent lvimgrep /\<' . a:method_name . '\>(/j ' . join(a:includes)
+        execute 'silent lvimgrep /\<' . l:method_name . '\>(/j ' . join(l:includes)
         execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
         call setloclist(0,[])
-        let a:swap = 1
+        let l:swap = 1
     catch /.*/
-        let a:swap = 0
+        let l:swap = 0
     endtry
 
-    call s:updateFile(a:method_name,a:new_name,1,0)
+    call s:updateFile(l:method_name,a:new_name,1,0)
 
     redraw
     echo 'Updating references...'
-    let a:search = '\([^.]\)\<' . a:method_name . '\>('
-    let a:temp_file = '.FactorusInc'
+    let l:search = '\([^.]\)\<' . l:method_name . '\>('
+    let l:temp_file = '.FactorusInc'
 
-    call s:getInclusions(a:temp_file,a:is_static)
-    call s:updateQuickFix(a:temp_file,a:search)
+    call s:getInclusions(l:temp_file,l:is_static)
+    call s:updateQuickFix(l:temp_file,l:search)
 
-    call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/\1' . a:new_name . '(/g"')
-    call system('rm -rf ' . a:temp_file)
-    let a:unchanged = s:getUnchanged('\<' . a:method_name . '\>')
+    call system('cat ' . l:temp_file . ' | xargs sed -i "s/' . l:search . '/\1' . a:new_name . '(/g"')
+    call system('rm -rf ' . l:temp_file)
+    let l:unchanged = s:getUnchanged('\<' . l:method_name . '\>')
 
-    if a:swap == 1
+    if l:swap == 1
         call s:safeClose()
     endif
     silent edit!
 
     redraw
-    let a:keyword = a:is_static == 1 ? ' static' : ''
-    echo 'Re-named' . a:keyword . ' method ' . a:method_name . ' to ' . a:new_name
+    let l:keyword = l:is_static == 1 ? ' static' : ''
+    echo 'Re-named' . l:keyword . ' method ' . l:method_name . ' to ' . a:new_name
 
-    return [a:method_name,a:unchanged]
+    return [l:method_name,l:unchanged]
 endfunction
 
 " renameType {{{3
 function! s:renameType(new_name,...) abort
     call s:gotoTag()
 
-    let a:unchanged = []
-    let a:search = '^.*\<\(enum\|struct\|union\)\>\s*\(\<' . s:cpp_identifier . '\>\)\s*\({\|\<' . s:cpp_identifier . '\>\_s*;\).*'
-    if match(getline('.'),a:search) < 0
+    let l:unchanged = []
+    let l:search = '^.*\<\(enum\|struct\|union\)\>\s*\(\<' . s:cpp_identifier . '\>\)\s*\({\|\<' . s:cpp_identifier . '\>\_s*;\).*'
+    if match(getline('.'),l:search) < 0
         throw 'Factorus:Invalid'
     endif
 
-    let [a:type,a:type_name] = split(substitute(getline('.'),a:search,'\1|\2',''),'|')
-    let a:is_static = match(getline('.'),'\<static\>[^)]\+(') >= 0 ? 1 : 0
-    let a:rep = '\<' . a:type . '\>\_s*\<' . a:type_name . '\>'
-    let a:new_rep = a:type . ' ' . a:new_name
-    let g:factorus_history['old'] = a:type . ' ' . a:type_name
+    let [l:type,l:type_name] = split(substitute(getline('.'),l:search,'\1|\2',''),'|')
+    let l:is_static = match(getline('.'),'\<static\>[^)]\+(') >= 0 ? 1 : 0
+    let l:rep = '\<' . l:type . '\>\_s*\<' . l:type_name . '\>'
+    let l:new_rep = l:type . ' ' . a:new_name
+    let g:factorus_history['old'] = l:type . ' ' . l:type_name
 
-    let a:includes = s:getAllIncluded()
+    let l:includes = s:getAllIncluded()
     try
-        execute 'silent lvimgrep /' . a:rep . '/j ' . join(a:includes)
+        execute 'silent lvimgrep /' . l:rep . '/j ' . join(l:includes)
         execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
         call setloclist(0,[])
-        let a:swap = 1
+        let l:swap = 1
     catch /.*/
-        let a:swap = 0
+        let l:swap = 0
     endtry
 
-    call s:updateFile(a:rep,a:new_rep,0,0)
+    call s:updateFile(l:rep,l:new_rep,0,0)
 
     redraw
     echo 'Updating references...'
 
-    let a:search = '\<' . a:type . '\>[[:space:]]*\<' . a:type_name . '\>'
-    let a:temp_file = '.FactorusInc'
+    let l:search = '\<' . l:type . '\>[[:space:]]*\<' . l:type_name . '\>'
+    let l:temp_file = '.FactorusInc'
 
-    call s:getInclusions(a:temp_file,a:is_static)
-    call s:updateQuickFix(a:temp_file,a:search)
+    call s:getInclusions(l:temp_file,l:is_static)
+    call s:updateQuickFix(l:temp_file,l:search)
 
-    call system('cat ' . a:temp_file . ' | xargs sed -i "s/' . a:search . '/' . a:new_rep . '/g"')
-    call system('rm -rf ' . a:temp_file)
-    let a:unchanged = s:getUnchanged(a:search)
+    call system('cat ' . l:temp_file . ' | xargs sed -i "s/' . l:search . '/' . l:new_rep . '/g"')
+    call system('rm -rf ' . l:temp_file)
+    let l:unchanged = s:getUnchanged(l:search)
 
-    if a:swap == 1
+    if l:swap == 1
         call s:safeClose()
     endif
     silent edit!
 
     if !factorus#isRollback(a:000)
         redraw
-        let a:keyword = a:is_static == 1 ? ' static' : ''
-        echo 'Re-named' . a:keyword . ' ' . a:type . ' ' . a:type_name . ' to ' . a:new_name
+        let l:keyword = l:is_static == 1 ? ' static' : ''
+        echo 'Re-named' . l:keyword . ' ' . l:type . ' ' . l:type_name . ' to ' . a:new_name
     endif
-    return [a:type . ' ' . a:type_name,a:unchanged]
+    return [l:type . ' ' . l:type_name,l:unchanged]
 endfunction
 
 " Extraction {{{2
@@ -1440,431 +1440,431 @@ endfunction
 
 " getAllBlocks {{{3
 function! s:getAllBlocks(close)
-    let a:if = '\<if\>\_s*(\_[^{;]*)\_s*{\='
-    let a:for = '\<for\>\_s*(\_[^{;]*;\_[^{;]*;\_[^{;]*)\_s*{\='
-    let a:while = '\<while\>\_s*(\_[^{;]*)'
-    let a:do = '\<do\>\_s*{'
-    let a:switch = '\<switch\>\_s*(\_[^{]*)\_s*{'
-    let a:search = '\(' . a:if . '\|' . a:for . '\|' . a:while . '\|' . a:do . '\|' . a:switch . '\)'
+    let l:if = '\<if\>\_s*(\_[^{;]*)\_s*{\='
+    let l:for = '\<for\>\_s*(\_[^{;]*;\_[^{;]*;\_[^{;]*)\_s*{\='
+    let l:while = '\<while\>\_s*(\_[^{;]*)'
+    let l:do = '\<do\>\_s*{'
+    let l:switch = '\<switch\>\_s*(\_[^{]*)\_s*{'
+    let l:search = '\(' . l:if . '\|' . l:for . '\|' . l:while . '\|' . l:do . '\|' . l:switch . '\)'
 
-    let a:orig = [line('.'),col('.')]
+    let l:orig = [line('.'),col('.')]
     call s:gotoTag()
-    let a:blocks = [[line('.'),a:close[0]]]
+    let l:blocks = [[line('.'),a:close[0]]]
 
-    let a:open = searchpos('{','Wn')
-    let a:next = searchpos(a:search,'Wn')
-    while a:next[0] <= a:close[0]
-        if a:next == [0,0]
+    let l:open = searchpos('{','Wn')
+    let l:next = searchpos(l:search,'Wn')
+    while l:next[0] <= a:close[0]
+        if l:next == [0,0]
             break
         endif
-        call cursor(a:next[0],a:next[1])
+        call cursor(l:next[0],l:next[1])
 
         if match(getline('.'),'\<else\>') >= 0 || match(getline('.'),'}\s*\<while\>') >= 0
-            let a:next = searchpos(a:search,'Wn')
+            let l:next = searchpos(l:search,'Wn')
             continue
         endif
 
         if match(getline('.'),'\<\(if\|for\|while\)\>') >= 0
-            let a:open = [line('.'),col('.')]
+            let l:open = [line('.'),col('.')]
             call search('(')
             normal %
 
-            let a:ret =  searchpos('{','Wn')
-            let a:semi = searchpos(';','Wn')
+            let l:ret =  searchpos('{','Wn')
+            let l:semi = searchpos(';','Wn')
 
-            let a:o = line('.')
-            if s:isBefore(a:semi,a:ret) == 1
-                call cursor(a:semi[0],a:semi[1])
-                call add(a:blocks,[a:open[0],line('.')])
+            let l:o = line('.')
+            if s:isBefore(l:semi,l:ret) == 1
+                call cursor(l:semi[0],l:semi[1])
+                call add(l:blocks,[l:open[0],line('.')])
             elseif match(getline('.'),'\<if\>') >= 0
-                call cursor(a:ret[0],a:ret[1])
+                call cursor(l:ret[0],l:ret[1])
                 normal %
 
-                let a:continue = '}\_s*else\_s*\(\<if\>\_[^{]*)\)\={'
-                let a:next = searchpos(a:continue,'Wnc')
-                while a:next == [line('.'),col('.')]
-                    if a:next == [0,0]
-                        let a:next = a:ret
+                let l:continue = '}\_s*else\_s*\(\<if\>\_[^{]*)\)\={'
+                let l:next = searchpos(l:continue,'Wnc')
+                while l:next == [line('.'),col('.')]
+                    if l:next == [0,0]
+                        let l:next = l:ret
                         break
                     endif
-                    call add(a:blocks,[a:o,line('.')])
+                    call add(l:blocks,[l:o,line('.')])
                     call search('{','W')
-                    let a:o = line('.')
+                    let l:o = line('.')
                     normal %
 
-                    let a:next = searchpos(a:continue,'Wnc')
+                    let l:next = searchpos(l:continue,'Wnc')
                 endwhile
-                call add(a:blocks,[a:o,line('.')])
-                if a:o != a:open[0]
-                    call add(a:blocks,[a:open[0],line('.')])
+                call add(l:blocks,[l:o,line('.')])
+                if l:o != l:open[0]
+                    call add(l:blocks,[l:open[0],line('.')])
                 endif
             else
                 call search('{','W')
-                let a:prev = [line('.'),col('.')]
+                let l:prev = [line('.'),col('.')]
                 normal %
-                call add(a:blocks,[a:next[0],line('.')])
-                call cursor(a:prev[0],a:prev[1])
+                call add(l:blocks,[l:next[0],line('.')])
+                call cursor(l:prev[0],l:prev[1])
             endif
 
-            call cursor(a:open[0],a:open[1])
+            call cursor(l:open[0],l:open[1])
         elseif match(getline('.'),'\<switch\>') >= 0
-            let a:open = [line('.'),col('.')]
+            let l:open = [line('.'),col('.')]
             call searchpos('{','W')
 
             normal %
-            let a:sclose = [line('.'),col('.')]
+            let l:sclose = [line('.'),col('.')]
             normal %
 
-            let a:continue = '\<\(case\|default\)\>[^:]*:'
-            let a:next = searchpos(a:continue,'Wn')
+            let l:continue = '\<\(case\|default\)\>[^:]*:'
+            let l:next = searchpos(l:continue,'Wn')
 
-            while s:isBefore(a:next,a:sclose) == 1 && a:next != [0,0]
-                call cursor(a:next[0],a:next[1])
-                let a:next = searchpos(a:continue,'Wn')
-                if s:isBefore(a:close,a:next) == 1 || a:next == [0,0]
-                    call add(a:blocks,[line('.'),a:close[0]])
+            while s:isBefore(l:next,l:sclose) == 1 && l:next != [0,0]
+                call cursor(l:next[0],l:next[1])
+                let l:next = searchpos(l:continue,'Wn')
+                if s:isBefore(a:close,l:next) == 1 || l:next == [0,0]
+                    call add(l:blocks,[line('.'),a:close[0]])
                     break
                 endif
-                call add(a:blocks,[line('.'),a:next[0]-1])
+                call add(l:blocks,[line('.'),l:next[0]-1])
             endwhile
-            call add(a:blocks,[a:open[0],a:sclose[0]])
+            call add(l:blocks,[l:open[0],l:sclose[0]])
         else
             call search('{','W')
-            let a:prev = [line('.'),col('.')]
+            let l:prev = [line('.'),col('.')]
             normal %
-            call add(a:blocks,[a:next[0],line('.')])
-            call cursor(a:prev[0],a:prev[1])
+            call add(l:blocks,[l:next[0],line('.')])
+            call cursor(l:prev[0],l:prev[1])
         endif
 
-        let a:next = searchpos(a:search,'Wn')
+        let l:next = searchpos(l:search,'Wn')
     endwhile
 
-    call cursor(a:orig[0],a:orig[1])
-    return uniq(sort(a:blocks,'s:compare'))
+    call cursor(l:orig[0],l:orig[1])
+    return uniq(sort(l:blocks,'s:compare'))
 endfunction
 
 " getAllRelevantLines {{{3
 function! s:getAllRelevantLines(vars,names,close)
-    let a:orig = [line('.'),col('.')]
-    let a:begin = s:getAdjacentTag('b')
+    let l:orig = [line('.'),col('.')]
+    let l:begin = s:getAdjacentTag('b')
 
-    let a:lines = {}
+    let l:lines = {}
     let a:closes = {}
-    let a:isos = {}
+    let l:isos = {}
     for var in a:vars
         call cursor(var[2],1)
         if match(getline('.'),'\<for\>') >= 0
             call search('(')
             normal %
             if s:isBefore(searchpos(';','Wn'),searchpos('{','Wn'))
-                let a:start_lines = range(var[2],search(';','Wn'))
+                let l:start_lines = range(var[2],search(';','Wn'))
             else
                 call search('{')
                 normal %
-                let a:start_lines = range(var[2],line('.'))
+                let l:start_lines = range(var[2],line('.'))
             endif
             call cursor(var[2],1)
         else
-            let a:start_lines = [var[2]]
+            let l:start_lines = [var[2]]
         endif
-        let a:local_close = var[2] == a:begin ? s:getClosingBracket(1) : s:getClosingBracket(0)
-        let a:closes[var[0]] = copy(a:local_close)
-        call cursor(a:orig[0],a:orig[1])
-        if index(keys(a:lines),var[0]) < 0
-            let a:lines[var[0]] = {var[2] : a:start_lines}
+        let l:local_close = var[2] == l:begin ? s:getClosingBracket(1) : s:getClosingBracket(0)
+        let a:closes[var[0]] = copy(l:local_close)
+        call cursor(l:orig[0],l:orig[1])
+        if index(keys(l:lines),var[0]) < 0
+            let l:lines[var[0]] = {var[2] : l:start_lines}
         else
-            let a:lines[var[0]][var[2]] = a:start_lines
+            let l:lines[var[0]][var[2]] = l:start_lines
         endif
-        let a:isos[var[0]] = {}
+        let l:isos[var[0]] = {}
     endfor
 
-    let a:search = join(a:names,'\|')
-    let a:next = s:getNextUse(a:search,1)
+    let l:search = join(a:names,'\|')
+    let l:next = s:getNextUse(l:search,1)
 
-    while s:isBefore(a:next[1],a:close) == 1
-        if a:next[1] == [0,0]
+    while s:isBefore(l:next[1],a:close) == 1
+        if l:next[1] == [0,0]
             break
         endif
 
-        let a:pause = copy(a:next)
-        let a:new_search = a:search
-        while a:pause[1] == a:next[1]
-            let a:name = a:next[3]
+        let l:pause = copy(l:next)
+        let l:new_search = l:search
+        while l:pause[1] == l:next[1]
+            let l:name = l:next[3]
 
-            let a:ldec = s:getLatestDec(a:lines,a:name,a:next[1])
+            let l:ldec = s:getLatestDec(l:lines,l:name,l:next[1])
 
-            let a:quoted = s:isQuoted('\<' . a:name . '\>',s:getStatement(a:next[1][0]))
-            if s:isBefore(a:next[1],a:closes[a:name]) == 1 && a:quoted == 0 && a:ldec > 0
-                if index(a:lines[a:name][a:ldec],a:next[1][0]) < 0
-                    call add(a:lines[a:name][a:ldec],a:next[1][0])
+            let l:quoted = s:isQuoted('\<' . l:name . '\>',s:getStatement(l:next[1][0]))
+            if s:isBefore(l:next[1],a:closes[l:name]) == 1 && l:quoted == 0 && l:ldec > 0
+                if index(l:lines[l:name][l:ldec],l:next[1][0]) < 0
+                    call add(l:lines[l:name][l:ldec],l:next[1][0])
                 endif
             endif
 
-            if match(a:new_search,'\\|') < 0
+            if match(l:new_search,'\\|') < 0
                 break
             endif
 
-            let a:new_search = substitute(a:new_search,'\\|\<' . a:name . '\>','','')
-            let a:new_search = substitute(a:new_search,'\<' . a:name . '\>\\|','','')
+            let l:new_search = substitute(l:new_search,'\\|\<' . l:name . '\>','','')
+            let l:new_search = substitute(l:new_search,'\<' . l:name . '\>\\|','','')
 
-            let a:next = s:getNextUse(a:new_search,1)
+            let l:next = s:getNextUse(l:new_search,1)
         endwhile
-        let a:next = copy(a:pause)
+        let l:next = copy(l:pause)
 
-        call cursor(a:next[1][0],a:next[1][1])
-        let a:next = s:getNextUse(a:search,1)
+        call cursor(l:next[1][0],l:next[1][1])
+        let l:next = s:getNextUse(l:search,1)
     endwhile
     
-    call cursor(a:orig[0],a:orig[1])
-    return [a:lines,a:isos]
+    call cursor(l:orig[0],l:orig[1])
+    return [l:lines,l:isos]
 endfunction
 
 " isIsolatedBlock {{{3
 function! s:isIsolatedBlock(block,var,rels,close)
-    let a:orig = [line('.'),col('.')]
+    let l:orig = [line('.'),col('.')]
     call cursor(a:block[0],1)
     if a:block[1] - a:block[0] == 0
         call cursor(line('.')-1,1)
     endif
 
-    let a:search = join(keys(a:rels),'\|')
-    let a:search = substitute(a:search,'\\|\<' . a:var[0] . '\>','','')
-    let a:search = substitute(a:search,'\<' . a:var[0] . '\>\\|','','')
-    let a:ref = s:getNextReference(a:search,'left',1)
-    let a:return = search('\<\(return\)\>','Wn')
-    let a:continue = search('\<\(continue\|break\)\>','Wn')
+    let l:search = join(keys(a:rels),'\|')
+    let l:search = substitute(l:search,'\\|\<' . a:var[0] . '\>','','')
+    let l:search = substitute(l:search,'\<' . a:var[0] . '\>\\|','','')
+    let l:ref = s:getNextReference(l:search,'left',1)
+    let l:return = search('\<\(return\)\>','Wn')
+    let l:continue = search('\<\(continue\|break\)\>','Wn')
 
-    let a:res = 1
-    if s:contains(a:block,a:return) == 1
-        let a:res = 0
-    elseif s:contains(a:block,a:continue)
-        call cursor(a:continue,1)
-        let a:loop = searchpair('\<\(for\|while\)\>','','}','Wbn')
-        if a:loop != 0 && a:loop < a:block[0]
-            let a:res = 0
+    let l:res = 1
+    if s:contains(a:block,l:return) == 1
+        let l:res = 0
+    elseif s:contains(a:block,l:continue)
+        call cursor(l:continue,1)
+        let l:loop = searchpair('\<\(for\|while\)\>','','}','Wbn')
+        if l:loop != 0 && l:loop < a:block[0]
+            let l:res = 0
         endif
     else
-        while a:ref[1] != [0,0] && s:isBefore(a:ref[1],[a:block[1]+1,1]) == 1
-            let a:i = s:getLatestDec(a:rels,a:ref[2],a:ref[1])
-            if s:contains(a:block,a:i) == 0
-                let a:res = 0
+        while l:ref[1] != [0,0] && s:isBefore(l:ref[1],[a:block[1]+1,1]) == 1
+            let l:i = s:getLatestDec(a:rels,l:ref[2],l:ref[1])
+            if s:contains(a:block,l:i) == 0
+                let l:res = 0
                 break
             endif
-            call cursor(a:ref[1][0],a:ref[1][1])
-            let a:ref = s:getNextReference(a:search,'left',1)
+            call cursor(l:ref[1][0],l:ref[1][1])
+            let l:ref = s:getNextReference(l:search,'left',1)
         endwhile
     endif
 
-    call cursor(a:orig[0],a:orig[1])
-    return a:res
+    call cursor(l:orig[0],l:orig[1])
+    return l:res
 endfunction
 
 " getIsolatedLines {{{3
 function! s:getIsolatedLines(var,compact,rels,blocks,close)
-    let a:refs = a:rels[a:var[0]][a:var[2]]
-    let [a:names,a:decs] = a:compact
+    let l:refs = a:rels[a:var[0]][a:var[2]]
+    let [l:names,l:decs] = a:compact
 
-    if len(a:refs) == 1
+    if len(l:refs) == 1
         return []
     endif
 
-    let a:orig = [line('.'),col('.')]
-    let [a:name,a:type,a:dec] = a:var
+    let l:orig = [line('.'),col('.')]
+    let [l:name,l:type,l:dec] = a:var
 
-    let a:wraps = []
+    let l:wraps = []
     if match(getline(a:var[2]),'\<for\>') >= 0
-        let a:for = s:getContainingBlock(a:var[2],a:blocks,a:blocks[0])
-        if s:isIsolatedBlock(a:for,a:var,a:rels,a:close) == 0
+        let l:for = s:getContainingBlock(a:var[2],a:blocks,a:blocks[0])
+        if s:isIsolatedBlock(l:for,a:var,a:rels,a:close) == 0
             return []
         endif
     endif
-    let a:dec_block = s:getContainingBlock(a:var[2],a:blocks,a:blocks[0])
-    if a:dec_block[1] - a:dec_block[0] == 0
-        call add(a:wraps,copy(a:blocks[0]))
+    let l:dec_block = s:getContainingBlock(a:var[2],a:blocks,a:blocks[0])
+    if l:dec_block[1] - l:dec_block[0] == 0
+        call add(l:wraps,copy(a:blocks[0]))
     endif
-    call add(a:wraps,s:getContainingBlock(a:refs[1],a:blocks,a:blocks[0]))
+    call add(l:wraps,s:getContainingBlock(l:refs[1],a:blocks,a:blocks[0]))
 
-    let a:usable = []
-    for i in range(len(a:wraps))
-        let twrap = a:wraps[i]
-        let a:temp = []
+    let l:usable = []
+    for i in range(len(l:wraps))
+        let twrap = l:wraps[i]
+        let l:temp = []
 
-        let a:next_use = s:getNextReference(a:var[0],'right')
-        call cursor(a:next_use[1][0],a:next_use[1][1])
+        let l:next_use = s:getNextReference(a:var[0],'right')
+        call cursor(l:next_use[1][0],l:next_use[1][1])
 
-        let a:block = [0,0]
-        for j in range(i,len(a:refs)-1)
-            let line = a:refs[j]
+        let l:block = [0,0]
+        for j in range(i,len(l:refs)-1)
+            let line = l:refs[j]
 
-            if line == a:next_use[1][0]
-                if index(a:names,a:next_use[0]) >= 0
+            if line == l:next_use[1][0]
+                if index(l:names,l:next_use[0]) >= 0
                     break
                 endif
-                call cursor(a:next_use[1][0],a:next_use[1][1])
-                let a:next_use = s:getNextReference(a:var[0],'right')
+                call cursor(l:next_use[1][0],l:next_use[1][1])
+                let l:next_use = s:getNextReference(a:var[0],'right')
             endif
-            if line >= a:block[0] && line <= a:block[1]
+            if line >= l:block[0] && line <= l:block[1]
                 continue
             endif
 
-            let a:block = s:getContainingBlock(line,a:blocks,twrap)
-            if a:block[0] < twrap[0] || a:block[1] > twrap[1]
+            let l:block = s:getContainingBlock(line,a:blocks,twrap)
+            if l:block[0] < twrap[0] || l:block[1] > twrap[1]
                 break
             endif
 
-            if s:isIsolatedBlock(a:block,a:var,a:rels,a:close) == 0 
+            if s:isIsolatedBlock(l:block,a:var,a:rels,a:close) == 0 
                 break
             endif
 
-            if a:block[1] - a:block[0] == 0 && match(getline(a:block[0]),'\<\(try\|for\|if\|while\)\>') < 0
-                let a:stop = a:block[0]
-                while match(getline(a:stop),';') < 0
-                    let a:stop += 1
+            if l:block[1] - l:block[0] == 0 && match(getline(l:block[0]),'\<\(try\|for\|if\|while\)\>') < 0
+                let l:stop = l:block[0]
+                while match(getline(l:stop),';') < 0
+                    let l:stop += 1
                 endwhile
-                let a:block[1] = a:stop
+                let l:block[1] = l:stop
             endif
-            let a:i = a:block[0]
-            while a:i <= a:block[1]
-                if index(a:temp,a:i) < 0
-                    call add(a:temp,a:i)
+            let l:i = l:block[0]
+            while l:i <= l:block[1]
+                if index(l:temp,l:i) < 0
+                    call add(l:temp,l:i)
                 endif
-                let a:i += 1
+                let l:i += 1
             endwhile
         endfor
 
-        if len(a:temp) > len(a:usable)
-            let a:usable = copy(a:temp)
+        if len(l:temp) > len(l:usable)
+            let l:usable = copy(l:temp)
         endif
 
-        call cursor(a:orig[0],a:orig[1])
+        call cursor(l:orig[0],l:orig[1])
     endfor
 
-    return a:usable
+    return l:usable
 endfunction
 
 " Method-Building {{{2
 " getLatestDec {{{3
 function! s:getLatestDec(rels,name,loc)
-    let a:min = 0
+    let l:min = 0
     for dec in keys(a:rels[a:name])
-        if a:min <= dec && dec <= a:loc[0]
-            let a:min = dec
+        if l:min <= dec && dec <= a:loc[0]
+            let l:min = dec
         endif
     endfor
-    return a:min
+    return l:min
 endfunction
 
 " findVar {{{3
 function! s:findVar(vars,names,name,dec)
-    let a:i = index(a:names,a:name)
-    let a:var = a:vars[a:i]
-    while a:var[2] != a:dec
-        let a:i = index(a:names,a:name,a:i + 1)
-        let a:var = a:vars[a:i]
+    let l:i = index(a:names,a:name)
+    let l:var = a:vars[l:i]
+    while l:var[2] != a:dec
+        let l:i = index(a:names,a:name,l:i + 1)
+        let l:var = a:vars[l:i]
     endwhile
-    return a:var
+    return l:var
 endfunction
 
 " getNewArgs {{{3
 function! s:getNewArgs(lines,vars,rels,...)
 
-    let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
-    let a:search = '\(' . join(a:names,'\|') . '\)'
-    let a:search = s:no_comment . '.*\<' . a:search . '\>.*'
-    let a:args = []
+    let l:names = map(deepcopy(a:vars),{n,var -> var[0]})
+    let l:search = '\(' . join(l:names,'\|') . '\)'
+    let l:search = s:no_comment . '.*\<' . l:search . '\>.*'
+    let l:args = []
 
     for line in a:lines
-        let a:this = getline(line)
-        if match(a:this,'^\s*\(\/\/\|*\)') >= 0
+        let l:this = getline(line)
+        if match(l:this,'^\s*\(\/\/\|*\)') >= 0
             continue
         endif
-        let a:new = substitute(a:this,a:search,'\1','')
-        while a:new != a:this
-            let a:spot = str2nr(s:getLatestDec(a:rels,a:new,[line,1]))
-            if a:spot == 0
+        let l:new = substitute(l:this,l:search,'\1','')
+        while l:new != l:this
+            let l:spot = str2nr(s:getLatestDec(a:rels,l:new,[line,1]))
+            if l:spot == 0
                 break
             endif
-            let a:next_var = s:findVar(a:vars,a:names,a:new,a:spot)
+            let l:next_var = s:findVar(a:vars,l:names,l:new,l:spot)
 
-            if index(a:args,a:next_var) < 0 && index(a:lines,a:spot) < 0 && (a:0 == 0 || a:next_var[0] != a:1[0] || a:next_var[2] == a:1[2]) 
-                call add(a:args,a:next_var)
+            if index(l:args,l:next_var) < 0 && index(a:lines,l:spot) < 0 && (a:0 == 0 || l:next_var[0] != a:1[0] || l:next_var[2] == a:1[2]) 
+                call add(l:args,l:next_var)
             endif
-            let a:this = substitute(a:this,'\<' . a:new . '\>','','g')
-            let a:new = substitute(a:this,a:search,'\1','')
+            let l:this = substitute(l:this,'\<' . l:new . '\>','','g')
+            let l:new = substitute(l:this,l:search,'\1','')
         endwhile
     endfor
-    return a:args
+    return l:args
 endfunction
 
 " wrapDecs {{{3
 function! s:wrapDecs(var,lines,vars,rels,isos,args,close)
-    let a:head = s:getAdjacentTag('b')
-    let a:orig = [line('.'),col('.')]
-    let a:fin = copy(a:lines)
-    let a:fin_args = deepcopy(a:args)
+    let l:head = s:getAdjacentTag('b')
+    let l:orig = [line('.'),col('.')]
+    let l:fin = copy(a:lines)
+    let l:fin_args = deepcopy(a:args)
     for arg in a:args
 
-        if arg[2] == a:head
+        if arg[2] == l:head
             continue
         endif
 
-        let a:wrap = 1
-        let a:name = arg[0]
-        let a:next = s:getNextUse(a:name)
+        let l:wrap = 1
+        let l:name = arg[0]
+        let l:next = s:getNextUse(l:name)
 
-        while a:next[1] != [0,0] && s:isBefore(a:next[1],a:close) == 1
-            if a:next[2] != 'left' && a:next[2] != 'return' && index(a:lines,a:next[1][0]) < 0
-                let a:wrap = 0    
+        while l:next[1] != [0,0] && s:isBefore(l:next[1],a:close) == 1
+            if l:next[2] != 'left' && l:next[2] != 'return' && index(a:lines,l:next[1][0]) < 0
+                let l:wrap = 0    
                 break
             endif
-            call cursor(a:next[1][0],a:next[1][1])
-            let a:next = s:getNextUse(a:name)
+            call cursor(l:next[1][0],l:next[1][1])
+            let l:next = s:getNextUse(l:name)
         endwhile
 
-        if a:wrap == 1
-            let a:relevant = a:rels[arg[0]][arg[2]]
-            let a:stop = arg[2]
-            let a:dec = [a:stop]
-            while match(getline(a:stop),';') < 0
-                let a:stop += 1
-                call add(a:dec,a:stop)
+        if l:wrap == 1
+            let l:relevant = a:rels[arg[0]][arg[2]]
+            let l:stop = arg[2]
+            let l:dec = [l:stop]
+            while match(getline(l:stop),';') < 0
+                let l:stop += 1
+                call add(l:dec,l:stop)
             endwhile
-            let a:iso = a:dec + a:isos[arg[0]][arg[2]]
+            let l:iso = l:dec + a:isos[arg[0]][arg[2]]
 
-            let a:con = 1
-            for rel in a:relevant
-                if index(a:iso,rel) < 0 && index(a:lines,rel) < 0 && match(getline(rel),'\<return\>') < 0
-                    let a:con = 0
+            let l:con = 1
+            for rel in l:relevant
+                if index(l:iso,rel) < 0 && index(a:lines,rel) < 0 && match(getline(rel),'\<return\>') < 0
+                    let l:con = 0
                     break
                 endif
             endfor
-            if a:con == 0
+            if l:con == 0
                 continue
             endif
 
-            let a:next_args = s:getNewArgs(a:iso,a:vars,a:rels,arg)
-            let a:fin = uniq(s:merge(a:fin,a:iso))
+            let l:next_args = s:getNewArgs(l:iso,a:vars,a:rels,arg)
+            let l:fin = uniq(s:merge(l:fin,l:iso))
 
-            call remove(a:fin_args,index(a:fin_args,arg))
-            for narg in a:next_args
-                if index(a:fin_args,narg) < 0 && narg[0] != a:var[0]
-                    call add(a:fin_args,narg)
+            call remove(l:fin_args,index(l:fin_args,arg))
+            for narg in l:next_args
+                if index(l:fin_args,narg) < 0 && narg[0] != a:var[0]
+                    call add(l:fin_args,narg)
                 endif
             endfor
         endif
-        call cursor(a:orig[0],a:orig[1])
+        call cursor(l:orig[0],l:orig[1])
     endfor
 
-    call cursor(a:orig[0],a:orig[1])
-    return [a:fin,a:fin_args]
+    call cursor(l:orig[0],l:orig[1])
+    return [l:fin,l:fin_args]
 endfunction
 
 " wrapAnnotations {{{3
 function! s:wrapAnnotations(lines)
     for line in a:lines
-        let a:prev = line - 1
-        if match(getline(a:prev),'^\s*@') >= 0
-            call add(a:lines,a:prev)
+        let l:prev = line - 1
+        if match(getline(l:prev),'^\s*@') >= 0
+            call add(a:lines,l:prev)
         endif
     endfor
     return uniq(sort(a:lines,'N'))
@@ -1873,62 +1873,62 @@ endfunction
 " buildArgs {{{3
 function! s:buildArgs(args,is_call)
     if a:is_call == 0
-        let a:defs = map(deepcopy(a:args),{n,arg -> arg[1] . ' ' . arg[0]})
-        let a:sep = '| '
+        let l:defs = map(deepcopy(a:args),{n,arg -> arg[1] . ' ' . arg[0]})
+        let l:sep = '| '
     else
-        let a:defs = map(deepcopy(a:args),{n,arg -> arg[0]})
-        let a:sep = ', '
+        let l:defs = map(deepcopy(a:args),{n,arg -> arg[0]})
+        let l:sep = ', '
     endif
-    return join(a:defs,a:sep)
+    return join(l:defs,l:sep)
 endfunction
 
 " formatMethod {{{3
 function! s:formatMethod(def,body,spaces)
-    let a:paren = stridx(a:def[0],'(')
-    let a:def_space = repeat(' ',a:paren+1)
+    let l:paren = stridx(a:def[0],'(')
+    let a:def_space = repeat(' ',l:paren+1)
     call map(a:def,{n,line -> a:spaces . (n > 0 ? a:def_space : '') . substitute(line,'\s*\(.*\)','\1','')})
 
-    let a:fspaces = a:spaces == '' ? repeat(' ',&tabstop) : a:spaces
-    let a:dspaces = a:spaces == '' ? a:fspaces : repeat(a:spaces,2)
-    let a:i = 0
+    let l:fspaces = a:spaces == '' ? repeat(' ',&tabstop) : a:spaces
+    let l:dspaces = a:spaces == '' ? l:fspaces : repeat(a:spaces,2)
+    let l:i = 0
 
     call map(a:body,{n,line -> substitute(line,'\s*\(.*\)','\1','')})
-    while a:i < len(a:body)
-        if match(a:body[a:i],'}') >= 0
-            let a:dspaces = strpart(a:dspaces,len(a:fspaces))
+    while l:i < len(a:body)
+        if match(a:body[l:i],'}') >= 0
+            let l:dspaces = strpart(l:dspaces,len(l:fspaces))
         endif
-        let a:body[a:i] = a:dspaces . a:body[a:i]
+        let a:body[l:i] = l:dspaces . a:body[l:i]
 
-        if match(a:body[a:i],'{') >= 0
-            let a:dspaces .= a:fspaces
+        if match(a:body[l:i],'{') >= 0
+            let l:dspaces .= l:fspaces
         endif
 
-        let a:i += 1
+        let l:i += 1
     endwhile
 endfunction
 
 " buildNewMethod {{{3
 function! s:buildNewMethod(lines,args,ranges,vars,rels,tab,close,...)
-    let a:body = map(copy(a:lines),{n,line -> getline(line)})
+    let l:body = map(copy(a:lines),{n,line -> getline(line)})
 
     call cursor(a:lines[-1],1)
-    let a:type = 'void'
-    let a:return = ['}'] 
-    let a:call = ''
+    let l:type = 'void'
+    let l:return = ['}'] 
+    let l:call = ''
 
-    let a:outer = s:getContainingBlock(a:lines[0],a:ranges,a:ranges[0])
-    let a:include_dec = 1
+    let l:outer = s:getContainingBlock(a:lines[0],a:ranges,a:ranges[0])
+    let l:include_dec = 1
     for var in a:vars
         if index(a:lines,var[2]) >= 0
 
-            let a:outside = s:getNextUse(var[0])    
-            if a:outside[1] != [0,0] && s:isBefore(a:outside[1],a:close) == 1 && s:getLatestDec(a:rels,var[0],a:outside[1]) == var[2]
+            let l:outside = s:getNextUse(var[0])    
+            if l:outside[1] != [0,0] && s:isBefore(l:outside[1],a:close) == 1 && s:getLatestDec(a:rels,var[0],l:outside[1]) == var[2]
 
-                let a:contain = s:getContainingBlock(var[2],a:ranges,a:ranges[0])
-                if a:contain[0] <= a:outer[0] || a:contain[1] >= a:outer[1]
-                    let a:type = var[1]
-                    let a:return = ['return ' . var[0] . ';','}']
-                    let a:call = a:type . ' ' . var[0] . ' = '
+                let l:contain = s:getContainingBlock(var[2],a:ranges,a:ranges[0])
+                if l:contain[0] <= l:outer[0] || l:contain[1] >= l:outer[1]
+                    let l:type = var[1]
+                    let l:return = ['return ' . var[0] . ';','}']
+                    let l:call = l:type . ' ' . var[0] . ' = '
 
                     let i = 0
                     while i < len(a:lines)
@@ -1943,24 +1943,24 @@ function! s:buildNewMethod(lines,args,ranges,vars,rels,tab,close,...)
                         break
                     endif
 
-                    let a:inner = s:getContainingBlock(a:lines[i+1],a:ranges,a:outer)
-                    if a:inner[1] - a:inner[0] > 0 && match(getline(a:inner[0]),'\<\(if\|else\)\>') >= 0
-                        let a:removes = []
+                    let l:inner = s:getContainingBlock(a:lines[i+1],a:ranges,l:outer)
+                    if l:inner[1] - l:inner[0] > 0 && match(getline(l:inner[0]),'\<\(if\|else\)\>') >= 0
+                        let l:removes = []
                         for j in range(i+1)
                             if match(getline(a:lines[j]),'[^.]\<' . var[0] . '\>[^.][^=]*=') >= 0
-                                call add(a:removes,j)
+                                call add(l:removes,j)
                                 let k = j
                                 while match(getline(a:lines[k]),';') < 0
                                     let k += 1
-                                    call add(a:removes,k)
+                                    call add(l:removes,k)
                                 endwhile
                             endif
                         endfor
-                        for rem in reverse(a:removes)
+                        for rem in reverse(l:removes)
                             call remove(a:lines,rem)
                         endfor
-                        let a:call = var[0] . ' = '
-                        let a:include_dec = 0
+                        let l:call = var[0] . ' = '
+                        let l:include_dec = 0
                     endif
                     break
                 endif
@@ -1970,47 +1970,47 @@ function! s:buildNewMethod(lines,args,ranges,vars,rels,tab,close,...)
         endif
     endfor
 
-    let a:name = a:0 == 0 ? g:factorus_method_name : a:1
-    let a:build = s:buildArgs(a:args,0)
-    let a:build_string = a:type . ' ' .  a:name . '(' . a:build . ') {'
-    let a:temp = join(reverse(split(a:build_string, '.\zs')), '')
-    let a:def = []
+    let l:name = a:0 == 0 ? g:factorus_method_name : a:1
+    let l:build = s:buildArgs(a:args,0)
+    let l:build_string = l:type . ' ' .  l:name . '(' . l:build . ') {'
+    let l:temp = join(reverse(split(l:build_string, '.\zs')), '')
+    let l:def = []
 
     if g:factorus_split_lines == 1
-        while len(a:temp) >= g:factorus_line_length
-            let i = stridx(a:temp,'|',len(a:temp) - g:factorus_line_length)
+        while len(l:temp) >= g:factorus_line_length
+            let i = stridx(l:temp,'|',len(l:temp) - g:factorus_line_length)
             if i <= 0
                 break
             endif
-            let a:segment = strpart(a:temp,0,i)
-            let a:segment = join(reverse(split(a:segment, '.\zs')), '')
-            let a:segment = substitute(a:segment,'|',',','g')
-            call add(a:def,a:segment)
-            let a:temp = strpart(a:temp,i)
+            let l:segment = strpart(l:temp,0,i)
+            let l:segment = join(reverse(split(l:segment, '.\zs')), '')
+            let l:segment = substitute(l:segment,'|',',','g')
+            call add(l:def,l:segment)
+            let l:temp = strpart(l:temp,i)
         endwhile
     endif
 
-    let a:temp = join(reverse(split(a:temp, '.\zs')), '')
-    let a:temp = substitute(a:temp,'|',',','g')
-    call add(a:def,a:temp)
-    call reverse(a:def)
+    let l:temp = join(reverse(split(l:temp, '.\zs')), '')
+    let l:temp = substitute(l:temp,'|',',','g')
+    call add(l:def,l:temp)
+    call reverse(l:def)
 
-    let a:body += a:return
-    call s:formatMethod(a:def,a:body,a:tab)
-    let a:final = [''] + a:def + a:body + ['']
+    let l:body += l:return
+    call s:formatMethod(l:def,l:body,a:tab)
+    let l:final = [''] + l:def + l:body + ['']
 
-    let a:arg_string = s:buildArgs(a:args,1)
-    let a:call_space = substitute(getline(a:lines[-1]),'\(\s*\).*','\1','')
-    let a:rep = [a:call_space . a:call . a:name . '(' . a:arg_string . ');']
+    let l:arg_string = s:buildArgs(a:args,1)
+    let l:call_space = substitute(getline(a:lines[-1]),'\(\s*\).*','\1','')
+    let l:rep = [l:call_space . l:call . l:name . '(' . l:arg_string . ');']
 
-    return [a:final,a:rep]
+    return [l:final,l:rep]
 endfunction
 
 " Rollback {{{2
 " rollbackAddParam {{{3
 function! s:rollbackAddParam()
-    let a:files = {}
-    let [a:method_name,a:param_name,a:count] = g:factorus_history['old']
+    let l:files = {}
+    let [l:method_name,l:param_name,l:count] = g:factorus_history['old']
 
     for line in g:factorus_qf
         if index(keys(line),'filename') < 0
@@ -2020,45 +2020,45 @@ function! s:rollbackAddParam()
             continue
         endif
 
-        if index(keys(a:files),line['filename']) < 0
-            let a:files[line['filename']] = [line['lnum']]
+        if index(keys(l:files),line['filename']) < 0
+            let l:files[line['filename']] = [line['lnum']]
         else
-            call add(a:files[line['filename']],line['lnum'])
+            call add(l:files[line['filename']],line['lnum'])
         endif
     endfor
 
-    for file in keys(a:files)
+    for file in keys(l:files)
         execute 'silent tabedit! ' . file
-        for line in a:files[file]
+        for line in l:files[file]
             call cursor(line,1)
-            let a:nline = search(a:method_name . '(','We')
-            let a:call_count = 0
-            while a:nline == line
-                if s:getArgs() == a:count
-                    let a:calls = repeat('.\{-\}' . a:method_name . '(.\{-\}',a:call_count)
+            let l:nline = search(l:method_name . '(','We')
+            let l:call_count = 0
+            while l:nline == line
+                if s:getArgs() == l:count
+                    let l:calls = repeat('.\{-\}' . l:method_name . '(.\{-\}',l:call_count)
                     let col = col('.')
                     normal %
                     let end = line('.')
-                    let a:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
+                    let l:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
 
                     call cursor(line,1)
-                    execute line . ',' . end . 's/\(' . a:calls . '\)\<\(' . a:method_name . '\>(\_.\{-\}\)\(,\=[^,)]*)\)\(' . a:leftover . '\)/\1\2)\4/e'
+                    execute line . ',' . end . 's/\(' . l:calls . '\)\<\(' . l:method_name . '\>(\_.\{-\}\)\(,\=[^,)]*)\)\(' . l:leftover . '\)/\1\2)\4/e'
                     call cursor(line,col)
                 endif
-                let a:call_count += 1
-                let a:nline = search(a:method_name . '(','We')
+                let l:call_count += 1
+                let l:nline = search(l:method_name . '(','We')
             endwhile
         endfor
         silent write!
         call s:safeClose()
     endfor
 
-    return 'Rolled back adding of param ' . a:param_name . '.'
+    return 'Rolled back adding of param ' . l:param_name . '.'
 endfunction
 
 " rollbackRename {{{3
 function! s:rollbackRename()
-    let a:files = {}
+    let l:files = {}
 
     for line in g:factorus_qf
         if index(keys(line),'filename') < 0
@@ -2068,51 +2068,51 @@ function! s:rollbackRename()
             continue
         endif
 
-        if index(keys(a:files),line['filename']) < 0
-            let a:files[line['filename']] = [line['lnum']]
+        if index(keys(l:files),line['filename']) < 0
+            let l:files[line['filename']] = [line['lnum']]
         else
-            call add(a:files[line['filename']],line['lnum'])
+            call add(l:files[line['filename']],line['lnum'])
         endif
     endfor
 
-    let a:old = g:factorus_history['old']
-    let a:new = g:factorus_history['args'][-1] == 'Type' ? split(a:old)[0] . ' ' . g:factorus_history['args'][0] : g:factorus_history['args'][0]
+    let l:old = g:factorus_history['old']
+    let l:new = g:factorus_history['args'][-1] == 'Type' ? split(l:old)[0] . ' ' . g:factorus_history['args'][0] : g:factorus_history['args'][0]
 
-    for file in keys(a:files)
+    for file in keys(l:files)
         execute 'silent tabedit! ' . file
-        for line in a:files[file]
+        for line in l:files[file]
             call cursor(line,1)
-            execute 'silent! s/\<' . a:new . '\>/' . a:old . '/ge'
+            execute 'silent! s/\<' . l:new . '\>/' . l:old . '/ge'
         endfor
         silent write!
         call s:safeClose()
     endfor
 
-    return 'Rolled back renaming of ' . substitute(g:factorus_history['args'][-1],'\(.\)\(.*\)','\L\1\E\2','') . ' ' . a:old
+    return 'Rolled back renaming of ' . substitute(g:factorus_history['args'][-1],'\(.\)\(.*\)','\L\1\E\2','') . ' ' . l:old
 endfunction
 
 " rollbackExtraction {{{3
 function! s:rollbackExtraction()
-    let a:open = search(g:factorus_method_name . '(\_[^;]*{')
-    let a:close = s:getClosingBracket(1)[0]
+    let l:open = search(g:factorus_method_name . '(\_[^;]*{')
+    let l:close = s:getClosingBracket(1)[0]
 
-    if match(getline(a:open - 1),'^\s*$') >= 0
-        let a:open -= 1
+    if match(getline(l:open - 1),'^\s*$') >= 0
+        let l:open -= 1
     endif
-    if match(getline(a:close + 1),'^\s*$') >= 0
-        let a:close += 1
+    if match(getline(l:close + 1),'^\s*$') >= 0
+        let l:close += 1
     endif
 
-    execute 'silent ' . a:open . ',' . a:close . 'delete'
+    execute 'silent ' . l:open . ',' . l:close . 'delete'
 
     call search('\<' . g:factorus_method_name . '\>(')
     call s:gotoTag()
-    let a:open = line('.')
-    let a:close = s:getClosingBracket(1)[0]
+    let l:open = line('.')
+    let l:close = s:getClosingBracket(1)[0]
 
-    execute 'silent ' . a:open . ',' . a:close . 'delete'
+    execute 'silent ' . l:open . ',' . l:close . 'delete'
     call append(line('.')-1,g:factorus_history['old'][1])
-    call cursor(a:open,1)
+    call cursor(l:open,1)
     silent write!
 endfunction
 
@@ -2127,74 +2127,74 @@ function! cpp#factorus#addParam(param_name,param_type,...) abort
     let g:factorus_qf = []
 
     let [s:all_inc,s:all_funcs] = [{},{}]
-    let [a:orig,a:prev_dir,a:curr_buf] = s:setEnvironment()
+    let [l:orig,l:prev_dir,l:curr_buf] = s:setEnvironment()
 
     try
         call s:gotoTag()
-        let a:tag = line('.')
-        let a:next = searchpos(')','Wn')
-        let [a:type,a:name,a:params] = split(substitute(join(getline(line('.'),a:next[0])),'^.*\<\(' . s:cpp_type . 
+        let l:tag = line('.')
+        let l:next = searchpos(')','Wn')
+        let [l:type,l:name,l:params] = split(substitute(join(getline(line('.'),l:next[0])),'^.*\<\(' . s:cpp_type . 
                     \ s:collection_identifier . '\)\s*\<\(' . s:cpp_identifier . '\)\>\s*(\(.*\)).*','\1 | \4 | \5',''),'|')
-        let [a:type,a:name] = [s:trim(a:type),s:trim(a:name)]
-        let g:factorus_history['old'] = [a:name,a:param_name]
+        let [l:type,l:name] = [s:trim(l:type),s:trim(l:name)]
+        let g:factorus_history['old'] = [l:name,a:param_name]
 
-        let a:includes = s:getAllIncluded()
+        let l:includes = s:getAllIncluded()
         try
-            execute 'silent lvimgrep /\<' . a:name . '\>(/j ' . join(a:includes)
+            execute 'silent lvimgrep /\<' . l:name . '\>(/j ' . join(l:includes)
             execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
             call cursor(getloclist(0)[0]['lnum'],1)
             call setloclist(0,[])
-            let a:swap = 1
+            let l:swap = 1
         catch /.*/
-            call cursor(a:tag,1)
-            let a:swap = 0
+            call cursor(l:tag,1)
+            let l:swap = 0
         endtry
 
-        let a:count = len(split(a:params,','))
-        let a:com = a:count > 0 ? ', ' : ''
+        let l:count = len(split(l:params,','))
+        let l:com = l:count > 0 ? ', ' : ''
 
-        let a:next = searchpos(')','Wn')
-        let a:is_static = match(getline(a:next[0]),'\<static\>[^)]\+(') >= 0 ? 1 : 0
-        let a:line = substitute(getline(a:next[0]), ')', a:com . a:param_type . ' ' . a:param_name . ')', '')
+        let l:next = searchpos(')','Wn')
+        let l:is_static = match(getline(l:next[0]),'\<static\>[^)]\+(') >= 0 ? 1 : 0
+        let l:line = substitute(getline(l:next[0]), ')', l:com . a:param_type . ' ' . a:param_name . ')', '')
         call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-        execute 'silent ' .  a:next[0] . 'd'
-        call append(a:next[0] - 1,a:line)
+        execute 'silent ' .  l:next[0] . 'd'
+        call append(l:next[0] - 1,l:line)
         silent write!
 
         if g:factorus_add_default == 1
             redraw
             echo 'Updating references...'
 
-            let a:default = a:0 > 0 ? a:1 : 'null'
+            let l:default = a:0 > 0 ? a:1 : 'null'
 
-            let a:temp_file = '.FactorusParam'
-            call s:getInclusions(a:temp_file,a:is_static)
-            call s:narrowTags(a:temp_file,a:name)
-            for file in readfile(a:temp_file)
+            let l:temp_file = '.FactorusParam'
+            call s:getInclusions(l:temp_file,l:is_static)
+            call s:narrowTags(l:temp_file,l:name)
+            for file in readfile(l:temp_file)
                 execute 'silent tabedit! ' . file
-                call s:updateParamFile(a:name,a:count,a:default,a:param_name,a:param_type)
+                call s:updateParamFile(l:name,l:count,l:default,a:param_name,a:param_type)
                 call s:safeClose()
             endfor
-            call system('rm -rf ' . a:temp_file)
+            call system('rm -rf ' . l:temp_file)
 
             if g:factorus_show_changes > 0
-                call s:setChanges(a:name,[],'addParam')
+                call s:setChanges(l:name,[],'addParam')
             endif
 
         endif
         redraw
-        echo 'Added parameter ' . a:param_name . ' to method ' . a:name . '.'
+        echo 'Added parameter ' . a:param_name . ' to method ' . l:name . '.'
 
-        if a:swap == 1
+        if l:swap == 1
             call s:safeClose()
         endif
 
-        call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,'addParam')
-        return [a:name,a:param_name,a:count+1]
+        call s:resetEnvironment(l:orig,l:prev_dir,l:curr_buf,'addParam')
+        return [l:name,a:param_name,l:count+1]
     catch /.*/
-        call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,'addParam')
-        let a:err = match(v:exception,'^Factorus:') >= 0 ? v:exception : 'Factorus:' . v:exception
-        throw a:err . ', at ' . v:throwpoint
+        call s:resetEnvironment(l:orig,l:prev_dir,l:curr_buf,'addParam')
+        let l:err = match(v:exception,'^Factorus:') >= 0 ? v:exception : 'Factorus:' . v:exception
+        throw l:err . ', at ' . v:throwpoint
     endtry
 
     if factorus#isRollback(a:000)
@@ -2205,17 +2205,17 @@ function! cpp#factorus#addParam(param_name,param_type,...) abort
     endif
     let g:factorus_history['old'] = a:param_name
 
-    let a:orig = [line('.'),col('.')]
+    let l:orig = [line('.'),col('.')]
     call s:gotoTag()
 
-    let a:next = searchpos(')','Wn')
-    let a:line = substitute(getline(a:next[0]), ')', ', ' . a:param_type . ' ' . a:param_name . ')', '')
-    execute 'silent ' .  a:next[0] . 'd'
-    call append(a:next[0] - 1,a:line)
+    let l:next = searchpos(')','Wn')
+    let l:line = substitute(getline(l:next[0]), ')', ', ' . a:param_type . ' ' . a:param_name . ')', '')
+    execute 'silent ' .  l:next[0] . 'd'
+    call append(l:next[0] - 1,l:line)
 
     silent write!
     silent edit!
-    call cursor(a:orig[0],a:orig[1])
+    call cursor(l:orig[0],l:orig[1])
 
     echo 'Added parameter ' . a:param_name . ' to method'
     return a:param_name
@@ -2224,28 +2224,28 @@ endfunction
 " renameSomething {{{2
 function! cpp#factorus#renameSomething(new_name,type,...)
     let [s:all_structs,s:all_inc,s:all_funcs] = [{},{},{}]
-    let [a:orig,a:prev_dir,a:curr_buf] = s:setEnvironment()
+    let [l:orig,l:prev_dir,l:curr_buf] = s:setEnvironment()
 
-    let a:res = ''
+    let l:res = ''
     try
         if factorus#isRollback(a:000)
-            let a:res = s:rollbackRename()
+            let l:res = s:rollbackRename()
             let g:factorus_qf = []
         else
             let g:factorus_qf = []
             let Rename = function('s:rename' . a:type)
-            let [a:res,a:un] = Rename(a:new_name)
+            let [l:res,l:un] = Rename(a:new_name)
 
             if g:factorus_show_changes > 0
-                call s:setChanges(a:res,a:un,'rename',a:type)
+                call s:setChanges(l:res,l:un,'rename',a:type)
             endif
         endif
-        call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,a:type)
-        return a:res
+        call s:resetEnvironment(l:orig,l:prev_dir,l:curr_buf,a:type)
+        return l:res
     catch /.*/
-        call s:resetEnvironment(a:orig,a:prev_dir,a:curr_buf,a:type)
-        let a:err = match(v:exception,'^Factorus:') >= 0 ? v:exception : 'Factorus:' . v:exception
-        throw a:err . ', at ' . v:throwpoint
+        call s:resetEnvironment(l:orig,l:prev_dir,l:curr_buf,a:type)
+        let l:err = match(v:exception,'^Factorus:') >= 0 ? v:exception : 'Factorus:' . v:exception
+        throw l:err . ', at ' . v:throwpoint
     endtry
 endfunction
 
@@ -2257,93 +2257,93 @@ function! cpp#factorus#extractMethod(...)
     endif
     echo 'Extracting new method...'
     call s:gotoTag()
-    let a:tab = substitute(getline('.'),'\(\s*\).*','\1','')
-    let a:method_name = substitute(getline('.'),'.*\s\+\(' . s:cpp_identifier . '\)\s*(.*','\1','')
+    let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
+    let l:method_name = substitute(getline('.'),'.*\s\+\(' . s:cpp_identifier . '\)\s*(.*','\1','')
 
-    let [a:open,a:close] = [line('.'),s:getClosingBracket(1)]
-    let a:old_lines = getline(a:open,a:close[0])
+    let [l:open,l:close] = [line('.'),s:getClosingBracket(1)]
+    let l:old_lines = getline(l:open,l:close[0])
 
     call searchpos('{','W')
 
-    let a:method_length = (a:close[0] - (line('.') + 1)) * 1.0
-    let a:vars = s:getLocalDecs(a:close)
-    let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
-    let a:decs = map(deepcopy(a:vars),{n,var -> var[2]})
-    let a:compact = [a:names,a:decs]
-    let a:blocks = s:getAllBlocks(a:close)
+    let l:method_length = (l:close[0] - (line('.') + 1)) * 1.0
+    let l:vars = s:getLocalDecs(l:close)
+    let l:names = map(deepcopy(l:vars),{n,var -> var[0]})
+    let l:decs = map(deepcopy(l:vars),{n,var -> var[2]})
+    let l:compact = [l:names,l:decs]
+    let l:blocks = s:getAllBlocks(l:close)
 
-    let a:best_var = ['','',0]
-    let a:best_lines = []
-    let [a:all,a:isos] = s:getAllRelevantLines(a:vars,a:names,a:close)
+    let l:best_var = ['','',0]
+    let l:best_lines = []
+    let [l:all,l:isos] = s:getAllRelevantLines(l:vars,l:names,l:close)
 
     redraw
     echo 'Finding best lines...'
-    for var in a:vars
-        let a:iso = s:getIsolatedLines(var,a:compact,a:all,a:blocks,a:close)
-        let a:isos[var[0]][var[2]] = copy(a:iso)
+    for var in l:vars
+        let l:iso = s:getIsolatedLines(var,l:compact,l:all,l:blocks,l:close)
+        let l:isos[var[0]][var[2]] = copy(l:iso)
 
-        let a:ratio = (len(a:iso) / a:method_length)
+        let l:ratio = (len(l:iso) / l:method_length)
         if g:factorus_extract_heuristic == 'longest'
-            if len(a:iso) > len(a:best_lines) && index(a:iso,a:open) < 0 "&& a:ratio < g:factorus_method_threshold
-                let a:best_var = var
-                let a:best_lines = copy(a:iso)
+            if len(l:iso) > len(l:best_lines) && index(l:iso,l:open) < 0 "&& l:ratio < g:factorus_method_threshold
+                let l:best_var = var
+                let l:best_lines = copy(l:iso)
             endif 
         elseif g:factorus_extract_heuristic == 'greedy'
-            if len(a:iso) >= g:factorus_min_extracted_lines && a:ratio < g:factorus_method_threshold
-                let a:best_var = var
-                let a:best_lines = copy(a:iso)
+            if len(l:iso) >= g:factorus_min_extracted_lines && l:ratio < g:factorus_method_threshold
+                let l:best_var = var
+                let l:best_lines = copy(l:iso)
             endif
         endif
     endfor
 
-    if len(a:best_lines) < g:factorus_min_extracted_lines
+    if len(l:best_lines) < g:factorus_min_extracted_lines
         throw 'Factorus:NoLines' 
     endif
 
     redraw
     echo 'Almost done...'
-    if index(a:best_lines,a:best_var[2]) < 0 && a:best_var[2] != a:open
-        let a:stop = a:best_var[2]
-        let a:dec_lines = [a:stop]
-        while match(getline(a:stop),';') < 0
-            let a:stop += 1
-            call add(a:dec_lines,a:stop)
+    if index(l:best_lines,l:best_var[2]) < 0 && l:best_var[2] != l:open
+        let l:stop = l:best_var[2]
+        let l:dec_lines = [l:stop]
+        while match(getline(l:stop),';') < 0
+            let l:stop += 1
+            call add(l:dec_lines,l:stop)
         endwhile
 
-        let a:best_lines = a:dec_lines + a:best_lines
+        let l:best_lines = l:dec_lines + l:best_lines
     endif
 
-    let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:all,a:best_var)
-    let [a:wrapped,a:wrapped_args] = s:wrapDecs(a:best_var,a:best_lines,a:vars,a:all,a:isos,a:new_args,a:close)
-    while a:wrapped != a:best_lines
-        let [a:best_lines,a:new_args] = [a:wrapped,a:wrapped_args]
-        let [a:wrapped,a:wrapped_args] = s:wrapDecs(a:best_var,a:best_lines,a:vars,a:all,a:isos,a:new_args,a:close)
+    let l:new_args = s:getNewArgs(l:best_lines,l:vars,l:all,l:best_var)
+    let [l:wrapped,l:wrapped_args] = s:wrapDecs(l:best_var,l:best_lines,l:vars,l:all,l:isos,l:new_args,l:close)
+    while l:wrapped != l:best_lines
+        let [l:best_lines,l:new_args] = [l:wrapped,l:wrapped_args]
+        let [l:wrapped,l:wrapped_args] = s:wrapDecs(l:best_var,l:best_lines,l:vars,l:all,l:isos,l:new_args,l:close)
     endwhile
 
-    if a:best_var[2] == a:open && index(a:new_args,a:best_var) < 0
-        call add(a:new_args,a:best_var)
+    if l:best_var[2] == l:open && index(l:new_args,l:best_var) < 0
+        call add(l:new_args,l:best_var)
     endif
 
-    let a:best_lines = s:wrapAnnotations(a:best_lines)
+    let l:best_lines = s:wrapAnnotations(l:best_lines)
 
-    let a:new_args = s:getNewArgs(a:best_lines,a:vars,a:all,a:best_var)
-    let [a:final,a:rep] = s:buildNewMethod(a:best_lines,a:new_args,a:blocks,a:vars,a:all,a:tab,a:close)
+    let l:new_args = s:getNewArgs(l:best_lines,l:vars,l:all,l:best_var)
+    let [l:final,l:rep] = s:buildNewMethod(l:best_lines,l:new_args,l:blocks,l:vars,l:all,l:tab,l:close)
 
-    call append(a:close[0],a:final)
-    call append(a:best_lines[-1],a:rep)
+    call append(l:close[0],l:final)
+    call append(l:best_lines[-1],l:rep)
 
-    let a:i = len(a:best_lines) - 1
-    while a:i >= 0
-        call cursor(a:best_lines[a:i],1)
+    let l:i = len(l:best_lines) - 1
+    while l:i >= 0
+        call cursor(l:best_lines[l:i],1)
         d 
-        let a:i -= 1
+        let l:i -= 1
     endwhile
 
     call search(g:factorus_method_name . '(\_[^;]*{')
     silent write!
     redraw
-    echo 'Extracted ' . len(a:best_lines) . ' lines from ' . a:method_name
-    return [a:method_name,a:old_lines]
+    echo 'Extracted ' . len(l:best_lines) . ' lines from ' . l:method_name
+    return [l:method_name,l:old_lines]
 endfunction
 
 " manualExtract {{{2
@@ -2353,41 +2353,41 @@ function! cpp#factorus#manualExtract(...)
         return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
     endif
 
-    let a:name = a:0 <= 2 ? g:factorus_method_name : a:3
+    let l:name = a:0 <= 2 ? g:factorus_method_name : a:3
 
     echo 'Extracting new method...'
     call s:gotoTag()
-    let [a:open,a:close] = [line('.'),s:getClosingBracket(1)]
-    let a:tab = substitute(getline('.'),'\(\s*\).*','\1','')
-    let a:method_name = substitute(getline('.'),'.*\s\+\(' . s:cpp_identifier . '\)\s*(.*','\1','')
+    let [l:open,l:close] = [line('.'),s:getClosingBracket(1)]
+    let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
+    let l:method_name = substitute(getline('.'),'.*\s\+\(' . s:cpp_identifier . '\)\s*(.*','\1','')
 
-    let a:extract_lines = range(a:1,a:2)
-    let a:old_lines = getline(a:open,a:close[0])
+    let l:extract_lines = range(a:1,a:2)
+    let l:old_lines = getline(l:open,l:close[0])
 
-    let a:vars = s:getLocalDecs(a:close)
-    let a:names = map(deepcopy(a:vars),{n,var -> var[0]})
-    let a:decs = map(deepcopy(a:vars),{n,var -> var[2]})
-    let a:blocks = s:getAllBlocks(a:close)
+    let l:vars = s:getLocalDecs(l:close)
+    let l:names = map(deepcopy(l:vars),{n,var -> var[0]})
+    let l:decs = map(deepcopy(l:vars),{n,var -> var[2]})
+    let l:blocks = s:getAllBlocks(l:close)
 
-    let [a:all,a:isos] = s:getAllRelevantLines(a:vars,a:names,a:close)
+    let [l:all,l:isos] = s:getAllRelevantLines(l:vars,l:names,l:close)
 
-    let a:new_args = s:getNewArgs(a:extract_lines,a:vars,a:all)
-    let [a:final,a:rep] = s:buildNewMethod(a:extract_lines,a:new_args,a:blocks,a:vars,a:all,a:tab,a:close,a:name)
+    let l:new_args = s:getNewArgs(l:extract_lines,l:vars,l:all)
+    let [l:final,l:rep] = s:buildNewMethod(l:extract_lines,l:new_args,l:blocks,l:vars,l:all,l:tab,l:close,l:name)
 
-    call append(a:close[0],a:final)
-    call append(a:extract_lines[-1],a:rep)
+    call append(l:close[0],l:final)
+    call append(l:extract_lines[-1],l:rep)
 
-    let a:i = len(a:extract_lines) - 1
-    while a:i >= 0
-        call cursor(a:extract_lines[a:i],1)
+    let l:i = len(l:extract_lines) - 1
+    while l:i >= 0
+        call cursor(l:extract_lines[l:i],1)
         d 
-        let a:i -= 1
+        let l:i -= 1
     endwhile
 
-    call search('\<' . a:name . '\>(\_[^;]*{')
+    call search('\<' . l:name . '\>(\_[^;]*{')
     silent write!
     redraw
-    echo 'Extracted ' . len(a:extract_lines) . ' lines from ' . a:method_name
+    echo 'Extracted ' . len(l:extract_lines) . ' lines from ' . l:method_name
 
-    return [a:name,a:old_lines]
+    return [l:name,l:old_lines]
 endfunction

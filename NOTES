@@ -4,6 +4,8 @@ GENERAL
 
 Bugs
 ----
+- Doesn't work if project is not in a git directory
+- Need to rename all a: variables to l:variables (Fixed 03/08/2019)
 
 Tasks
 -----
@@ -16,6 +18,8 @@ JAVA
 
 Bugs
 ----
+- Encapsulation doesn't work if first line of file is defining the class
+- renameClass doesn't do anything if not part of a package
 
 Tasks
 -----
@@ -46,4 +50,4 @@ Tasks
 C++
 ===
 
-- Add functionality for C++ (Limited support added by draganczukp 04/19/2017)
+- Add functionality for C++ (Limited support added by draganczukp 04/19/2018)

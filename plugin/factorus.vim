@@ -21,7 +21,8 @@ let s:opts = {
             \   'build_options'         : '',
             \   'validate'              : 0,
             \   'default_lang'          : '',
-            \   'add_default'           : 0
+            \   'add_default'           : 0,
+            \   'qf'                    : []
             \ }
 
 function! s:init_var(var,val)
@@ -35,19 +36,19 @@ function! s:init_vars()
         call s:init_var(var,s:opts[var])
     endfor
 
-    let a:ignore_defaults = ['.Factorus*', 'tags', 'cscope.out', '.*.sw*', '*.pyc']
+    let l:ignore_defaults = ['.Factorus*', 'tags', 'cscope.out', '.*.sw*', '*.pyc']
     if !exists('g:factorus_ignored_files')
-        let g:factorus_ignored_files = a:ignore_defaults
+        let g:factorus_ignored_files = l:ignore_defaults
     else
-        let g:factorus_ignored_files += a:ignore_defaults
+        let g:factorus_ignored_files += l:ignore_defaults
         let g:factorus_ignored_files =  filter(g:factorus_ignored_files, 'index(g:factorus_ignored_files, v:val, v:key+1) == -1')
     endif
 
-    let a:ignore_dir_defaults = ['.git']
+    let l:ignore_dir_defaults = ['.git']
     if !exists('g:factorus_ignored_dirs')
-        let g:factorus_ignored_dirs = a:ignore_dir_defaults
+        let g:factorus_ignored_dirs = l:ignore_dir_defaults
     else
-        let g:factorus_ignored_dirs += a:ignore_dir_defaults
+        let g:factorus_ignored_dirs += l:ignore_dir_defaults
         call filter(g:factorus_ignored_dirs, 'index(g:factorus_ignored_dirs, v:val, v:key+1)==-1')
     endif
 
@@ -81,6 +82,8 @@ call s:init_vars()
 " Commands {{{1
 
 command! -nargs=0           Factorus            call factorus#version()
+command! -nargs=0           FProjectDir         call factorus#projectDir()
+command! -nargs=1           FSetProjectDir      call factorus#setProjectDir()
 
 command! -nargs=0           FExtractMethod      call factorus#command('extractMethod')
 command! -nargs=? -range    FMExtractMethod     call factorus#command('manualExtract', <line1>, <line2>, <f-args>)
