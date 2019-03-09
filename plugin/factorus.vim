@@ -82,7 +82,7 @@ call s:init_vars()
 " Commands {{{1
 
 command! -nargs=0           Factorus            call factorus#version()
-command! -nargs=0           FProjectDir         call factorus#projectDir()
+command! -nargs=0           FProjectDir         echo factorus#projectDir()
 command! -nargs=1           FSetProjectDir      call factorus#setProjectDir()
 
 command! -nargs=0           FExtractMethod      call factorus#command('extractMethod')

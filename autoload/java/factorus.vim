@@ -119,6 +119,7 @@ function! s:isAlone(...)
     return 1
 endfunction
 
+" Closes current window safely.
 function! s:safeClose(...)
     let l:prev = 0
     let l:file = a:0 > 0 ? a:1 : expand('%:p')
@@ -137,17 +138,22 @@ function! s:safeClose(...)
     endif
 endfunction
 
+" Find all files containing search_string, and write them to temp_file. If
+" append is 'yes', appends to file; otherwise, overwrites file.
 function! s:findTags(temp_file,search_string,append)
     let l:fout = a:append == 'yes' ? '>>' : '>'
     call system('cat ' . s:temp_file . ' | xargs grep -l "' . a:search_string . '"' .  l:fout . a:temp_file . ' 2> /dev/null')
 endfunction
 
+" Narrows files in temp_file to those containing search_string.
 function! s:narrowTags(temp_file,search_string)
     let l:n_temp_file = a:temp_file . '.narrow'
     call system('cat ' . a:temp_file . ' | xargs grep -l "' . a:search_string . '" {} + > ' . l:n_temp_file)
     call system('mv ' . l:n_temp_file . ' ' . a:temp_file)
 endfunction
 
+" Updates the factorus quickfix variable with files from temp_file that mach the
+" search_string.
 function! s:updateQuickFix(temp_file,search_string)
     let l:res = split(system('cat ' . a:temp_file . ' | xargs grep -n "' . a:search_string . '"'),'\n')
     call map(l:res,{n,val -> split(val,':')})
@@ -159,6 +165,8 @@ function! s:updateQuickFix(temp_file,search_string)
     let g:factorus_qf += l:res
 endfunction
 
+
+" Updates the quickfix menu with the values of qf, of a certain type.
 function! s:setQuickFix(type,qf)
     let l:title = a:type . ' : '
     if g:factorus_show_changes == 1
@@ -173,6 +181,8 @@ function! s:setQuickFix(type,qf)
     call setqflist(a:qf,'r',{'title' : l:title})
 endfunction
 
+" Gets the instances that were changed by the command, in case user wants to
+" check accuracy.
 function! s:setChanges(res,func,...)
     let l:qf = copy(g:factorus_qf)
     let l:type = a:func == 'rename' ? a:1 : ''
@@ -202,6 +212,8 @@ function! s:setChanges(res,func,...)
     call s:setQuickFix(a:func . l:type,l:qf)
 endfunction
 
+" Gets the instances that were left unchanged by the command, in case user wants to
+" check accuracy.
 function! s:getUnchanged(search)
     let l:qf = []
 
@@ -223,6 +235,9 @@ function! s:getUnchanged(search)
     return l:qf
 endfunction
 
+" Set the working environment for the command by getting all currently open
+" buffers, moving to the highest-level directory (if possible), and putting
+" all filenames into a temp file.
 function! s:setEnvironment()
     let s:open_bufs = []
 
@@ -244,6 +259,7 @@ function! s:setEnvironment()
     return [[line('.'),col('.')],l:prev_dir,l:curr_buf]
 endfunction
 
+" Reset the working environment to how it was before the command was run.
 function! s:resetEnvironment(orig,prev_dir,curr_buf,type)
     let l:buf_setting = &switchbuf
     call system('rm -rf .Factorus*')
@@ -386,10 +402,12 @@ function! s:getNextTag()
 endfunction
 
 " getClassTag {{{3
+"
+" Gets the start and end of the class.
 function! s:getClassTag()
     let [l:line,l:col] = [line('.'),col('.')]
     call cursor(1,1)
-    let l:class_tag = search(s:tag_query,'n')
+    let l:class_tag = search(s:tag_query,'cn')
     let l:tag_end = search(s:tag_query,'ne')
     call cursor(l:line,l:col)
     return [l:class_tag,l:tag_end]
@@ -409,13 +427,16 @@ endfunction
 
 " Class Hierarchy {{{2
 " getPackage {{{3
+
+" Gets the package that file belongs to, and returns '' if it doesn't belong
+" to a package.
 function! s:getPackage(file)
     let l:i = 1
     let l:head = system('head -n ' . l:i . ' ' . a:file)
     while match(l:head,'^package') < 0
         let l:i += 1
         if l:i > 100
-            return 'NONE'
+            return ''
         endif
         let l:head = system('head -n ' . l:i . ' ' . a:file . ' | tail -n 1')
     endwhile
@@ -425,15 +446,18 @@ function! s:getPackage(file)
     return l:head
 endfunction
 
-"function! s:getPackageClasses(class_name,package_name)
-"    let l:temp_file = '.FactorusPackage'
-"    call system('find ' . getcwd() . ' -name "' . a:class_name . '.java" -exec grep -l "\<' . a:package_name . '\>" {} + > ' . l:temp_file)
-"    let l:res = readfile(l:temp_file)
-"    call system('rm -rf ' . l:temp_file)
-"    return l:res
-"endfunction
+" getPackageFiles {{{3
+
+" Gets all files associated with current file's package (in the same directory
+" or in subdirectories).
+function! s:getPackageFiles(file)
+    let l:package_dir = expand('%:p:h')
+    call system('find ' . l:package_dir . ' -name  "*.java" >> ' . a:file)
+endfunction
 
 " getSubClasses {{{3
+
+" Gets all subclasses of class_name (including the base class itself).
 function! s:getSubClasses(class_name)
     let l:temp_file = '.Factorus' . a:class_name . 'E'
     call system('> ' . l:temp_file)
@@ -474,6 +498,10 @@ function! s:getSubClasses(class_name)
 endfunction
 
 " getSuperClasses {{{3
+
+" Gets all superclasses of the current file. The search is recursive, and the
+" current class is considered a superclass of itself, so if A is a subclass of B,  
+" and B is a subclass of C, then getSuperClasses() will return A, B and C.
 function! s:getSuperClasses()
     let l:class_tag = s:getClassTag()
     let l:class_name = expand('%:t:r')
@@ -993,7 +1021,7 @@ function! s:getNextUse(var,...)
     return l:min
 endfunction
 
-" File-Updating {{{2
+" File Updating {{{2
 " updateFile {{{3
 function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
     let l:orig = [line('.'),col('.')]
@@ -1111,10 +1139,8 @@ endfunction
 
 " updateSubClassFiles {{{3
 function! s:updateSubClassFiles(class_name,old_name,new_name,paren,is_static)
-"    let l:pc = s:getPackageClasses(a:class_name,s:getPackage(expand('%:p')))
     let [l:sub_files,l:sub_classes] = s:getSubClasses(a:class_name)
     let l:is_method = a:paren == '(' ? 1 : 0
-"    let l:sub_classes = map(copy(l:sub_files),{n,val -> substitute(substitute(val,s:strip_dir,'\2',''),'\.java','','')})
 
     try
         execute 'silent lvimgrep /\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . a:paren . '/j ' . join(l:sub_files)
@@ -1325,9 +1351,7 @@ endfunction
 " updateParamSubClassFiles {{{3
 function! s:updateParamSubClassFiles(old_name,commas,default,param_name,param_type,is_static)
     let l:class_name = expand('%:t:r')
-"    let l:pc = s:getPackageClasses(l:class_name,s:getPackage(expand('%:p')))
     let [l:sub_files,l:sub_classes] = s:getSubClasses(l:class_name)
-"    let l:sub_classes = map(copy(l:sub_files),{n,val -> substitute(substitute(val,s:strip_dir,'\2',''),'\.java','','')})
 
     try
         execute 'silent lvimgrep /\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:old_name . '\>(' . '/j ' . join(l:sub_files)
@@ -1444,7 +1468,11 @@ function! s:updateParamReferences(classes,name,commas,default,is_static)
 endfunction
 
 " Renaming {{{2
+
 " renameArg {{{3
+
+" Renames the argument of a function to `new_name`. The argument has to be
+" under the cursor.
 function! s:renameArg(new_name,...) abort
     let l:var = expand('<cword>')
     let g:factorus_history['old'] = l:var
@@ -1456,29 +1484,37 @@ function! s:renameArg(new_name,...) abort
 endfunction
 
 " renameClass {{{3
-function! s:renameClass(new_name,...) abort
+
+" Renames the class of the current file to `new_name`.
+function! s:renameClass(new_name) abort
     let l:class_name = expand('%:t:r')
     let g:factorus_history['old'] = l:class_name
     let l:class_tag = s:getClassTag()
+
     if l:class_name == a:new_name
         throw 'Factorus:Duplicate'
     endif
+
     let l:old_file = expand('%:p')
     let l:new_file = expand('%:p:h') . '/' . a:new_name . '.java'
-    let l:package_name = s:getPackage(l:old_file)
     call add(g:factorus_qf,{'filename' : l:new_file, 'lnum' : l:class_tag[0], 'text' : s:trim(join(getline(l:class_tag[0],l:class_tag[1])))})
 
+    let l:package_name = s:getPackage(l:old_file)
     let l:temp_file = '.Factorus' . l:class_name
-    call s:findTags(l:temp_file,l:package_name,'no')
+    call s:getPackageFiles(l:temp_file)
 
-    call s:narrowTags(l:temp_file,'\<' . l:class_name . '\>')
+    if l:package_name != ''
+        call s:findTags(l:temp_file,l:package_name,'yes')
+        call s:narrowTags(l:temp_file,'\<' . l:class_name . '\>')
+    endif
+
     call s:updateQuickFix(l:temp_file,'\<' . l:class_name . '\>')
 
     call system('cat ' . l:temp_file . ' | xargs sed -i "s/\<' . l:class_name . '\>/' . a:new_name . '/g"') 
     call system('mv ' . l:old_file . ' ' . l:new_file)
     call system('rm -rf ' . l:temp_file)
 
-    let l:bufnr = bufnr('.')
+    let l:bufnr = bufnr('%')
     execute 'silent edit! ' . l:new_file
     execute 'silent! bwipeout ' . l:bufnr
 
@@ -1488,7 +1524,9 @@ function! s:renameClass(new_name,...) abort
 endfunction
 
 " renameField {{{3
-function! s:renameField(new_name,...) abort
+
+" Renames the field on the current line to `new_name`.
+function! s:renameField(new_name) abort
     let l:search = '^\s*' . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\=\s*\(' . s:java_identifier . '\)\s*[;=].*'
 
     let l:line = getline('.')
@@ -1566,7 +1604,11 @@ function! s:renameField(new_name,...) abort
 endfunction
 
 " renameMethod {{{3
-function! s:renameMethod(new_name,...) abort
+
+" Renames the current method to `new_name`. The current method is considered
+" to be whatever method the cursor is in, so the user could be within the
+" function, not necessarily right on the function.
+function! s:renameMethod(new_name) abort
     call s:gotoTag(0)
 
     let l:method_name = matchstr(getline('.'),'\s\+' . s:java_identifier . '\s*(')
@@ -1614,6 +1656,7 @@ function! s:renameMethod(new_name,...) abort
 endfunction
 
 " Extraction {{{2
+
 " getContainingBlock {{{3
 function! s:getContainingBlock(line,ranges,exclude)
     for range in a:ranges
@@ -1740,7 +1783,7 @@ function! s:getAllRelevantLines(vars,names,close)
     let l:begin = s:getAdjacentTag('b')
 
     let l:lines = {}
-    let a:closes = {}
+    let l:closes = {}
     let l:isos = {}
     for var in a:vars
         call cursor(var[2],1)
@@ -1759,7 +1802,7 @@ function! s:getAllRelevantLines(vars,names,close)
             let l:start_lines = [var[2]]
         endif
         let l:local_close = var[2] == l:begin ? s:getClosingBracket(1) : s:getClosingBracket(0)
-        let a:closes[var[0]] = copy(l:local_close)
+        let l:closes[var[0]] = copy(l:local_close)
         call cursor(l:orig[0],l:orig[1])
         if index(keys(l:lines),var[0]) < 0
             let l:lines[var[0]] = {var[2] : l:start_lines}
@@ -1785,7 +1828,7 @@ function! s:getAllRelevantLines(vars,names,close)
             let l:ldec = s:getLatestDec(l:lines,l:name,l:next[1])
 
             let l:quoted = s:isQuoted('\<' . l:name . '\>',s:getStatement(l:next[1][0]))
-            if s:isBefore(l:next[1],a:closes[l:name]) == 1 && l:quoted == 0 && l:ldec > 0
+            if s:isBefore(l:next[1],l:closes[l:name]) == 1 && l:quoted == 0 && l:ldec > 0
                 if index(l:lines[l:name][l:ldec],l:next[1][0]) < 0
                     call add(l:lines[l:name][l:ldec],l:next[1][0])
                 endif
@@ -2076,8 +2119,8 @@ endfunction
 " formatMethod {{{3
 function! s:formatMethod(def,body,spaces)
     let l:paren = stridx(a:def[0],'(')
-    let a:def_space = repeat(' ',l:paren+1)
-    call map(a:def,{n,line -> a:spaces . (n > 0 ? a:def_space : '') . substitute(line,'\s*\(.*\)','\1','')})
+    let l:def_space = repeat(' ',l:paren+1)
+    call map(a:def,{n,line -> a:spaces . (n > 0 ? l:def_space : '') . substitute(line,'\s*\(.*\)','\1','')})
 
     let l:dspaces = repeat(a:spaces,2)
     let l:i = 0
@@ -2197,6 +2240,7 @@ function! s:buildNewMethod(lines,args,ranges,vars,rels,tab,close,...)
 endfunction
 
 " Rollback {{{2
+
 " rollbackAddParam {{{3
 function! s:rollbackAddParam()
     let l:files = {}
@@ -2285,7 +2329,6 @@ function! s:rollbackRename(new_name,type)
 
     if a:type == 'Class'
         call s:renameClass(a:new_name)
-        execute 'bwipeout ' . g:factorus_history['file']
     else
         for line in g:factorus_qf
             if index(keys(line),'filename') < 0
@@ -2318,7 +2361,8 @@ endfunction
 
 " rollbackExtraction {{{3
 function! s:rollbackExtraction()
-    let l:open = search('public .*' . g:factorus_method_name . '(')
+    let l:method_name = g:factorus_history['old'][0]
+    let l:open = search('public .*' . l:method_name . '(')
     let l:close = s:getClosingBracket(1)[0]
 
     if match(getline(l:open - 1),'^\s*$') >= 0
@@ -2330,7 +2374,7 @@ function! s:rollbackExtraction()
 
     execute 'silent ' . l:open . ',' . l:close . 'delete'
 
-    call search('\<' . g:factorus_method_name . '\>(')
+    call search('\<' . l:method_name . '\>(')
     call s:gotoTag(0)
     let l:open = line('.')
     let l:close = s:getClosingBracket(1)[0]
@@ -2342,30 +2386,47 @@ function! s:rollbackExtraction()
 endfunction
 
 " Global Functions {{{1
+
 " encapsulateField {{{2
+
+" Encapsulates the field on the current line.
 function! java#factorus#encapsulateField(...) abort
+
+    " Check if we're rolling back something, and if so run the rollback
+    " function.
     if factorus#isRollback(a:000)
         call s:rollbackEncapsulation() 
         return 'Rolled back encapsulation for ' . g:factorus_history['old'][0]
     endif
 
-    let l:search = '\s*' . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\_s*\(' . s:java_identifier . '\)\_s*[;=].*'
-
-    let l:line = getline('.')
-    let l:is_static = substitute(l:line,l:search,'\2','')
-    let l:type = substitute(l:line,l:search,'\4','')
-    let l:var = substitute(l:line,l:search,'\6','')
-    let l:cap = a:0 > 0 ? substitute(a:1,'\(.\)\(.*\)','\U\1\E\2','') : substitute(l:var,'\(.\)\(.*\)','\U\1\E\2','')
-
+    " If we're trying to encapsulate a local variable, don't allow it.
+    " TODO: Possibility of a class defined in a class, which current
+    " implementation wouldn't allow.
+    echom s:getClassTag()[0]
+    echom s:getAdjacentTag('b')
     let l:is_local = s:getClassTag()[0] == s:getAdjacentTag('b') ? 0 : 1
     if l:is_local == 1
         throw 'Factorus:EncapLocal'
     endif
 
+
+    " Get the current line and the things we need to encapsulate the variable.
+    let l:line = getline('.')
+    let l:search = '\s*' . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\_s*\(' . s:java_identifier . '\)\_s*[;=].*'
+
+    " If the variable is static, don't let them encapsulate it.
+    let l:is_static = substitute(l:line,l:search,'\2','')
     if l:is_static == 1
         throw 'Factorus:EncapStatic'
     endif
 
+    " Get type and name of variable, and capitalize variable name for getters
+    " and setters.
+    let l:type = substitute(l:line,l:search,'\4','')
+    let l:var = substitute(l:line,l:search,'\6','')
+    let l:cap = a:0 > 0 ? substitute(a:1,'\(.\)\(.*\)','\U\1\E\2','') : substitute(l:var,'\(.\)\(.*\)','\U\1\E\2','')
+
+    " If we're encapsulating a non-private variable, make it private.
     let l:is_pub = 0
     if match(getline('.'),'\<\(public\|protected\)\>') >= 0
         let l:is_pub = 1
@@ -2374,8 +2435,8 @@ function! java#factorus#encapsulateField(...) abort
         execute 'silent! s/^\(\s*\)/\1private /e'
     endif
 
-    let g:factorus_history['old'] = [l:var,l:type,l:is_pub]
 
+    " Create our getters and setters for the encapsulated variable.
     let l:get = ["\tpublic " . l:type . " get" . l:cap . "() {" , "\t\treturn " . l:var . ";" , "\t}"]
     let l:set = ["\tpublic void set" . l:cap . "(" . l:type . ' ' . l:var . ") {" , "\t\tthis." . l:var . " = " . l:var . ";" , "\t}"]
     let l:encap = [""] + l:get + [""] + l:set + [""]
@@ -2385,9 +2446,12 @@ function! java#factorus#encapsulateField(...) abort
     call cursor(l:end[0] + 1,1)
     silent write!
 
+    " Let the user know it's done, and return important info for
+    " g:factorus_history.
     redraw
     echo 'Created getters and setters for ' . l:var
-    return 
+    return [l:var, l:type, l:is_pub]
+
 endfunction
 
 " addParam {{{2
@@ -2506,6 +2570,10 @@ function! java#factorus#renameSomething(new_name,type,...)
 endfunction
 
 " extractMethod {{{2
+"
+" Extracts sub-method from current method by finding 'blocks' of code that are
+" isolated from the rest of the method. Not guaranteed to be useful, but can
+" sometimes speed up the refactoring process.
 function! java#factorus#extractMethod(...)
     if factorus#isRollback(a:000)
         call s:rollbackExtraction()
@@ -2603,6 +2671,8 @@ function! java#factorus#extractMethod(...)
 endfunction
 
 " manualExtract {{{2
+
+" Manually extracts the code selected by cursor.
 function! java#factorus#manualExtract(...)
     if factorus#isRollback(a:000)
         call s:rollbackExtraction()
