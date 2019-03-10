@@ -59,7 +59,7 @@ of code that can be safely extracted:
 
 ![extractMethod](https://raw.githubusercontent.com/apalmer1377/factorus/master/media/extract.gif)
 
-If you prefer to manually extract a block of code, however, you can use FMExtractMethod:
+If you prefer to manually extract a block of code, however, you can use FMExtractMethod (now deprecated, use FExtractMethod:
 
 ![manualExtractMethod](https://raw.githubusercontent.com/apalmer1377/factorus/master/media/manualextract.gif)
 
