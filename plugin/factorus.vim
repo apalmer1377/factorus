@@ -85,8 +85,7 @@ command! -nargs=0           Factorus            call factorus#version()
 command! -nargs=0           FProjectDir         echo factorus#projectDir()
 command! -nargs=1           FSetProjectDir      call factorus#setProjectDir()
 
-command! -nargs=0           FExtractMethod      call factorus#command('extractMethod')
-command! -nargs=? -range    FMExtractMethod     call factorus#command('manualExtract', <line1>, <line2>, <f-args>)
+command! -nargs=? -range=%  FExtractMethod      call factorus#command('extractMethod', <line1>, <line2>, <f-args>)
 
 command! -nargs=1           FRenameArg          call factorus#command('renameSomething', <f-args>, 'Arg')
 command! -nargs=1           FRenameClass        call factorus#command('renameSomething', <f-args>, 'Class')

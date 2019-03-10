@@ -2255,6 +2255,11 @@ function! c#factorus#extractMethod(...)
         call s:rollbackExtraction()
         return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
     endif
+
+    if a:1 != 1 || a:2 != line('$')
+        return s:manualExtract(a:000)
+    endif
+
     echo 'Extracting new method...'
     call s:gotoTag()
     let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
@@ -2347,13 +2352,13 @@ function! c#factorus#extractMethod(...)
 endfunction
 
 " manualExtract {{{2
-function! c#factorus#manualExtract(...)
-    if factorus#isRollback(a:000)
+function! s:manualExtract(args)
+    if factorus#isRollback(a:args)
         call s:rollbackExtraction()
         return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
     endif
 
-    let l:name = a:0 <= 2 ? g:factorus_method_name : a:3
+    let l:name = len(a:args) <= 2 ? g:factorus_method_name : a:args[2]
 
     echo 'Extracting new method...'
     call s:gotoTag()
@@ -2361,7 +2366,7 @@ function! c#factorus#manualExtract(...)
     let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
     let l:method_name = substitute(getline('.'),'.*\s\+\(' . s:c_identifier . '\)\s*(.*','\1','')
 
-    let l:extract_lines = range(a:1,a:2)
+    let l:extract_lines = range(a:args[0],a:args[1])
     let l:old_lines = getline(l:open,l:close[0])
 
     let l:vars = s:getLocalDecs(l:close)

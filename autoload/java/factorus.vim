@@ -152,19 +152,14 @@ function! s:narrowTags(temp_file,search_string)
     call system('mv ' . l:n_temp_file . ' ' . a:temp_file)
 endfunction
 
-" Updates the factorus quickfix variable with files from temp_file that mach the
+" Updates the factorus quickfix variable with files from temp_file that match the
 " search_string.
 function! s:updateQuickFix(temp_file,search_string)
-    let l:res = split(system('cat ' . a:temp_file . ' | xargs grep -n "' . a:search_string . '"'),'\n')
+    let l:res = split(system('cat ' . a:temp_file . ' | xargs grep -n -H "' . a:search_string . '"'),'\n')
     call map(l:res,{n,val -> split(val,':')})
-    if len(split(system('cat ' . a:temp_file),'\n')) == 1
-        call map(l:res,{n,val -> {'filename' : expand('%:p'), 'lnum' : val[0], 'text' : s:trim(join(val[1:],':'))}})
-    else
-        call map(l:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
-    endif
+    call map(l:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
     let g:factorus_qf += l:res
 endfunction
-
 
 " Updates the quickfix menu with the values of qf, of a certain type.
 function! s:setQuickFix(type,qf)
@@ -2402,8 +2397,6 @@ function! java#factorus#encapsulateField(...) abort
     " If we're trying to encapsulate a local variable, don't allow it.
     " TODO: Possibility of a class defined in a class, which current
     " implementation wouldn't allow.
-    echom s:getClassTag()[0]
-    echom s:getAdjacentTag('b')
     let l:is_local = s:getClassTag()[0] == s:getAdjacentTag('b') ? 0 : 1
     if l:is_local == 1
         throw 'Factorus:EncapLocal'
@@ -2579,6 +2572,11 @@ function! java#factorus#extractMethod(...)
         call s:rollbackExtraction()
         return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
     endif
+
+    if a:1 != 1 || a:2 != line('$')
+        return s:manualExtract(a:000)
+    endif
+
     echo 'Extracting new method...'
     call s:gotoTag(0)
     let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
@@ -2673,13 +2671,13 @@ endfunction
 " manualExtract {{{2
 
 " Manually extracts the code selected by cursor.
-function! java#factorus#manualExtract(...)
-    if factorus#isRollback(a:000)
+function! s:manualExtract(args)
+    if factorus#isRollback(a:args)
         call s:rollbackExtraction()
         return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
     endif
 
-    let l:name = a:0 <= 2 ? g:factorus_method_name : a:3
+    let l:name = len(a:args) <= 2 ? g:factorus_method_name : a:args[2]
 
     echo 'Extracting new method...'
     call s:gotoTag(0)
@@ -2687,7 +2685,7 @@ function! java#factorus#manualExtract(...)
     let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
     let l:method_name = substitute(getline('.'),'.*\s\+\(' . s:java_identifier . '\)\s*(.*','\1','')
 
-    let l:extract_lines = range(a:1,a:2)
+    let l:extract_lines = range(a:args[0],a:args[1])
     let l:old_lines = getline(l:open,l:close[0])
 
     let l:vars = s:getLocalDecs(l:close)

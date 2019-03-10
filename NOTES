@@ -12,6 +12,7 @@ Tasks
 -----
 - Find repeated/duplicate code
 - Add comments to functions and make function names more understandable (In Progress 3/09/2019)
+- Collapse FExtractMethod and FMExtractMethod into one command, that takes an optional range of values (Java, Python, C/C++ done 3/09/2019)
 
 ====
 JAVA
@@ -23,9 +24,11 @@ Bugs
 - renameClass doesn't do anything if not part of a package (Fixed 3/09/2019)
 - Rollback of encapsulation stopped working (Fixed 3/09/2019)
 - Rolling back a manually extracted function doesn't work (Fixed 3/09/2019)
+- renameMethod has quickfix issues when only changing one file, which also breaks rolling back (Fixed 3/10/2019)
 
 Tasks
 -----
+- Several improvements to extractMethod
 
 ======
 PYTHON
