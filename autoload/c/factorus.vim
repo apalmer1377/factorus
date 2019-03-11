@@ -1549,7 +1549,7 @@ function! s:getAllRelevantLines(vars,names,close)
     let l:begin = s:getAdjacentTag('b')
 
     let l:lines = {}
-    let a:closes = {}
+    let l:closes = {}
     let l:isos = {}
     for var in a:vars
         call cursor(var[2],1)
@@ -1568,7 +1568,7 @@ function! s:getAllRelevantLines(vars,names,close)
             let l:start_lines = [var[2]]
         endif
         let l:local_close = var[2] == l:begin ? s:getClosingBracket(1) : s:getClosingBracket(0)
-        let a:closes[var[0]] = copy(l:local_close)
+        let l:closes[var[0]] = copy(l:local_close)
         call cursor(l:orig[0],l:orig[1])
         if index(keys(l:lines),var[0]) < 0
             let l:lines[var[0]] = {var[2] : l:start_lines}
@@ -1594,7 +1594,7 @@ function! s:getAllRelevantLines(vars,names,close)
             let l:ldec = s:getLatestDec(l:lines,l:name,l:next[1])
 
             let l:quoted = s:isQuoted('\<' . l:name . '\>',s:getStatement(l:next[1][0]))
-            if s:isBefore(l:next[1],a:closes[l:name]) == 1 && l:quoted == 0 && l:ldec > 0
+            if s:isBefore(l:next[1],l:closes[l:name]) == 1 && l:quoted == 0 && l:ldec > 0
                 if index(l:lines[l:name][l:ldec],l:next[1][0]) < 0
                     call add(l:lines[l:name][l:ldec],l:next[1][0])
                 endif
@@ -1885,8 +1885,8 @@ endfunction
 " formatMethod {{{3
 function! s:formatMethod(def,body,spaces)
     let l:paren = stridx(a:def[0],'(')
-    let a:def_space = repeat(' ',l:paren+1)
-    call map(a:def,{n,line -> a:spaces . (n > 0 ? a:def_space : '') . substitute(line,'\s*\(.*\)','\1','')})
+    let l:def_space = repeat(' ',l:paren+1)
+    call map(a:def,{n,line -> a:spaces . (n > 0 ? l:def_space : '') . substitute(line,'\s*\(.*\)','\1','')})
 
     let l:fspaces = a:spaces == '' ? repeat(' ',&tabstop) : a:spaces
     let l:dspaces = a:spaces == '' ? l:fspaces : repeat(a:spaces,2)

@@ -589,12 +589,12 @@ function! s:getAllRelevantLines(vars,names,close)
     let l:begin = s:getAdjacentTag('b')
 
     let l:lines = {}
-    let a:closes = {}
+    let l:closes = {}
     let l:isos = {}
     for var in a:vars
         call cursor(var[1],1)
         let l:local_close = var[1] == l:begin[0] ? s:getClosingIndent(1) : s:getClosingIndent(0)
-        let a:closes[var[0]] = copy(l:local_close)
+        let l:closes[var[0]] = copy(l:local_close)
         call cursor(l:orig[0],l:orig[1])
         if index(keys(l:lines),var[0]) < 0
             let l:lines[var[0]] = [var[1]]
@@ -855,8 +855,8 @@ endfunction
 " formatMethod {{{3
 function! s:formatMethod(def,body,return,lines,spaces)
     let l:paren = stridx(a:def[0],'(')
-    let a:def_space = repeat(' ',l:paren+1)
-    call map(a:def,{n,line -> a:spaces[0] . (n > 0 ? a:def_space : '') . substitute(line,'^\s*\(.*\)','\1','')})
+    let l:def_space = repeat(' ',l:paren+1)
+    call map(a:def,{n,line -> a:spaces[0] . (n > 0 ? l:def_space : '') . substitute(line,'^\s*\(.*\)','\1','')})
 
     let l:dspaces = join(a:spaces,'')
     let l:i = 0
