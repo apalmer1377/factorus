@@ -305,7 +305,7 @@ g:factorus_split_lines~
 Default: 1
 
 If this equals 1, then |:FExtractMethod| will split a method declaration across
-multiple lines if the declaration is longer than |g:factorus_split_lines|.
+multiple lines if the declaration is longer than |g:factorus_line_length|.
 Otherwise, the declaration will be put onto a single line.
 
 Example:
@@ -334,7 +334,7 @@ If
     |g:factorus_show_changes| == 0:
         The quickfix list is not updated after a rename.
     |g:factorus_show_changes| == 1:
-        The quickfix list is set to a list of all changes made, 
+        The quickfix list is set to a list of all changes made. 
     |g:factorus_show_changes| == 2:
         The quickfix list is set to a list of all changes NOT made, to 
         values with the same pattern as what was updated.  This option is 

@@ -1813,6 +1813,10 @@ function! s:getAllBlocks(close)
 endfunction
 
 " getAllRelevantLines {{{3
+"
+" Gets all relevant lines for each var in vars.
+"
+" Return value: [lines, isos]. lines is a dictionary 
 function! s:getAllRelevantLines(vars,names,close)
 
     " Get original position and previous tag.
@@ -2015,6 +2019,100 @@ function! s:getIsolatedLines(var,compact,rels,blocks,close)
     endfor
 
     return l:usable
+endfunction
+
+" initExtraction {{{3
+
+" Gets all necessary variables for extractMethod.
+"
+" Return values:
+"   orig: Original position of cursor.
+"   indent: The indent level of the current method.
+"   method_name: Name of the current method.
+"   open: First line of the current method.
+"   close: Last line of the current method.
+"   old_lines: All lines of the current method.
+"   vars: All variables defined in the current method.
+"   names: Names of all variables defined in the current method.
+function! s:initExtraction()
+    let l:orig = [line('.'),col('.')]
+    call s:gotoTag(0)
+
+    let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
+    let l:method_name = substitute(getline('.'),'.*\s\+\(' . s:java_identifier . '\)\s*(.*','\1','')
+
+    " Get the opening and closing lines, and copy those lines of code in case
+    " we need to roll back.
+    let [l:open,l:close] = [line('.'),s:getClosingBracket(1)]
+    let l:old_lines = getline(l:open,l:close[0])
+
+    " Jump to opening bracket of function
+    call searchpos('{','W')
+
+    " Get number of lines in method.
+
+    " Get all variables defined in method, not referenced.
+    let l:vars = s:getLocalDecs(l:close)
+    let l:names = map(deepcopy(l:vars),{n,var -> var[0]})
+    let l:decs = map(deepcopy(l:vars),{n,var -> var[2]})
+    let l:compact = [l:names,l:decs]
+
+    " Get all blocks of code (if statements, loops, etc.)
+    let l:blocks = s:getAllBlocks(l:close)
+
+    let [l:all,l:isos] = s:getAllRelevantLines(l:vars,l:names,l:close)
+
+    return [l:orig, l:tab, l:method_name, l:open, l:close, l:old_lines, l:vars, l:compact, l:blocks, l:all, l:isos]
+endfunction
+
+" getBestVar {{{3
+
+" Gets the best variable to extract the method around, according to the
+" desired heuristic.
+function! s:getBestVar(vars,compact,isos,all,blocks,open,close)
+    let l:best_var = ['','',0]
+    let l:best_lines = []
+    let l:method_length = (a:close - line('.')) * 1.0
+
+    " Go through all declared variables and try to extract 'isolated' lines.
+    " Isolated means lines that can be extracted from the function without
+    " breaking the rest of the function.
+    for var in a:vars
+        let l:iso = s:getIsolatedLines(var,a:compact,a:all,a:blocks,a:close)
+        let a:isos[var[0]][var[2]] = copy(l:iso)
+
+        let l:ratio = (len(l:iso) / l:method_length)
+        if g:factorus_extract_heuristic == 'longest'
+            if len(l:iso) > len(l:best_lines) && index(l:iso,a:open) < 0 "&& l:ratio < g:factorus_method_threshold
+                let l:best_var = var
+                let l:best_lines = copy(l:iso)
+            endif 
+        elseif g:factorus_extract_heuristic == 'greedy'
+            if len(l:iso) >= g:factorus_min_extracted_lines && l:ratio < g:factorus_method_threshold
+                let l:best_var = var
+                let l:best_lines = copy(l:iso)
+            endif
+        endif
+    endfor
+
+    if len(l:best_lines) < g:factorus_min_extracted_lines
+        throw 'Factorus:NoLines' 
+    endif
+
+    redraw
+    echo 'Almost done...'
+    if index(l:best_lines,l:best_var[2]) < 0 && l:best_var[2] != a:open
+        let l:stop = l:best_var[2]
+        let l:dec_lines = [l:stop]
+        while match(getline(l:stop),';') < 0
+            let l:stop += 1
+            call add(l:dec_lines,l:stop)
+        endwhile
+
+        let l:best_lines = l:dec_lines + l:best_lines
+    endif
+
+    return [l:best_var, l:best_lines]
 endfunction
 
 " Method-Building {{{2
@@ -2628,77 +2726,12 @@ function! java#factorus#extractMethod(...)
 
     echo 'Extracting new method...'
 
-    " Go to the beginning of the method, and get how indented it is and its
-    " name (for later use).
-    call s:gotoTag(0)
-    let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
-    let l:method_name = substitute(getline('.'),'.*\s\+\(' . s:java_identifier . '\)\s*(.*','\1','')
-
-
-    " Get the opening and closing lines, and copy those lines of code in case
-    " we need to roll back.
-    let [l:open,l:close] = [line('.'),s:getClosingBracket(1)]
-    let l:old_lines = getline(l:open,l:close[0])
-
-    " Jump to opening bracket of function
-    call searchpos('{','W')
-
-    " Get number of lines in method.
-    let l:method_length = (l:close[0] - (line('.') + 1)) * 1.0
-
-    " Get all variables defined in method, not referenced.
-    let l:vars = s:getLocalDecs(l:close)
-    let l:names = map(deepcopy(l:vars),{n,var -> var[0]})
-    let l:decs = map(deepcopy(l:vars),{n,var -> var[2]})
-    let l:compact = [l:names,l:decs]
-
-    " Get all blocks of code (if statements, loops, etc.)
-    let l:blocks = s:getAllBlocks(l:close)
-
-    let l:best_var = ['','',0]
-    let l:best_lines = []
-    let [l:all,l:isos] = s:getAllRelevantLines(l:vars,l:names,l:close)
+    let [l:orig, l:tab, l:method_name, l:open, l:close, l:old_lines, l:vars, l:compact, l:blocks, l:all, l:isos] = s:initExtraction()
 
     redraw
     echo 'Finding best lines...'
 
-    " Go through all declared variables and try to extract 'isolated' lines.
-    " Isolated means lines that can be extracted from the function without
-    " breaking the rest of the function.
-    for var in l:vars
-        let l:iso = s:getIsolatedLines(var,l:compact,l:all,l:blocks,l:close)
-        let l:isos[var[0]][var[2]] = copy(l:iso)
-
-        let l:ratio = (len(l:iso) / l:method_length)
-        if g:factorus_extract_heuristic == 'longest'
-            if len(l:iso) > len(l:best_lines) && index(l:iso,l:open) < 0 "&& l:ratio < g:factorus_method_threshold
-                let l:best_var = var
-                let l:best_lines = copy(l:iso)
-            endif 
-        elseif g:factorus_extract_heuristic == 'greedy'
-            if len(l:iso) >= g:factorus_min_extracted_lines && l:ratio < g:factorus_method_threshold
-                let l:best_var = var
-                let l:best_lines = copy(l:iso)
-            endif
-        endif
-    endfor
-
-    if len(l:best_lines) < g:factorus_min_extracted_lines
-        throw 'Factorus:NoLines' 
-    endif
-
-    redraw
-    echo 'Almost done...'
-    if index(l:best_lines,l:best_var[2]) < 0 && l:best_var[2] != l:open
-        let l:stop = l:best_var[2]
-        let l:dec_lines = [l:stop]
-        while match(getline(l:stop),';') < 0
-            let l:stop += 1
-            call add(l:dec_lines,l:stop)
-        endwhile
-
-        let l:best_lines = l:dec_lines + l:best_lines
-    endif
+    let [l:best_var, l:best_lines] = s:getBestVar()
 
     let l:new_args = s:getNewArgs(l:best_lines,l:vars,l:all,l:best_var)
     let [l:wrapped,l:wrapped_args] = s:wrapDecs(l:best_var,l:best_lines,l:vars,l:all,l:isos,l:new_args,l:close)
@@ -2746,19 +2779,13 @@ function! s:manualExtract(args)
 
     echo 'Extracting new method...'
     call s:gotoTag(0)
-    let [l:open,l:close] = [line('.'),s:getClosingBracket(1)]
     let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
     let l:method_name = substitute(getline('.'),'.*\s\+\(' . s:java_identifier . '\)\s*(.*','\1','')
 
     let l:extract_lines = range(a:args[0],a:args[1])
     let l:old_lines = getline(l:open,l:close[0])
 
-    let l:vars = s:getLocalDecs(l:close)
-    let l:names = map(deepcopy(l:vars),{n,var -> var[0]})
-    let l:decs = map(deepcopy(l:vars),{n,var -> var[2]})
-    let l:blocks = s:getAllBlocks(l:close)
-
-    let [l:all,l:isos] = s:getAllRelevantLines(l:vars,l:names,l:close)
+    let [l:orig, l:tab, l:method_name, l:open, l:close, l:old_lines, l:vars, l:compact, l:blocks, l:all, l:isos] = s:initExtraction()
 
     let l:new_args = s:getNewArgs(l:extract_lines,l:vars,l:all)
     let [l:final,l:rep] = s:buildNewMethod(l:extract_lines,l:new_args,l:blocks,l:vars,l:all,l:tab,l:close,l:name)
