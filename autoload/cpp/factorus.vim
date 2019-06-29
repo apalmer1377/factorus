@@ -2352,7 +2352,7 @@ function! cpp#factorus#extractMethod(...)
 endfunction
 
 " manualExtract {{{2
-function! s;manualExtract(args)
+function! s:manualExtract(args)
     if factorus#isRollback(a:args)
         call s:rollbackExtraction()
         return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
