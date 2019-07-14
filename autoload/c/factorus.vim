@@ -412,52 +412,73 @@ endfunction
 
 " Class Hierarchy {{{2
 " getIncluded {{{3
-function! s:getIncluded()
-    let l:orig = [line('.'),col('.')]
-    call cursor(1,1)
+" Returns all files included by a:file.
+function! s:getIncluded(file)
 
     let l:files = []
-    let l:include = '^#\<include\>\s*"'
-    let l:next = search(l:include,'Wc')
-    while l:next > 0
-        if match(getline(l:next),'<.*>$') < 0
-            call add(l:files,substitute(getline(l:next),'^.*"\(.*\/\)\=\(.*\)".*$','\2',''))
-        endif
-        call cursor(line('.') + 1,1)
-        let l:next = search(l:include,'Wc')
-    endwhile
-    if l:files == []
+    try
+        execute 'silent lvimgrep /^#include\s*".*.h"/j ' . a:file
+        for grep in getloclist(0)
+            call add(l:files, substitute(grep['text'], '^.*"\(.*\/\)\=\(.*\.h\)".*$','\1\2',''))
+        endfor
+    catch /.*/
         return []
-    endif
+    endtry
 
-    call map(l:files,{n,val -> '\/' . substitute(val,'\(.*\/\)\=\(.*\)','\2','')})
-    let l:or = substitute(' "\(' . join(l:files,'\|') . '\)" ','\.','\\.','g')
-    let l:fin = split(system('grep' . l:or . s:temp_file . ' 2> /dev/null'),'\n')
+    call map(l:files,{n,val -> substitute(val,'/','\\/','g')})
+    call map(l:files,{n,val -> '\/' . substitute(val,'\(.*\/\)\=\(.*\)','\1\2','')})
 
-    call cursor(l:orig[0],l:orig[1])
-    return l:fin
+    try
+        execute 'silent lvimgrep /' . join(l:files,'\|') . '/j ' . s:temp_file
+        let l:res = []
+        for grep in getloclist(0)
+            call add(l:res, grep['text'])
+        endfor
+    catch /.*/
+        return []
+    endtry
+
+    return l:res
 endfunction
 
-" getAllIncluded {{{3 
-function! s:getAllIncluded()
-    if exists('s:all_inc') && index(keys(s:all_inc),expand('%:p')) >= 0
-        return s:all_inc[expand('%:p')]
+" getAllIncluded {{{3
+" Returns the upward hierarchy of inclusions starting with a:inc_file.
+function! s:getAllIncluded(inc_file)
+    if exists('s:all_inc') && index(keys(s:all_inc),a:inc_file) >= 0
+        return s:all_inc[a:inc_file]
     endif
 
-    let l:fin = s:getIncluded()
+    let l:exclude = []
+    let l:fin = s:getIncluded(a:inc_file)
     let l:files = copy(l:fin)
 
-    for file in l:files
-        execute 'silent tabedit! ' . file
-        let l:fin += s:getAllIncluded()
-        call s:safeClose()
-    endfor
+    let l:n = 0
+    let l:step = 10
+    let l:thresh = 1
+    while len(l:files) > 0
+        let l:temp_files = copy(l:files)
+        let l:files = []
+        for file in l:temp_files
+            if index(l:exclude,file) < 0
+                let l:n += 1
+                if l:n >= l:thresh * l:step
+                    echo 'Getting file hierarchy (' . l:thresh * l:step . ')...'
+                    let l:thresh += 1
+                endif
 
-    let s:all_inc[expand('%:p')] = l:fin
+                call add(l:exclude, file)
+                let l:files += s:getIncluded(file)
+            endif
+        endfor
+        let l:fin += copy(l:files)
+    endwhile
+
+    let s:all_inc[a:inc_file] = l:fin
     return l:fin
 endfunction
 
 " getInclusions {{{3
+" Returns downwards inclusion hierarchy of the current file.
 function! s:getInclusions(temp_file,is_static)
     let l:swap_file = '.FactorusIncSwap'
     call system('> ' . l:swap_file)
@@ -552,7 +573,7 @@ function! s:getStructDef(type)
         return s:all_structs[expand('%:p') . '-' . a:type]
     endif
 
-    let l:files = s:getAllIncluded() + [expand('%:p')]
+    let l:files = s:getAllIncluded(expand('%:p')) + [expand('%:p')]
     let [l:prev_file,l:res] = ['',[]]
     if match(a:type,'\<\(struct\|union\)\>') >= 0
         try
@@ -718,7 +739,7 @@ function! s:getAllFunctions()
         return s:all_funcs[expand('%:p')]
     endif
 
-    let l:use = s:getAllIncluded()
+    let l:use = s:getAllIncluded(expand('%:p'))
 
     let l:defs = {'types' : [], 'names' : []}
     for class in l:use
@@ -875,7 +896,7 @@ function! s:followChain(types,funcs,type_name)
     while len(a:funcs) > 0
         if match(a:funcs[0],'(') >= 0
             try
-                let l:included = s:getAllIncluded() + [expand('%:p')]
+                let l:included = s:getAllIncluded(expand('%:p')) + [expand('%:p')]
                 execute 'silent lvimgrep /' . l:func_search . '/j ' . join(l:included)
             catch /.*/
             endtry
@@ -1259,7 +1280,7 @@ function! s:renameField(new_name,...) abort
             call cursor(l:prev[0],l:prev[1])
         endif
 
-        let l:includes = s:getAllIncluded()
+        let l:includes = s:getAllIncluded(expand('%:p'))
 
         try
             execute 'silent lvimgrep /\<' . l:method_name . '\>(/j ' . join(l:includes)
@@ -1333,7 +1354,9 @@ function! s:renameMethod(new_name,...) abort
 
     let l:is_static = match(getline('.'),'\<static\>[^)]\+(') >= 0 ? 1 : 0
 
-    let l:includes = s:getAllIncluded()
+    echo 'Getting file hierarchy...'
+    let l:includes = s:getAllIncluded(expand('%:p'))
+
     try
         execute 'silent lvimgrep /\<' . l:method_name . '\>(/j ' . join(l:includes)
         execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
@@ -1357,6 +1380,7 @@ function! s:renameMethod(new_name,...) abort
     call system('rm -rf ' . l:temp_file)
     let l:unchanged = s:getUnchanged('\<' . l:method_name . '\>')
 
+    silent edit!
     if l:swap == 1
         call s:safeClose()
     endif
@@ -1385,7 +1409,7 @@ function! s:renameType(new_name,...) abort
     let l:new_rep = l:type . ' ' . a:new_name
     let g:factorus_history['old'] = l:type . ' ' . l:type_name
 
-    let l:includes = s:getAllIncluded()
+    let l:includes = s:getAllIncluded(expand('%:p'))
     try
         execute 'silent lvimgrep /' . l:rep . '/j ' . join(l:includes)
         execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
@@ -2138,7 +2162,7 @@ function! c#factorus#addParam(param_name,param_type,...) abort
         let [l:type,l:name] = [s:trim(l:type),s:trim(l:name)]
         let g:factorus_history['old'] = [l:name,a:param_name]
 
-        let l:includes = s:getAllIncluded()
+        let l:includes = s:getAllIncluded(expand('%:p'))
         try
             execute 'silent lvimgrep /\<' . l:name . '\>(/j ' . join(l:includes)
             execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
