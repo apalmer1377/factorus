@@ -4,6 +4,9 @@ scriptencoding utf-8
 
 " Search Constants {{{1
 
+" Regex patterns are used to identify clauses in c (variables, for loops,
+" structs, etc.)
+
 let s:start_chars = '_A-Za-z'
 let s:search_chars = s:start_chars . '0-9#'
 let s:c_identifier = '[' . s:start_chars . '][' . s:search_chars . ']*'
@@ -109,6 +112,7 @@ function! s:isAlone(...)
     return 1
 endfunction
 
+" Closes current window safely.
 function! s:safeClose(...)
     let l:prev = 0
     let l:file = a:0 > 0 ? a:1 : expand('%:p')
@@ -127,17 +131,22 @@ function! s:safeClose(...)
     endif
 endfunction
 
+" Find all files containing search_string, and write them to temp_file. If
+" append is 'yes', appends to file; otherwise, overwrites file.
 function! s:findTags(temp_file,search_string,append)
     let l:fout = a:append == 'yes' ? ' >> ' : ' > '
     call system('cat ' . s:temp_file . ' | xargs grep -l "' . a:search_string . '"' .  l:fout . a:temp_file . ' 2> /dev/null')
 endfunction
 
+" Narrows files in temp_file to those containing search_string.
 function! s:narrowTags(temp_file,search_string)
     let l:n_temp_file = a:temp_file . '.narrow'
     call system('cat ' . a:temp_file . ' | xargs grep -l "' . a:search_string . '" {} + > ' . l:n_temp_file)
     call system('mv ' . l:n_temp_file . ' ' . a:temp_file)
 endfunction
 
+" Updates the factorus quickfix variable with files from temp_file that match the
+" search_string.
 function! s:updateQuickFix(temp_file,search_string)
     let l:res = split(system('cat ' . a:temp_file . ' | xargs grep -n "' . a:search_string . '"'),'\n')
     call map(l:res,{n,val -> split(val,':')})
@@ -149,6 +158,7 @@ function! s:updateQuickFix(temp_file,search_string)
     let g:factorus_qf += l:res
 endfunction
 
+" Updates the quickfix menu with the values of qf, of a certain type.
 function! s:setQuickFix(type,qf)
     let l:title = a:type . ' : '
     if g:factorus_show_changes == 1
@@ -163,6 +173,8 @@ function! s:setQuickFix(type,qf)
     call setqflist(a:qf,'r',{'title' : l:title})
 endfunction
 
+" Gets the instances that were changed by the command, in case user wants to
+" check accuracy.
 function! s:setChanges(res,eun,func,...)
     let l:qf = copy(g:factorus_qf)
     let l:type = a:func == 'rename' ? a:1 : ''
@@ -192,6 +204,8 @@ function! s:setChanges(res,eun,func,...)
     call s:setQuickFix(a:func . l:type,l:qf)
 endfunction
 
+" Gets the instances that were left unchanged by the command, in case user wants to
+" check accuracy.
 function! s:getUnchanged(search)
     let l:qf = []
 
@@ -213,6 +227,9 @@ function! s:getUnchanged(search)
     return l:qf
 endfunction
 
+" Set the working environment for the command by getting all currently open
+" buffers, moving to the highest-level directory (if possible), and putting
+" all filenames into a temp file.
 function! s:setEnvironment()
     let s:open_bufs = []
 
@@ -234,6 +251,7 @@ function! s:setEnvironment()
     return [[line('.'),col('.')],l:prev_dir,l:curr_buf]
 endfunction
 
+" Reset the working environment to how it was before the command was run.
 function! s:resetEnvironment(orig,prev_dir,curr_buf,type)
     let l:buf_setting = &switchbuf
     call system('rm -rf .Factorus*')
@@ -411,6 +429,7 @@ function! s:gotoTag()
 endfunction
 
 " Class Hierarchy {{{2
+
 " getIncluded {{{3
 " Returns all files included by a:file.
 function! s:getIncluded(file)
