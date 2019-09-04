@@ -922,7 +922,7 @@ endfunction
 function! s:getNextReference(var,type,...)
     if a:type == 'right'
         let l:search = s:no_comment . s:access_query . '\s*\(' . s:java_identifier . s:collection_identifier . 
-                    \ '\=\s\)\=\s*\(' . s:java_identifier . '\)\s*[(.=]\_[^{;]*\<\(' . a:var . '\)\>\_.\{-\};$'
+                    \ '\=\s\)\=\s*\(' . s:java_identifier . '\)\s*[(.=]\_[^{;]*\<\(' . a:var . '\)\>\_.\{-\};'
         let l:index = '\6'
         let l:alt_index = '\7'
     elseif a:type == 'left'
@@ -944,7 +944,7 @@ function! s:getNextReference(var,type,...)
     let l:endline = s:getEndLine(l:line,l:search)
     if a:type == 'right'
         let l:prev = [line('.'),col('.')]
-        while s:isValidTag(l:line[0]) == 0
+        while !s:isValidTag(l:line[0])
             if l:line == [0,0]
                 break
             endif
