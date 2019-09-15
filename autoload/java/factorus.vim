@@ -264,7 +264,7 @@ function! s:resetEnvironment(orig,prev_dir,curr_buf,type)
         execute 'silent sbuffer ' . a:curr_buf
         let &switchbuf = l:buf_setting
     endif
-    call cursor(a:orig[0],a:orig[1])
+    call cursor(a:orig)
 endfunction
 
 " Utilities {{{2
@@ -281,7 +281,7 @@ function! s:getClosingBracket(stack,...)
     endif
     normal %
     let l:res = [line('.'),col('.')]
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return l:res
 endfunction
 
@@ -331,9 +331,9 @@ endfunction
 
 function! s:getEndLine(start,search)
     let l:orig = [line('.'),col('.')]
-    call cursor(a:start[0],a:start[1])
+    call cursor(a:start)
     let l:fin = searchpos(a:search,'Wen')
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return l:fin
 endfunction
 
@@ -379,7 +379,7 @@ function! s:getAdjacentTag(dir)
             break
         endif
 
-        call cursor(l:func[0],l:func[1])
+        call cursor(l:func)
         let [l:line,l:col] = [line('.'),col('.')]
         let l:func = searchpos(s:tag_query,'Wn' . a:dir)
     endwhile
@@ -585,7 +585,7 @@ function! s:getParams() abort
     call add(l:args,strpart(l:dec,l:prev,len(l:dec)-l:prev))
     call map(l:args, {n,arg -> [split(arg)[-1],join(split(arg)[:-2]),line('.')]})
 
-    call cursor(l:prev[0],l:prev[1])
+    call cursor(l:prev)
     return l:args
 endfunction
 
@@ -602,7 +602,7 @@ function! s:getNextDec()
 
     if a:0 == 0
         while l:match != [0,0] && match(getline(l:match[0]),'\<return\>') >= 0
-            call cursor(l:match[0],l:match[1])
+            call cursor(l:match)
             let l:match = searchpos(l:get_variable,'Wn')
         endwhile
         call cursor(l:line,l:col)
@@ -642,10 +642,10 @@ function! s:getLocalDecs(close)
             call add(l:vars,[name,l:type,l:next[2][0]])
         endfor
 
-        call cursor(l:next[2][0],l:next[2][1])
+        call cursor(l:next[2])
         let l:next = s:getNextDec()
     endwhile
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
 
     return l:vars
 endfunction
@@ -745,7 +745,7 @@ function! s:getFuncDec(func)
             let l:next = l:all_funcs['types'][l:ind]
         endif
     endif
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return l:next
 endfunction
 
@@ -769,7 +769,7 @@ function! s:getVarDec(var)
         let l:res = substitute(getline(l:pos),l:search,'\5','')
     endwhile
 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return l:res
 endfunction
 
@@ -780,7 +780,7 @@ function! s:getClassVarDec(var)
     let l:search = '.*\<\(' . s:java_identifier . s:collection_identifier . '\=\)\_s\+\<' . a:var . '\>.*'
     let l:find = search(l:search,'Wn')
     let l:res = substitute(getline(l:find),l:search,'\1','') 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return l:res
 endfunction
 
@@ -830,7 +830,7 @@ function! s:getUsingVar()
     let l:next = searchpos(l:search,'Wn')
     let l:next_end = searchpos(l:search,'Wnez')
     while s:isBefore(l:next,l:orig) == 1
-        call cursor(l:next[0],l:next[1])
+        call cursor(l:next)
         call add(l:funcs,[strpart(getline('.'),l:next[1], l:next_end[1] - l:next[1])])
         if matchstr(getline('.'), '\%' . l:next_end[1] . 'c.') == '('
             call search('(')
@@ -842,7 +842,7 @@ function! s:getUsingVar()
         let l:next = searchpos(l:search,'Wn')
         let l:next_end = searchpos(l:search,'Wnez')
     endwhile
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
 
     let l:dec = s:getStructVars(l:var,l:dec,l:funcs)
     return [l:var,l:dec,l:funcs]
@@ -953,11 +953,11 @@ function! s:getNextReference(var,type,...)
                 break
             endif
 
-            call cursor(l:line[0],l:line[1])
+            call cursor(l:line)
             let l:line = searchpos(l:search,'Wn')
             let l:endline = s:getEndLine(l:line,l:search)
         endwhile
-        call cursor(l:prev[0],l:prev[1])
+        call cursor(l:prev)
     endif
 
     if l:line[0] > line('.')
@@ -1034,7 +1034,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
             if l:next == [0,0]
                 break
             endif
-            call cursor(l:next[0],l:next[1])
+            call cursor(l:next)
             call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
             execute 'silent s/' . l:query . '/\1' . a:new_name . '/g'
 
@@ -1052,7 +1052,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local,is_static)
         execute 'silent %s/\(\<super\>\.\|\<this\>\.\|[^.]\)\<' . a:old_name . '\>' . l:paren . '/\1' . a:new_name . l:paren . '/ge'
     endif
 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     silent write!
 endfunction
 
@@ -1098,7 +1098,7 @@ function! s:updateClassFile(class_name,old_name,new_name) abort
         endif
 
     endwhile
-    call cursor(l:prev[0],l:prev[1])
+    call cursor(l:prev)
 
     silent write!
 endfunction
@@ -1112,7 +1112,7 @@ function! s:updateDeclaration(method_name,new_name)
     let l:next = searchpos('^\s*' . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+' . a:method_name . '\_s*(','Wn')
 
     while l:next[0] != l:prev[0] && l:next[0] != 0
-        call cursor(l:next[0],l:next[1])
+        call cursor(l:next)
 
         if s:isValidTag(l:next[0])
             let l:prev = [line('.'),col('.')]
@@ -1129,7 +1129,7 @@ function! s:updateDeclaration(method_name,new_name)
     endwhile
     silent write!
 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
 endfunction
 
 " updateSubClassFiles {{{3
@@ -1175,7 +1175,7 @@ function! s:updateMethodFile(class_name,method_name,new_name,paren) abort
 
     let l:next = searchpos(l:search,'Wn')
     while l:next != [0,0]
-        call cursor(l:next[0],l:next[1])
+        call cursor(l:next)
         let [l:var,l:dec,l:funcs] = s:getUsingVar()
         if len(l:funcs) == 0 
             let l:dec = join(l:dec,'|')
@@ -1233,7 +1233,7 @@ function! s:getArgs() abort
     normal %
     let l:leftover = strpart(getline('.'),col('.'))
     let l:end = line('.')
-    call cursor(l:prev[0],l:prev[1])
+    call cursor(l:prev)
 
     let l:start = substitute(l:start,s:special_chars,'\\\1','g')
     let l:leftover = substitute(l:leftover,s:special_chars,'\\\1','g')
@@ -1293,15 +1293,15 @@ function! s:updateParamFile(method_name,commas,default,is_static)
             normal %
             let l:end = line('.')
             let l:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
-            call cursor(l:next[0],l:next[1])
+            call cursor(l:next)
             execute 'silent ' . line('.') . ',' . l:end . 's/\<' . a:method_name . '\>' . l:param_search . '\(' . l:leftover . '\)/' . 
                         \ l:meth . l:rep[0] . l:insert . l:rep[1] . '/e'
-            call cursor(l:next[0],l:next[1])
+            call cursor(l:next)
         endif
         let l:next = searchpos(l:func_search,'Wn')
     endwhile
 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     silent write!
 endfunction
 
@@ -1322,7 +1322,7 @@ function! s:updateParamDeclaration(method_name,commas,param_name,param_type)
     let l:next = searchpos(l:search,'Wn')
 
     while l:next[0] != 0
-        call cursor(l:next[0],l:next[1])
+        call cursor(l:next)
 
         if s:isValidTag(l:next[0]) && s:getArgs() == a:commas
             call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
@@ -1330,17 +1330,17 @@ function! s:updateParamDeclaration(method_name,commas,param_name,param_type)
             normal %
             let l:end = line('.')
             let l:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
-            call cursor(l:next[0],l:next[1])
+            call cursor(l:next)
             execute 'silent ' . line('.') . ',' . l:end . 's/\<' . a:method_name . '\>' . l:param_search . '\(' . l:leftover . '\)/' . 
                         \ a:method_name . '\1' . l:insert . '\2/e'
-            call cursor(l:next[0],l:next[1])
+            call cursor(l:next)
         endif
 
         let l:next = searchpos(l:search,'Wn')
     endwhile
     silent write!
 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
 endfunction
 
 " updateParamSubClassFiles {{{3
@@ -1388,7 +1388,7 @@ function! s:updateParamUsingFile(class_name,method_name,commas,default,is_static
     endif
     let l:param_search = '\((' . l:param_search . '\))'
     while l:next != [0,0]
-        call cursor(l:next[0],l:next[1])
+        call cursor(l:next)
         if s:getArgs() == a:commas
             if a:is_static
                 call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
@@ -1397,7 +1397,7 @@ function! s:updateParamUsingFile(class_name,method_name,commas,default,is_static
                 let l:end = line('.')
                 let l:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
                 let l:leftover = strpart(getline('.'),col('.'))
-                call cursor(l:next[0],l:next[1])
+                call cursor(l:next)
                 let l:meth = l:classes . '\.\<' . a:method_name . '\>' . l:param_search . '\(' . l:leftover . '\)'
                 execute 'silent ' . line('.') . ',' . l:end . 's/' . l:meth . '/\1.' . a:method_name . '\2' . l:insert . '\3/e'
             else
@@ -1411,7 +1411,7 @@ function! s:updateParamUsingFile(class_name,method_name,commas,default,is_static
                         let l:end = line('.')
                         let l:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
                         let l:leftover = strpart(getline('.'),col('.'))
-                        call cursor(l:next[0],l:next[1])
+                        call cursor(l:next)
                         execute 'silent ' . line('.') . ',' . l:end . 's/\<' .a:method_name . '\>' . l:param_search . '\(' . l:leftover . '\)/' . 
                                     \ a:method_name . '\1' . l:insert . '\2/e'
 
@@ -1419,18 +1419,18 @@ function! s:updateParamUsingFile(class_name,method_name,commas,default,is_static
                 else
                     if s:followChain(l:dec,l:funcs,a:method_name) == 1
                         call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
-                        call cursor(l:next[0],l:next[1])
+                        call cursor(l:next)
                         call search('(')
                         normal %
                         let l:end = line('.')
                         let l:leftover = substitute(strpart(getline('.'),col('.')),s:special_chars,'\\\1','g')
                         let l:leftover = strpart(getline('.'),col('.'))
-                        call cursor(l:next[0],l:next[1])
+                        call cursor(l:next)
                         execute 'silent ' . line('.') . ',' . l:end . 's/\<' .a:method_name . '\>' . l:param_search . '\(' . l:leftover . '\)/' . 
                                     \ a:method_name . '\1' . l:insert . '\2/e'
                     endif
                 endif
-                call cursor(l:next[0],l:next[1])
+                call cursor(l:next)
             endif
         endif
         let l:next = searchpos(l:search,'Wn')
@@ -1686,7 +1686,7 @@ function! s:getAllBlocks(close)
         if l:next == [0,0]
             break
         endif
-        call cursor(l:next[0],l:next[1])
+        call cursor(l:next)
 
         if match(getline('.'),'\<else\>') >= 0 || match(getline('.'),'}\s*\<while\>') >= 0
             let l:next = searchpos(l:search,'Wn')
@@ -1703,10 +1703,10 @@ function! s:getAllBlocks(close)
 
             let l:o = line('.')
             if s:isBefore(l:semi,l:ret) == 1
-                call cursor(l:semi[0],l:semi[1])
+                call cursor(l:semi)
                 call add(l:blocks,[l:open[0],line('.')])
             elseif match(getline('.'),'\<\(if\|try\)\>') >= 0
-                call cursor(l:ret[0],l:ret[1])
+                call cursor(l:ret)
                 normal %
 
                 let l:continue = '}\_s*\(else\_s*\(\<if\>\_[^{]*)\)\=\|\<catch\>\_[^{]*\|\<finally\>\_[^{]*\){'
@@ -1732,10 +1732,10 @@ function! s:getAllBlocks(close)
                 let l:prev = [line('.'),col('.')]
                 normal %
                 call add(l:blocks,[l:next[0],line('.')])
-                call cursor(l:prev[0],l:prev[1])
+                call cursor(l:prev)
             endif
 
-            call cursor(l:open[0],l:open[1])
+            call cursor(l:open)
         elseif match(getline('.'),'\<switch\>') >= 0
             let l:open = [line('.'),col('.')]
             call searchpos('{','W')
@@ -1748,7 +1748,7 @@ function! s:getAllBlocks(close)
             let l:next = searchpos(l:continue,'Wn')
 
             while s:isBefore(l:next,l:sclose) == 1 && l:next != [0,0]
-                call cursor(l:next[0],l:next[1])
+                call cursor(l:next)
                 let l:next = searchpos(l:continue,'Wn')
                 if s:isBefore(a:close,l:next) == 1 || l:next == [0,0]
                     call add(l:blocks,[line('.'),a:close[0]])
@@ -1762,13 +1762,13 @@ function! s:getAllBlocks(close)
             let l:prev = [line('.'),col('.')]
             normal %
             call add(l:blocks,[l:next[0],line('.')])
-            call cursor(l:prev[0],l:prev[1])
+            call cursor(l:prev)
         endif
 
         let l:next = searchpos(l:search,'Wn')
     endwhile
 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return uniq(sort(l:blocks,'s:compare'))
 endfunction
 
@@ -1798,7 +1798,7 @@ function! s:getAllRelevantLines(vars,names,close)
         endif
         let l:local_close = var[2] == l:begin ? s:getClosingBracket(1) : s:getClosingBracket(0)
         let l:closes[var[0]] = copy(l:local_close)
-        call cursor(l:orig[0],l:orig[1])
+        call cursor(l:orig)
         if index(keys(l:lines),var[0]) < 0
             let l:lines[var[0]] = {var[2] : l:start_lines}
         else
@@ -1840,11 +1840,11 @@ function! s:getAllRelevantLines(vars,names,close)
         endwhile
         let l:next = copy(l:pause)
 
-        call cursor(l:next[1][0],l:next[1][1])
+        call cursor(l:next[1])
         let l:next = s:getNextUse(l:search,1)
     endwhile
     
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return [l:lines,l:isos]
 endfunction
 
@@ -1879,12 +1879,12 @@ function! s:isIsolatedBlock(block,var,rels,close)
                 let l:res = 0
                 break
             endif
-            call cursor(l:ref[1][0],l:ref[1][1])
+            call cursor(l:ref[1])
             let l:ref = s:getNextReference(l:search,'left',1)
         endwhile
     endif
 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return l:res
 endfunction
 
@@ -1919,7 +1919,7 @@ function! s:getIsolatedLines(var,compact,rels,blocks,close)
         let l:temp = []
 
         let l:next_use = s:getNextReference(a:var[0],'right')
-        call cursor(l:next_use[1][0],l:next_use[1][1])
+        call cursor(l:next_use[1])
 
         let l:block = [0,0]
         for j in range(i,len(l:refs)-1)
@@ -1929,7 +1929,7 @@ function! s:getIsolatedLines(var,compact,rels,blocks,close)
                 if index(l:names,l:next_use[0]) >= 0
                     break
                 endif
-                call cursor(l:next_use[1][0],l:next_use[1][1])
+                call cursor(l:next_use[1])
                 let l:next_use = s:getNextReference(a:var[0],'right')
             endif
             if line >= l:block[0] && line <= l:block[1]
@@ -1965,7 +1965,7 @@ function! s:getIsolatedLines(var,compact,rels,blocks,close)
             let l:usable = copy(l:temp)
         endif
 
-        call cursor(l:orig[0],l:orig[1])
+        call cursor(l:orig)
     endfor
 
     return l:usable
@@ -2046,7 +2046,7 @@ function! s:wrapDecs(var,lines,vars,rels,isos,args,close)
                 let l:wrap = 0    
                 break
             endif
-            call cursor(l:next[1][0],l:next[1][1])
+            call cursor(l:next[1])
             let l:next = s:getNextUse(l:name)
         endwhile
 
@@ -2081,10 +2081,10 @@ function! s:wrapDecs(var,lines,vars,rels,isos,args,close)
                 endif
             endfor
         endif
-        call cursor(l:orig[0],l:orig[1])
+        call cursor(l:orig)
     endfor
 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return [l:fin,l:fin_args]
 endfunction
 
@@ -2312,7 +2312,7 @@ function! s:rollbackEncapsulation()
             let l:close += 1
         endif
         execute 'silent ' . l:open . ',' . l:close . 'delete'
-        call cursor(l:orig[0],l:orig[1])
+        call cursor(l:orig)
         silent write!
 endfunction
 
