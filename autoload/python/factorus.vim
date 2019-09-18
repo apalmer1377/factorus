@@ -378,11 +378,11 @@ function! s:getNextReference(var,type)
         let l:index = '\1'
         let l:alt_index = '\1'
     elseif a:type == 'cond'
-        let l:search = '^\s*\(for\|while\|if\|elif\).*\<\(' . a:var . '\)\>.*:'
+        let l:search = '^\s*\(for\|while\|if\|elif\).*\<\(' . a:var . '\)\>.*:.*$'
         let l:index = '\1'
         let l:alt_index = '\2'
     elseif a:type == 'return'
-        let l:search = '^\s*\<return\>.*\<\(' . a:var . '\)\>.*'
+        let l:search = '^\s*\<return\>.*\<\(' . a:var . '\)\>.*$'
         let l:index = '\1'
         let l:alt_index = '\1'
     endif
@@ -564,6 +564,7 @@ function! s:renameMethod(new_name,...) abort
 endfunction
 
 " Extraction {{{2
+
 " getContainingBlock {{{3
 function! s:getContainingBlock(line,blocks,exclude)
     for block in a:blocks
@@ -847,13 +848,12 @@ function! s:getIsolatedLines(var,names,rels,blocks,close)
     return l:usable
 endfunction
 
-" Method-Building {{{2
-
-" getInitialVariables {{{3
+" initExtraction {{{3
 
 " Gets all necessary variables for extractMethod.
 "
 " Return values:
+"   orig: Original position of cursor.
 "   indent: The indent level of the current method.
 "   method_name: Name of the current method.
 "   open: First line of the current method.
@@ -861,7 +861,8 @@ endfunction
 "   old_lines: All lines of the current method.
 "   vars: All variables defined in the current method.
 "   names: Names of all variables defined in the current method.
-function! s:getInitialVariables()
+function! s:initExtraction()
+    let l:orig = [line('.'),col('.')]
     call s:gotoTag(0)
     let l:indent = substitute(getline('.'),'^\(\s*\)[^[:space:]].*','\1','')
     let l:method_name = substitute(getline('.'),'^\s*def\s\+\<\(' . s:python_identifier . '\)\s*(.*','\1','')
@@ -878,10 +879,12 @@ function! s:getInitialVariables()
     let l:blocks = s:getAllBlocks(l:close)
     let [l:all,l:isos] = s:getAllRelevantLines(l:vars,l:names,l:close)
 
-    return [l:indent, l:method_name, l:open, l:close, l:old_lines, l:vars, l:names, l:blocks, l:all, l:isos]
+    return [l:orig, l:indent, l:method_name, l:open, l:close, l:old_lines, l:vars, l:names, l:blocks, l:all, l:isos]
 endfunction
 
-" getBestVar() {{{3
+" Method-Building {{{2
+
+" getBestVar {{{3
 
 " Gets the best variable to extract the method around, according to the
 " desired heuristic.
@@ -1033,6 +1036,28 @@ function! s:wrapDecs(var,lines,vars,rels,isos,args,close)
 
     call cursor(l:orig)
     return [l:fin,l:fin_args]
+endfunction
+
+" wrapAllDecs {{{3
+
+" Returns the lines of the new method and all arguments required for it, after
+" 'wrapping in' any possible variables.
+function! s:wrapAllDecs(vars, all, isos, open, close, best_lines, best_var)
+    let l:best_lines = deepcopy(a:best_lines)
+    let l:new_args = s:getNewArgs(l:best_lines,a:vars,a:all,a:best_var)
+
+    let [l:wrapped,l:wrapped_args] = s:wrapDecs(a:best_var,l:best_lines,a:vars,a:all,a:isos,l:new_args,a:close)
+    while l:wrapped != l:best_lines
+        let [l:best_lines,l:new_args] = [l:wrapped,l:wrapped_args]
+        let [l:wrapped,l:wrapped_args] = s:wrapDecs(a:best_var,l:best_lines,a:vars,a:all,a:isos,a:new_args,a:close)
+    endwhile
+    let l:new_args = s:getNewArgs(l:best_lines,a:vars,a:all,a:best_var)
+
+    if a:best_var[1] == a:open && index(l:new_args,a:best_var) < 0
+        call add(l:new_args,a:best_var)
+    endif
+
+    return [l:best_lines, l:new_args]
 endfunction
 
 " buildArgs {{{3
@@ -1349,10 +1374,11 @@ function! python#factorus#extractMethod(...)
         return s:manualExtract(a:000)
     endif
 
-    let [l:indent, l:method_name, l:open, l:close, l:old_lines, l:vars, l:names, l:blocks, l:all, l:isos] = s:getInitialVariables()
+    let [l:orig, l:indent, l:method_name, l:open, l:close, l:old_lines, l:vars, l:names, l:blocks, l:all, l:isos] = s:initExtraction()
 
     " For each variable, get the isolated lines for that variable (lines that
-    " can be extracted without ruining the rest of the code).
+    " can be extracted without ruining the rest of the code), and find the
+    " 'best' variable to extract around.
     
     redraw
     echo 'Finding best lines...'
@@ -1360,6 +1386,7 @@ function! python#factorus#extractMethod(...)
     let [l:best_var, l:best_lines] = s:getBestVar(l:vars,l:names,l:isos,l:all,l:blocks,l:open,l:close)
 
     if len(l:best_lines) < g:factorus_min_extracted_lines
+        call cursor(l:orig)
         redraw
         echo 'Nothing to extract'
         return
@@ -1373,20 +1400,7 @@ function! python#factorus#extractMethod(...)
 
     " Get our arguments for the new method, then wrap any isolated variables
     " into our new method until no more remain.
-    let l:new_args = s:getNewArgs(l:best_lines,l:vars,l:all,l:best_var)
-    let [l:wrapped,l:wrapped_args] = s:wrapDecs(l:best_var,l:best_lines,l:vars,l:all,l:isos,l:new_args,l:close)
-    while l:wrapped != l:best_lines
-        let [l:best_lines,l:new_args] = [l:wrapped,l:wrapped_args]
-        let [l:wrapped,l:wrapped_args] = s:wrapDecs(l:best_var,l:best_lines,l:vars,l:all,l:isos,l:new_args,l:close)
-    endwhile
-    let l:new_args = s:getNewArgs(l:best_lines,l:vars,l:all,l:best_var)
-
-    " If the variable we're building around is a method argument and we
-    " haven't added it to the arguments of the method we're building, then add
-    " it.
-    if l:best_var[1] == l:open && index(l:new_args,l:best_var) < 0
-        call add(l:new_args,l:best_var)
-    endif
+    let [l:best_lines, l:new_args] = s:wrapAllDecs(l:vars, l:all, l:isos, l:open, l:close, l:best_lines, l:best_var)
 
     " Finally, build the method using the lines we wish to extract and the
     " arguments we'll be needing.
@@ -1403,7 +1417,7 @@ function! python#factorus#extractMethod(...)
     call search('def ' . g:factorus_method_name . '(')
     silent write!
     redraw
-    echo 'Extracted ' . len(l:best_lines) . ' lines from ' . l:method_name
+    echo 'Extracted ' . len(l:best_lines) . ' lines from ' . l:method_name . ' into ' . g:factorus_method_name
     return [l:method_name,l:old_lines]
 endfunction
 
@@ -1417,7 +1431,7 @@ function! s:manualExtract(args)
     let l:new_name = len(a:args) <= 2 ? g:factorus_method_name : a:args[2]
     let l:extract_lines = range(a:args[0],a:args[1])
 
-    let [l:indent, l:method_name, l:open, l:close, l:old_lines, l:vars, l:names, l:blocks, l:all, l:isos] = s:getInitialVariables()
+    let [l:orig, l:indent, l:method_name, l:open, l:close, l:old_lines, l:vars, l:names, l:blocks, l:all, l:isos] = s:initExtraction()
 
     let l:new_args = s:getNewArgs(l:extract_lines,l:vars,l:all)
     let [l:final,l:rep] = s:buildNewMethod(l:extract_lines,l:new_args,l:blocks,l:vars,l:all,l:indent,l:close,l:new_name)
@@ -1435,7 +1449,7 @@ function! s:manualExtract(args)
     call search('def\s*\<' . l:new_name . '\>(')
     silent write!
     redraw
-    echo 'Extracted ' . len(l:extract_lines) . ' lines from ' . l:method_name
+    echo 'Extracted ' . len(l:extract_lines) . ' lines from ' . l:method_name . ' into ' . l:new_name
 
     return [l:new_name,l:old_lines]
 endfunction
