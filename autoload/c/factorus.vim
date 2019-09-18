@@ -526,7 +526,9 @@ endfunction
 " Declarations {{{2
 " getTypeDefs {{{3
 " 
-" Gets all typedefs with the name a:name.
+" Gets all typedefs renaming the name a:name.
+" TODO: This gets all typedefs renaming a:name, but shouldn't it also get
+" whatever a:name is typedef-ing? (if any)
 function! s:getTypeDefs(name,...)
     let l:type = a:0 > 0 ? '\_s*' . a:1 . '\_s*' : '\_s*'
 
@@ -552,21 +554,32 @@ function! s:getTypeDefs(name,...)
 endfunction
 
 " parseStruct {{{3
+"
+" Recursively parses the struct a:struct, returning the struct's name and all
+" items.
 function! s:parseStruct(struct)
+    " If we're at a leaf of the struct tree (no more recursion), we just split
+    " it into its type and name;
     if match(a:struct,'{') < 0
         let l:res = substitute(a:struct,'\[.*\]','','g')
         let l:res = substitute(l:res,'\*','','g')
         let l:res = split(l:res)
         return [join(l:res[:-2]),l:res[-1]]
     elseif match(a:struct,'^enum') >= 0
-        let l:res = s:trim(substitute(a:struct,'^\([^{]*\){\(.*\)}\([^}]*\)$','\1 \3',''))
-        return split(l:res)
+        let l:res = split(substitute(a:struct,'^\([^{]*\){\(.*\)}\([^}]*\)$','\1 \3',''),' ')
+        return [s:trim(join(l:res[:-2])),s:trim(l:res[-1])]
     endif
 
+    " Otherwise, we need to get each element within the brackets, and parse
+    " them separately.
     let l:res = s:trim(substitute(a:struct,'^[^{]*{\(.*\)}[^}]*$','\1',''))
     let l:res = s:trim(substitute(l:res,'\/\*.\{-\}\*\/','','g'))
     let l:name = s:trim(substitute(a:struct,'^[^{]*{\(.*\)}\([^}]*\)$','\2',''))
 
+    " Go through the struct character by character, stopping only when we hit
+    " a bracket or a semi-colon. In the former situation, we change the level
+    " of recursion, and in the latter we cut off that part and add it to the
+    " list of struct attributes.
     let l:items = []
     let l:brack = 0
     let l:count = 1
@@ -585,26 +598,50 @@ function! s:parseStruct(struct)
         let l:i += 1
     endwhile
 
+    " For each item in the struct, we parse that item recursively as well.
     for i in range(len(l:items))
+        let l:items[i] = substitute(l:items[i],':[^:]*$','','')
         let l:items[i] = s:parseStruct(l:items[i])
     endfor
 
+    " Return the list of items in the struct, and the name of the struct (if
+    " it has one). If the struct doesn't have the name, l:name will be ';'.
     return [l:items,l:name]
 endfunction
 
 " getStructDef {{{3
+"
+" Gets the definition of the struct a:type. a:type could actually be multiple
+" names, but all those names are typedefs of each other, so the definition for
+" one is the definition for all the others. getStructDef also records this
+" definition in a script-local dictionary, since it can be a time-consuming
+" process.
 function! s:getStructDef(type)
+    " If a:type already exists in the dictionary, we just return that.
     if exists('s:all_structs') && index(keys(s:all_structs),expand('%:p') . '-' . a:type) >= 0
         return s:all_structs[expand('%:p') . '-' . a:type]
     endif
 
+    " Otherwise, we get the upward hierarchy of the current file, and search
+    " for the definition of the struct.
     let l:files = s:getAllIncluded(expand('%:p')) + [expand('%:p')]
     let [l:prev_file,l:res] = ['',[]]
+
+    " NOTE: This if statement doesn't seem to serve any purpose. If we're
+    " getting the struct definition, that would imply we're definitely looking
+    " at a struct/union, which means we don't need to check again.
     if match(a:type,'\<\(struct\|union\)\>') >= 0
         try
+            " Get the highest-level mention of a:type, and jump into that file
+            " to find the declaration.
             execute 'silent lvimgrep! /' . a:type . '\_s*{/j ' . join(l:files)
             execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
             call cursor(1,1)
+
+            " Search for the struct declaration, and parse its structure
+            " recursively.
+            " TODO: This will probably need to be made more robust, to deal
+            " with classes.
             let l:find = search(a:type . '\_s*{','W')
             if l:find != 0
                 let l:prev_file = expand('%:p')
@@ -621,6 +658,8 @@ function! s:getStructDef(type)
     else
     endif
 
+    " Now that we have the struct's definition, we can add it to the
+    " dictionary.
     let s:all_structs[expand('%:p') . '-' . a:type] = [l:prev_file,a:type,deepcopy(l:res)]
     return [l:prev_file,a:type,l:res]
 endfunction
@@ -810,6 +849,8 @@ function! s:getStructVars(var,dec,funcs)
 endfunction
 
 " getFuncDec {{{3
+"
+" Gets the definition of a:func in order to determine its return type. 
 function! s:getFuncDec(func)
     let l:orig = [line('.'),col('.')]
     call cursor(1,1)
@@ -831,6 +872,8 @@ function! s:getFuncDec(func)
 endfunction
 
 " getVarDec {{{3
+"
+" Jumps back to the declaration of a:var to get its type.
 function! s:getVarDec(var)
     let l:orig = [line('.'),col('.')]
     let l:search = s:no_comment  . '.\{-\}\(' . s:modifier_query . '\|for\s*(\)\s*\(' . s:c_type . '\_s*' .
@@ -855,21 +898,37 @@ function! s:getVarDec(var)
 endfunction
 
 " getUsingVar {{{3
+"
+" Gets the struct/union that is referring to an instance of a field (used for
+" s:renameField).
 function! s:getUsingVar()
     let l:orig = [line('.'),col('.')]
 
+    " Jump backwards through the chain of structs/functions until we get to
+    " the front of the chain.
     let l:search = '\(\.\|->\)'
     while 1 == 1
+        " Get the character right before the '.' or '->'.
         let l:adj = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
+
+        " If the character before '.'/'->' is a ')' or ']', we need to jump to
+        " the opening bracket and keep going.
         if l:adj == ')' || l:adj == ']'
             call cursor(line('.'),col('.')-1)
             normal %
-            if searchpos(l:search,'bn') == searchpos('[^[:space:]]\_s*\<' . s:c_identifier . '\>','bn')
+
+            " If we haven't reached the front of the chain, keep going.
+            if searchpos(l:search,'bne') == searchpos('[^[:space:]]\_s*\<' . s:c_identifier . '\>','bn')
                 call search(l:search,'b')
+            " If the front of the chain is a variable, we get its name and
+            " declaration.
             elseif s:isBefore(searchpos('\<' . s:c_identifier . '\>\((\|\[\)','bn'),searchpos('[^[:space:]' . s:search_chars . ']','bn'))
-                call search('\<' . s:c_identifier . '\>','')
+                call search('\<' . s:c_identifier . '\>','b')
                 let l:var = expand('<cword>')
                 let l:dec = s:getVarDec(l:var)
+                break
+            " Otherwise, if the front of the chain is a function, we get the
+            " function's name and declaration.
             else
                 let l:end = col('.')
                 call search('\<' . s:c_identifier . '\>','b')
@@ -879,10 +938,16 @@ function! s:getUsingVar()
                 let l:var = substitute(l:var,'\(\[\|(\)','','')
                 break
             endif
+        " If the character before '.'/'->' isn't a ')' or ']', we need to
+        " parse the relevant variable (if it's the front), or just keep
+        " following the chain backwards. 
         else
             let l:end = col('.') - 1
             call search('\<' . s:c_identifier . '\>','b')
             let l:dot = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
+
+            " If we're at the front of the chain, get the variable's name and
+            " declaration.
             if l:dot != '.' && l:dot != '>'
                 let l:begin = col('.') - 1
                 let l:var = strpart(getline('.'),l:begin,l:end - l:begin)
@@ -894,6 +959,9 @@ function! s:getUsingVar()
         endif 
     endwhile
 
+    " Now that we're at the front of the chain, we go back through it and add
+    " the other elements to a list. (We don't need their definitions yet,
+    " we'll be finding them during s:followChain).
     let l:funcs = []
     let l:search = l:search . '\<' . s:c_identifier . '\>[([]\='
     let l:next = searchpos(l:search,'W')
@@ -921,37 +989,58 @@ function! s:getUsingVar()
 endfunction
 
 " followChain {{{3
+"
+" Checks to see if a referring chain of functions or structs is of type 
+" a:types (used for s:renameField). a:types can be multiple types, since c/c
+" has typedefs.
 function! s:followChain(types,funcs,type_name)
-    let s:open_bufs = []
-    let s:all_incs = {}
-    let s:all_structs = {}
-    let s:all_funcs = {}
+    " let s:open_bufs = []
+    " let s:all_inc = {}
+    " let s:all_structs = {}
+    " let s:all_funcs = {}
 
     let l:orig = [line('.'),col('.')]
 
+    " Get the definition and structure of a:types. l:prev_struct will contain
+    " the most recent struct in the chain, so we only need to keep track of
+    " one variable at a time.
     let l:func_search = '\(' . s:c_type . '\_s*' . s:collection_identifier . '\)\_s*\<' . a:funcs[0]
     let [l:prev_file,l:prev_struct,l:fields] = s:getStructDef('\(' . join(a:types,'\|') . '\)')
 
     while len(a:funcs) > 0
+        " If the next item in the chain is a function, we need to get the
+        " function definition.
+        " TODO: This doesn't actually happen, because in C there are no class
+        " methods. Functionality will need to be added for C++.
         if match(a:funcs[0],'(') >= 0
             try
                 let l:included = s:getAllIncluded(expand('%:p')) + [expand('%:p')]
                 execute 'silent lvimgrep /' . l:func_search . '/j ' . join(l:included)
             catch /.*/
             endtry
+        " If the next item in the chain is just a variable, we need to figure
+        " out the type of that variable, then get its definition.
         else
+            " If the next item isn't a valid attribute of the previous struct,
+            " something went wrong, so we'll just return false.
             let l:ind = index(map(deepcopy(l:fields),{n,val -> val[1]}),a:funcs[0])
             if l:ind < 0
                 break
             endif
 
+            " Otherwise, we jump into l:prev_file, and parse the type of that
+            " attribute.
             execute 'silent tabedit! ' . l:prev_file
             try
+                " Get the type and name of the struct, and find its
+                " definition.
+                " TODO: s:getTypeDefs needs to go upwards as well as downards;
+                " if new_struct is itself a typedef, this won't work.
                 let l:new_struct = split(l:fields[l:ind][0],' ')
                 if len(l:new_struct) == 1
                     let l:type_defs = s:getTypeDefs(l:new_struct[0])
                 else
-                    let l:type_defs = s:getTypeDefs(join(l:new_struct[1:],'\_s*'),l:new_struct[0])
+                    let l:type_defs = s:getTypeDefs(l:new_struct[-1],l:new_struct[-2])
                 endif
 
                 let l:struct_find = len(l:type_defs) == 0 ? l:fields[l:ind][0] : '\(' . l:fields[l:ind][0] . '\|' . join(l:type_defs,'\|') . '\)'
@@ -1085,22 +1174,40 @@ endfunction
 
 " File-Updating {{{2
 " updateUsingFile {{{3
+"
+" Updates the current file, renaming a:old_name to a:new_name. The only
+" instances to be renamed should be when a variable is of the proper struct
+" type, so we need a:type_name to differentiate.
+"
+" TODO: This function will eventually need to be modified to deal with things
+" like class methods and fields.
 function! s:updateUsingFile(type_name,old_name,new_name,paren) abort
     call cursor(1,1)
     let l:here = [line('.'),col('.')]
     let l:types = '\<\(' . a:type_name . '\)\>'
     let l:search = '\(\.\|->\)\<' . a:old_name . '\>' . a:paren
 
+    " Go through all uses of a:old_name, and rename them to a:new_name if it's
+    " a valid use of a:old_name.
     let l:next = searchpos(l:search,'Wn')
     while l:next != [0,0]
         call cursor(l:next)
+
+        " Get the variable referring to the field a:old_name.
         let [l:var,l:dec,l:funcs] = s:getUsingVar()
+
+        " If the referring variable is just a variable, we can check to see
+        " if it's the proper type. Otherwise, the referring variable is
+        " actually a function (or chain of functions), so we need to follow
+        " the chain to see if the resulting return value is the proper type.
         if len(l:funcs) == 0
             let l:dec = join(l:dec,'|')
             if match(l:dec,l:types) >= 0
                 call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
                 execute 'silent s/\(\.\|->\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/e'
             endif
+        " Otherwise, the referring variable is a chain, so we need to follow
+        " the chain to see if the resulting value is the proper type.
         else
             let l:chain = '\(' . join([l:var] + l:funcs,'\(\.\|->\)') . '\(\.\|->\)\)' . '\<' . a:old_name . '\>' . a:paren
             if s:followChain(l:dec,l:funcs,a:new_name) == 1 && match(getline('.'),l:chain) >= 0
@@ -1116,6 +1223,10 @@ function! s:updateUsingFile(type_name,old_name,new_name,paren) abort
 endfunction
 
 " updateUsingFiles {{{3
+"
+" Updates all files in a:files, renaming the field a:old_name to a:new_name.
+" a:files contains all files in the downard hierarchy of the current file,
+" that have some reference to a:old_name.
 function! s:updateUsingFiles(files,type_name,old_name,new_name,paren) abort
     for file in a:files
         execute 'silent tabedit! ' . file
@@ -1303,7 +1414,7 @@ function! s:renameField(new_name) abort
     let l:search = '^\s*\(enum[^{]*{\)\=\s*' . s:modifier_query . '\(' . s:c_type . s:collection_identifier . '\)\=\s*\(' . s:c_identifier . '\)\s*[,;=].*'
 
     let l:enum = substitute(l:line,l:search,'\1','')
-    let l:type = substitute(l:line,l:search,'\6','')
+    let l:type = substitute(l:line,l:search,'\5','')
     let l:var = s:trim(substitute(l:line,l:search,'\8',''))
 
     " If the name or type didn't match, we're renaming an enum field.
