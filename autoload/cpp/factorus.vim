@@ -4,6 +4,11 @@ scriptencoding utf-8
 
 " Search Constants {{{1
 
+" Regex patterns are used to identify clauses in cpp (variables, for loops,
+" structs, etc.)
+"
+" TODO: Add support for try/catch blocks.
+
 let s:start_chars = '_A-Za-z'
 let s:search_chars = s:start_chars . '0-9#'
 let s:cpp_identifier = '[' . s:start_chars . '][' . s:search_chars . ']*'
@@ -109,6 +114,7 @@ function! s:isAlone(...)
     return 1
 endfunction
 
+" Closes current window safely.
 function! s:safeClose(...)
     let l:prev = 0
     let l:file = a:0 > 0 ? a:1 : expand('%:p')
@@ -116,7 +122,7 @@ function! s:safeClose(...)
         let l:prev = 1
     endif
 
-    if index(s:open_bufs,l:file) < 0 && s:isAlone(l:file) == 1
+    if index(s:open_bufs,l:file) < 0 && s:isAlone(l:file)
         execute 'bwipeout ' . l:file
     elseif l:file == expand('%:p')
         q
@@ -127,28 +133,30 @@ function! s:safeClose(...)
     endif
 endfunction
 
+" Find all files containing search_string, and write them to temp_file. If
+" append is 'yes', appends to file; otherwise, overwrites file.
 function! s:findTags(temp_file,search_string,append)
     let l:fout = a:append == 'yes' ? ' >> ' : ' > '
     call system('cat ' . s:temp_file . ' | xargs grep -l "' . a:search_string . '"' .  l:fout . a:temp_file . ' 2> /dev/null')
 endfunction
 
+" Narrows files in temp_file to those containing search_string.
 function! s:narrowTags(temp_file,search_string)
     let l:n_temp_file = a:temp_file . '.narrow'
     call system('cat ' . a:temp_file . ' | xargs grep -l "' . a:search_string . '" {} + > ' . l:n_temp_file)
     call system('mv ' . l:n_temp_file . ' ' . a:temp_file)
 endfunction
 
+" Updates the factorus quickfix variable with files from temp_file that match the
+" search_string.
 function! s:updateQuickFix(temp_file,search_string)
-    let l:res = split(system('cat ' . a:temp_file . ' | xargs grep -n "' . a:search_string . '"'),'\n')
+    let l:res = split(system('cat ' . a:temp_file . ' | xargs grep -n -H "' . a:search_string . '"'),'\n')
     call map(l:res,{n,val -> split(val,':')})
-    if len(split(system('cat ' . a:temp_file),'\n')) == 1
-        call map(l:res,{n,val -> {'filename' : expand('%:p'), 'lnum' : val[0], 'text' : s:trim(join(val[1:],':'))}})
-    else
-        call map(l:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
-    endif
+    call map(l:res,{n,val -> {'filename' : val[0], 'lnum' : val[1], 'text' : s:trim(join(val[2:],':'))}})
     let g:factorus_qf += l:res
 endfunction
 
+" Updates the quickfix menu with the values of qf, of a certain type.
 function! s:setQuickFix(type,qf)
     let l:title = a:type . ' : '
     if g:factorus_show_changes == 1
@@ -163,6 +171,8 @@ function! s:setQuickFix(type,qf)
     call setqflist(a:qf,'r',{'title' : l:title})
 endfunction
 
+" Gets the instances that were changed by the command, in case user wants to
+" check accuracy.
 function! s:setChanges(res,eun,func,...)
     let l:qf = copy(g:factorus_qf)
     let l:type = a:func == 'rename' ? a:1 : ''
@@ -192,6 +202,8 @@ function! s:setChanges(res,eun,func,...)
     call s:setQuickFix(a:func . l:type,l:qf)
 endfunction
 
+" Gets the instances that were left unchanged by the command, in case user wants to
+" check accuracy.
 function! s:getUnchanged(search)
     let l:qf = []
 
@@ -213,6 +225,9 @@ function! s:getUnchanged(search)
     return l:qf
 endfunction
 
+" Set the working environment for the command by getting all currently open
+" buffers, moving to the highest-level directory (if possible), and putting
+" all filenames into a temp file.
 function! s:setEnvironment()
     let s:open_bufs = []
 
@@ -234,6 +249,7 @@ function! s:setEnvironment()
     return [[line('.'),col('.')],l:prev_dir,l:curr_buf]
 endfunction
 
+" Reset the working environment to how it was before the command was run.
 function! s:resetEnvironment(orig,prev_dir,curr_buf,type)
     let l:buf_setting = &switchbuf
     call system('rm -rf .Factorus*')
@@ -243,7 +259,7 @@ function! s:resetEnvironment(orig,prev_dir,curr_buf,type)
         execute 'silent sbuffer ' . a:curr_buf
         let &switchbuf = l:buf_setting
     endif
-    call cursor(a:orig[0],a:orig[1])
+    call cursor(a:orig)
 endfunction
 
 " Utilities {{{2
@@ -251,7 +267,7 @@ endfunction
 function! s:getClosingBracket(stack,...)
     let l:orig = [line('.'),col('.')]
     if a:0 > 0
-        call cursor(a:1[0],a:1[1])
+        call cursor(a:1)
     endif
     if a:stack == 0
         call searchpair('{','','}','Wb')
@@ -260,7 +276,7 @@ function! s:getClosingBracket(stack,...)
     endif
     normal %
     let l:res = [line('.'),col('.')]
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return l:res
 endfunction
 
@@ -310,9 +326,9 @@ endfunction
 
 function! s:getEndLine(start,search)
     let l:orig = [line('.'),col('.')]
-    call cursor(a:start[0],a:start[1])
+    call cursor(a:start)
     let l:fin = searchpos(a:search,'Wen')
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return l:fin
 endfunction
 
@@ -326,6 +342,8 @@ endfunction
 
 " Tag Navigation {{{2
 " isValidTag {{{3
+
+" Checks if line is a valid tag in cpp.
 function! s:isValidTag(line)
     let l:first_char = strpart(substitute(getline(a:line),'\s*','','g'),0,1)   
     if l:first_char == '*' || l:first_char == '/'
@@ -333,7 +351,7 @@ function! s:isValidTag(line)
     endif
 
     let l:has_keyword = match(getline(a:line),s:cpp_keywords)
-    if l:has_keyword >= 0 && s:isQuoted(s:cpp_keywords,getline(a:line)) == 0
+    if l:has_keyword >= 0 && !s:isQuoted(s:cpp_keywords,getline(a:line))
         return 0
     endif
 
@@ -348,6 +366,9 @@ function! s:isValidTag(line)
 endfunction
 
 " getAdjacentTag {{{3
+"
+" Gets the nearest adjacent tag; if dir is 'b', searches backwards, and
+" otherwise searches forwards. Returns just the line.
 function! s:getAdjacentTag(dir)
     let [l:oline,l:ocol] = [line('.'),col('.')]
     call cursor(l:oline + 1,l:ocol)
@@ -360,7 +381,7 @@ function! s:getAdjacentTag(dir)
             break
         endif
 
-        call cursor(l:func[0],l:func[1])
+        call cursor(l:func)
         let l:func = searchpos(s:tag_query,'Wn' . a:dir)
     endwhile
     call cursor(l:oline,l:ocol)
@@ -372,35 +393,16 @@ function! s:getAdjacentTag(dir)
 endfunction
 
 " getNextTag {{{3
+"
+" Shortcut for getting the next forward tag. Returns the line and the first
+" character in the line.
 function! s:getNextTag()
     return [s:getAdjacentTag(''),1]
 endfunction
 
-" getTypeTag {{{3
-function! s:getTypeTag()
-    let [l:line,l:col] = [line('.'),col('.')]
-    call cursor(1,1)
-    let l:class_tag = search(s:tag_query,'n')
-    let l:tag_end = search(s:tag_query,'ne')
-    call cursor(l:line,l:col)
-    return [l:class_tag,l:tag_end]
-endfunction
-
-"isInType {{{3
-function! s:isInType()
-    let l:orig = [line('.'),col('.')]
-    let l:close = s:getClosingBracket(0)
-    call s:gotoTag()
-
-    let l:res = 0
-    if s:isBefore(searchpos('{','Wn'),searchpos('(','Wn')) && s:getClosingBracket(1)[0] >= l:close[0]
-        let l:res = 1
-    endif
-    call cursor(l:orig[0],l:orig[1])
-    return l:res
-endfunction
-
 " gotoTag {{{3
+"
+" Jumps to the nearest backwards tag, if possible.
 function! s:gotoTag()
     let l:tag = s:getAdjacentTag('b')
     if l:tag != 0
@@ -410,54 +412,96 @@ function! s:gotoTag()
     endif
 endfunction
 
-" Class Hierarchy {{{2
-" getIncluded {{{3
-function! s:getIncluded()
+"isInType {{{3
+"
+" Checks if cursor is within a typedef or struct.
+function! s:isInType()
     let l:orig = [line('.'),col('.')]
-    call cursor(1,1)
+    let l:close = s:getClosingBracket(0)
+    call s:gotoTag()
 
-    let l:files = []
-    let l:include = '^#\<include\>\s*"'
-    let l:next = search(l:include,'Wc')
-    while l:next > 0
-        if match(getline(l:next),'<.*>$') < 0
-            call add(l:files,substitute(getline(l:next),'^.*"\(.*\/\)\=\(.*\)".*$','\2',''))
-        endif
-        call cursor(line('.') + 1,1)
-        let l:next = search(l:include,'Wc')
-    endwhile
-    if l:files == []
-        return []
+    let l:res = 0
+    if s:isBefore(searchpos('{','Wn'),searchpos('(','Wn')) && s:getClosingBracket(1)[0] >= l:close[0]
+        let l:res = 1
     endif
-
-    call map(l:files,{n,val -> '\/' . substitute(val,'\(.*\/\)\=\(.*\)','\2','')})
-    let l:or = substitute(' "\(' . join(l:files,'\|') . '\)" ','\.','\\.','g')
-    let l:fin = split(system('grep' . l:or . s:temp_file . ' 2> /dev/null'),'\n')
-
-    call cursor(l:orig[0],l:orig[1])
-    return l:fin
+    call cursor(l:orig)
+    return l:res
 endfunction
 
-" getAllIncluded {{{3 
-function! s:getAllIncluded()
-    if exists('s:all_inc') && index(keys(s:all_inc),expand('%:p')) >= 0
-        return s:all_inc[expand('%:p')]
+
+" Class Hierarchy {{{2
+" getIncluded {{{3
+"
+" Returns all files included by a:file.
+function! s:getIncluded(file)
+
+    let l:files = []
+    try
+        execute 'silent lvimgrep /^#include\s*".*.h"/j ' . a:file
+        for grep in getloclist(0)
+            call add(l:files, substitute(grep['text'], '^.*"\(.*\/\)\=\(.*\.h\)".*$','\1\2',''))
+        endfor
+    catch /.*/
+        return []
+    endtry
+
+    call map(l:files,{n,val -> substitute(val,'/','\\/','g')})
+    call map(l:files,{n,val -> '\/' . substitute(val,'\(.*\/\)\=\(.*\)','\1\2','')})
+
+    try
+        execute 'silent lvimgrep /' . join(l:files,'\|') . '/j ' . s:temp_file
+        let l:res = []
+        for grep in getloclist(0)
+            call add(l:res, grep['text'])
+        endfor
+    catch /.*/
+        return []
+    endtry
+
+    return l:res
+endfunction
+
+" getAllIncluded {{{3
+"
+" Returns the upward hierarchy of inclusions starting with a:inc_file.
+function! s:getAllIncluded(inc_file)
+    if exists('s:all_inc') && index(keys(s:all_inc),a:inc_file) >= 0
+        return s:all_inc[a:inc_file]
     endif
 
-    let l:fin = s:getIncluded()
+    let l:exclude = []
+    let l:fin = s:getIncluded(a:inc_file)
     let l:files = copy(l:fin)
 
-    for file in l:files
-        execute 'silent tabedit! ' . file
-        let l:fin += s:getAllIncluded()
-        call s:safeClose()
-    endfor
+    let l:n = 0
+    let l:step = 10
+    let l:thresh = 1
+    while len(l:files) > 0
+        let l:temp_files = copy(l:files)
+        let l:files = []
+        for file in l:temp_files
+            if index(l:exclude,file) < 0
+                let l:n += 1
+                if l:n >= l:thresh * l:step
+                    echo 'Getting file hierarchy (' . l:thresh * l:step . ')...'
+                    let l:thresh += 1
+                endif
 
-    let s:all_inc[expand('%:p')] = l:fin
+                call add(l:exclude, file)
+                let l:files += s:getIncluded(file)
+            endif
+        endfor
+        let l:fin += copy(l:files)
+    endwhile
+
+    let s:all_inc[a:inc_file] = l:fin
     return l:fin
 endfunction
 
 " getInclusions {{{3
+"
+" Returns downwards inclusion hierarchy of the current file, including the
+" current file.
 function! s:getInclusions(temp_file,is_static)
     let l:swap_file = '.FactorusIncSwap'
     call system('> ' . l:swap_file)
@@ -481,6 +525,10 @@ endfunction
 
 " Declarations {{{2
 " getTypeDefs {{{3
+" 
+" Gets all typedefs renaming the name a:name.
+" TODO: This gets all typedefs renaming a:name, but shouldn't it also get
+" whatever a:name is typedef-ing? (if any)
 function! s:getTypeDefs(name,...)
     let l:type = a:0 > 0 ? '\_s*' . a:1 . '\_s*' : '\_s*'
 
@@ -506,21 +554,32 @@ function! s:getTypeDefs(name,...)
 endfunction
 
 " parseStruct {{{3
-function! cpp#factorus#parseStruct(struct)
+"
+" Recursively parses the struct a:struct, returning the struct's name and all
+" items.
+function! s:parseStruct(struct)
+    " If we're at a leaf of the struct tree (no more recursion), we just split
+    " it into its type and name;
     if match(a:struct,'{') < 0
         let l:res = substitute(a:struct,'\[.*\]','','g')
         let l:res = substitute(l:res,'\*','','g')
         let l:res = split(l:res)
         return [join(l:res[:-2]),l:res[-1]]
     elseif match(a:struct,'^enum') >= 0
-        let l:res = s:trim(substitute(a:struct,'^\([^{]*\){\(.*\)}\([^}]*\)$','\1 \3',''))
-        return split(l:res)
+        let l:res = split(substitute(a:struct,'^\([^{]*\){\(.*\)}\([^}]*\)$','\1 \3',''),' ')
+        return [s:trim(join(l:res[:-2])),s:trim(l:res[-1])]
     endif
 
+    " Otherwise, we need to get each element within the brackets, and parse
+    " them separately.
     let l:res = s:trim(substitute(a:struct,'^[^{]*{\(.*\)}[^}]*$','\1',''))
     let l:res = s:trim(substitute(l:res,'\/\*.\{-\}\*\/','','g'))
     let l:name = s:trim(substitute(a:struct,'^[^{]*{\(.*\)}\([^}]*\)$','\2',''))
 
+    " Go through the struct character by character, stopping only when we hit
+    " a bracket or a semi-colon. In the former situation, we change the level
+    " of recursion, and in the latter we cut off that part and add it to the
+    " list of struct attributes.
     let l:items = []
     let l:brack = 0
     let l:count = 1
@@ -539,26 +598,50 @@ function! cpp#factorus#parseStruct(struct)
         let l:i += 1
     endwhile
 
+    " For each item in the struct, we parse that item recursively as well.
     for i in range(len(l:items))
-        let l:items[i] = cpp#factorus#parseStruct(l:items[i])
+        let l:items[i] = substitute(l:items[i],':[^:]*$','','')
+        let l:items[i] = s:parseStruct(l:items[i])
     endfor
 
+    " Return the list of items in the struct, and the name of the struct (if
+    " it has one). If the struct doesn't have the name, l:name will be ';'.
     return [l:items,l:name]
 endfunction
 
 " getStructDef {{{3
+"
+" Gets the definition of the struct a:type. a:type could actually be multiple
+" names, but all those names are typedefs of each other, so the definition for
+" one is the definition for all the others. getStructDef also records this
+" definition in a script-local dictionary, since it can be a time-consuming
+" process.
 function! s:getStructDef(type)
+    " If a:type already exists in the dictionary, we just return that.
     if exists('s:all_structs') && index(keys(s:all_structs),expand('%:p') . '-' . a:type) >= 0
         return s:all_structs[expand('%:p') . '-' . a:type]
     endif
 
-    let l:files = s:getAllIncluded() + [expand('%:p')]
+    " Otherwise, we get the upward hierarchy of the current file, and search
+    " for the definition of the struct.
+    let l:files = s:getAllIncluded(expand('%:p')) + [expand('%:p')]
     let [l:prev_file,l:res] = ['',[]]
+
+    " NOTE: This if statement doesn't seem to serve any purpose. If we're
+    " getting the struct definition, that would imply we're definitely looking
+    " at a struct/union, which means we don't need to check again.
     if match(a:type,'\<\(struct\|union\)\>') >= 0
         try
+            " Get the highest-level mention of a:type, and jump into that file
+            " to find the declaration.
             execute 'silent lvimgrep! /' . a:type . '\_s*{/j ' . join(l:files)
             execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
             call cursor(1,1)
+
+            " Search for the struct declaration, and parse its structure
+            " recursively.
+            " TODO: This will probably need to be made more robust, to deal
+            " with classes.
             let l:find = search(a:type . '\_s*{','W')
             if l:find != 0
                 let l:prev_file = expand('%:p')
@@ -567,7 +650,7 @@ function! s:getStructDef(type)
                 normal %
                 let l:end = line('.')
                 let l:def = join(getline(l:start,l:end))
-                let l:res = cpp#factorus#parseStruct(l:def)[0]
+                let l:res = s:parseStruct(l:def)[0]
             endif
             call s:safeClose()
         catch /.*/
@@ -575,6 +658,8 @@ function! s:getStructDef(type)
     else
     endif
 
+    " Now that we have the struct's definition, we can add it to the
+    " dictionary.
     let s:all_structs[expand('%:p') . '-' . a:type] = [l:prev_file,a:type,deepcopy(l:res)]
     return [l:prev_file,a:type,l:res]
 endfunction
@@ -599,14 +684,19 @@ function! s:getNextArg(...)
 endfunction
 
 " getParams {{{3
+"
+" Gets the parameters of the current method.
 function! s:getParams() abort
-    let l:prev = [line('.'),col('.')]
-    call s:gotoTag()
+    " Remember the current line, and get the parentheses that contain the
+    " method parameters.
+    let l:orig = [line('.'),col('.')]
+
     let l:oparen = search('(','Wn')
     let l:cparen = search(')','Wn')
     
+    " TODO: Need to allow for multi-line method declarations.
     let l:dec = join(getline(l:oparen,l:cparen))
-    let l:dec = substitute(l:dec,'.*(\(.*\)).*','\1','')
+    let l:dec = substitute(l:dec,'.*(\(\_[^)]*\)).*','\1','')
     if l:dec == ''
         return []
     endif
@@ -615,7 +705,7 @@ function! s:getParams() abort
     call map(l:args, {n,arg -> split(substitute(s:trim(arg),'\(.*\)\(\<' . s:cpp_identifier . '\>\)$','\1|\2',''),'|')})
     call map(l:args, {n,arg -> [s:trim(arg[1]),s:trim(arg[0]),line('.')]})
 
-    call cursor(l:prev[0],l:prev[1])
+    call cursor(l:orig)
     return l:args
 endfunction
 
@@ -632,7 +722,7 @@ function! s:getNextDec()
 
     if a:0 == 0
         while l:match != [0,0] && match(getline(l:match[0]),'\<return\>') >= 0
-            call cursor(l:match[0],l:match[1])
+            call cursor(l:match)
             let l:match = searchpos(l:get_variable,'Wn')
         endwhile
         call cursor(l:line,l:col)
@@ -657,26 +747,35 @@ function! s:getNextDec()
 endfunction
 
 " getLocalDecs {{{3
+"
+" Gets all local declarations of the current method, including the method
+" parameters.
 function! s:getLocalDecs(close)
+
+    " Get the parameters of the method.
+    let l:vars = s:getParams()
+
+    " Remember our current position, then get the next local declaration.
     let l:orig = [line('.'),col('.')]
-    let l:here = [line('.'),col('.')]
     let l:next = s:getNextDec()
 
-    let l:vars = s:getParams()
-    while s:isBefore(l:next[2],a:close)
-        if l:next[2] == [0,0]
-            break
-        endif
+    " Until there are no more declarations in the current method, parse the
+    " declaration and add it to l:vars.
+    while s:isBefore(l:next[2],a:close) && l:next[2] != [0,0]
         
+        " Parse the declaration and add it to l:vars.
         let l:type = l:next[0]
         for name in l:next[1]
             call add(l:vars,[name,l:type,l:next[2][0]])
         endfor
 
-        call cursor(l:next[2][0],l:next[2][1])
+        " Get the next local declaration.
+        call cursor(l:next[2])
         let l:next = s:getNextDec()
     endwhile
-    call cursor(l:orig[0],l:orig[1])
+
+    " Return back to our original position.
+    call cursor(l:orig)
 
     return l:vars
 endfunction
@@ -718,7 +817,7 @@ function! s:getAllFunctions()
         return s:all_funcs[expand('%:p')]
     endif
 
-    let l:use = s:getAllIncluded()
+    let l:use = s:getAllIncluded(expand('%:p'))
 
     let l:defs = {'types' : [], 'names' : []}
     for class in l:use
@@ -750,6 +849,8 @@ function! s:getStructVars(var,dec,funcs)
 endfunction
 
 " getFuncDec {{{3
+"
+" Gets the definition of a:func in order to determine its return type. 
 function! s:getFuncDec(func)
     let l:orig = [line('.'),col('.')]
     call cursor(1,1)
@@ -766,11 +867,13 @@ function! s:getFuncDec(func)
             let l:next = l:all_funcs['types'][l:ind]
         endif
     endif
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return l:next
 endfunction
 
 " getVarDec {{{3
+"
+" Jumps back to the declaration of a:var to get its type.
 function! s:getVarDec(var)
     let l:orig = [line('.'),col('.')]
     let l:search = s:no_comment  . '.\{-\}\(' . s:modifier_query . '\|for\s*(\)\s*\(' . s:cpp_type . '\_s*' .
@@ -790,26 +893,42 @@ function! s:getVarDec(var)
         let l:res = substitute(substitute(getline(l:pos),l:search,'\5',''),'\*','','g')
     endwhile
 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return l:res
 endfunction
 
 " getUsingVar {{{3
+"
+" Gets the struct/union that is referring to an instance of a field (used for
+" s:renameField).
 function! s:getUsingVar()
     let l:orig = [line('.'),col('.')]
 
+    " Jump backwards through the chain of structs/functions until we get to
+    " the front of the chain.
     let l:search = '\(\.\|->\)'
     while 1 == 1
+        " Get the character right before the '.' or '->'.
         let l:adj = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
+
+        " If the character before '.'/'->' is a ')' or ']', we need to jump to
+        " the opening bracket and keep going.
         if l:adj == ')' || l:adj == ']'
             call cursor(line('.'),col('.')-1)
             normal %
-            if searchpos(l:search,'bn') == searchpos('[^[:space:]]\_s*\<' . s:cpp_identifier . '\>','bn')
+
+            " If we haven't reached the front of the chain, keep going.
+            if searchpos(l:search,'bne') == searchpos('[^[:space:]]\_s*\<' . s:cpp_identifier . '\>','bn')
                 call search(l:search,'b')
+            " If the front of the chain is a variable, we get its name and
+            " declaration.
             elseif s:isBefore(searchpos('\<' . s:cpp_identifier . '\>\((\|\[\)','bn'),searchpos('[^[:space:]' . s:search_chars . ']','bn'))
-                call search('\<' . s:cpp_identifier . '\>','')
+                call search('\<' . s:cpp_identifier . '\>','b')
                 let l:var = expand('<cword>')
                 let l:dec = s:getVarDec(l:var)
+                break
+            " Otherwise, if the front of the chain is a function, we get the
+            " function's name and declaration.
             else
                 let l:end = col('.')
                 call search('\<' . s:cpp_identifier . '\>','b')
@@ -819,10 +938,16 @@ function! s:getUsingVar()
                 let l:var = substitute(l:var,'\(\[\|(\)','','')
                 break
             endif
+        " If the character before '.'/'->' isn't a ')' or ']', we need to
+        " parse the relevant variable (if it's the front), or just keep
+        " following the chain backwards. 
         else
             let l:end = col('.') - 1
             call search('\<' . s:cpp_identifier . '\>','b')
             let l:dot = matchstr(getline('.'), '\%' . (col('.') - 1) . 'c.')
+
+            " If we're at the front of the chain, get the variable's name and
+            " declaration.
             if l:dot != '.' && l:dot != '>'
                 let l:begin = col('.') - 1
                 let l:var = strpart(getline('.'),l:begin,l:end - l:begin)
@@ -834,13 +959,16 @@ function! s:getUsingVar()
         endif 
     endwhile
 
+    " Now that we're at the front of the chain, we go back through it and add
+    " the other elements to a list. (We don't need their definitions yet,
+    " we'll be finding them during s:followChain).
     let l:funcs = []
     let l:search = l:search . '\<' . s:cpp_identifier . '\>[([]\='
     let l:next = searchpos(l:search,'W')
     let l:next_end = searchpos(l:search,'Wnez')
 
     while s:isBefore(l:next,l:orig)
-        call cursor(l:next[0],l:next[1])
+        call cursor(l:next)
 
         let l:func = substitute(strpart(getline('.'),l:next[1], l:next_end[1] - l:next[1]),'^>','','')
         call add(l:funcs,l:func)
@@ -854,44 +982,65 @@ function! s:getUsingVar()
         let l:next = searchpos(l:search,'W')
         let l:next_end = searchpos(l:search,'Wnez')
     endwhile
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
 
     let l:dec = [l:dec]
     return [l:var,l:dec,l:funcs]
 endfunction
 
 " followChain {{{3
+"
+" Checks to see if a referring chain of functions or structs is of type 
+" a:types (used for s:renameField). a:types can be multiple types, since cpp/c
+" has typedefs.
 function! s:followChain(types,funcs,type_name)
-    let s:open_bufs = []
-    let s:all_incs = {}
-    let s:all_structs = {}
-    let s:all_funcs = {}
+    " let s:open_bufs = []
+    " let s:all_inc = {}
+    " let s:all_structs = {}
+    " let s:all_funcs = {}
 
     let l:orig = [line('.'),col('.')]
 
+    " Get the definition and structure of a:types. l:prev_struct will contain
+    " the most recent struct in the chain, so we only need to keep track of
+    " one variable at a time.
     let l:func_search = '\(' . s:cpp_type . '\_s*' . s:collection_identifier . '\)\_s*\<' . a:funcs[0]
     let [l:prev_file,l:prev_struct,l:fields] = s:getStructDef('\(' . join(a:types,'\|') . '\)')
 
     while len(a:funcs) > 0
+        " If the next item in the chain is a function, we need to get the
+        " function definition.
+        " TODO: This doesn't actually happen, because in C there are no class
+        " methods. Functionality will need to be added for C++.
         if match(a:funcs[0],'(') >= 0
             try
-                let l:included = s:getAllIncluded() + [expand('%:p')]
+                let l:included = s:getAllIncluded(expand('%:p')) + [expand('%:p')]
                 execute 'silent lvimgrep /' . l:func_search . '/j ' . join(l:included)
             catch /.*/
             endtry
+        " If the next item in the chain is just a variable, we need to figure
+        " out the type of that variable, then get its definition.
         else
+            " If the next item isn't a valid attribute of the previous struct,
+            " something went wrong, so we'll just return false.
             let l:ind = index(map(deepcopy(l:fields),{n,val -> val[1]}),a:funcs[0])
             if l:ind < 0
                 break
             endif
 
+            " Otherwise, we jump into l:prev_file, and parse the type of that
+            " attribute.
             execute 'silent tabedit! ' . l:prev_file
             try
+                " Get the type and name of the struct, and find its
+                " definition.
+                " TODO: s:getTypeDefs needs to go upwards as well as downards;
+                " if new_struct is itself a typedef, this won't work.
                 let l:new_struct = split(l:fields[l:ind][0],' ')
                 if len(l:new_struct) == 1
                     let l:type_defs = s:getTypeDefs(l:new_struct[0])
                 else
-                    let l:type_defs = s:getTypeDefs(join(l:new_struct[1:],'\_s*'),l:new_struct[0])
+                    let l:type_defs = s:getTypeDefs(l:new_struct[-1],l:new_struct[-2])
                 endif
 
                 let l:struct_find = len(l:type_defs) == 0 ? l:fields[l:ind][0] : '\(' . l:fields[l:ind][0] . '\|' . join(l:type_defs,'\|') . '\)'
@@ -905,7 +1054,7 @@ function! s:followChain(types,funcs,type_name)
             call remove(a:funcs,0)
         endif
     endwhile
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
 
     if l:ind >= 0
         let l:ind = match(map(l:fields,{n,val -> val[1]}),'\<' . a:type_name . '\>')
@@ -916,31 +1065,46 @@ endfunction
 
 " References {{{2
 " getNextReference {{{3
-function! s:getNextReference(var,type,...)
+"
+" Gets the next reference to a:var; the type of reference depends on a:type.
+" If type is 'right', gets the next reference where a:var is being used for a
+" value or function. If type is 'left', gets the next reference where a:var is
+" being updated or is doing something (e.g. a:var is a struct and code is
+" referring to an attribute). If type is 'cond', gets the next reference where
+" a:var is part of a conditional statement (if, while, etc.). Lastly, if type
+" is 'return' gets the next reference where a:var is part of a return
+" statement.
+function! s:getNextReference(var,type)
+    " Set our regex based on a:type, as well as the index we'll be using to
+    " isolate part of the result.
     if a:type == 'right'
         let l:search = s:no_comment . s:modifier_query . '\s*\(' . s:cpp_type . '\_s*' . s:collection_identifier . 
                     \ '\)\=\s*\(' . s:cpp_identifier . '\)\s*[(.=]\_[^{;]*\<\(' . a:var . '\)\>\_.\{-\};$'
-        let l:index = '\7'
-        let l:alt_index = '\8'
+        let l:ref_index = '\7'
+        let l:name_index = '\8'
     elseif a:type == 'left'
         let l:search = s:no_comment . '\(.\{-\}\[[^]]\{-\}\<\(' . a:var . '\)\>.\{-\}]\|\<\(' . a:var . '\)\>\)\s*\(++\_s*;\|--\_s*;\|[-\^|&~+*/]\=[.=][^=]\).*'
-        let l:index = '\1'
-        let l:alt_index = '\1'
+        let l:ref_index = '\1'
+        let l:name_index = '\1'
     elseif a:type == 'cond'
         let l:search = s:no_comment . '\<\(switch\|while\|for\|if\|else\s\+if\)\>\_s*(\_[^{;]*\<\(' . a:var . '\)\>\_[^{;]*).*'
-        let l:index = '\1'
-        let l:alt_index = '\2'
+        let l:ref_index = '\1'
+        let l:name_index = '\2'
     elseif a:type == 'return'
         let l:search = s:no_comment . '\s*\<return\>\_[^;]*\<\(' . a:var . '\)\>.*'
-        let l:index = '\1'
-        let l:alt_index = '\1'
+        let l:ref_index = '\1'
+        let l:name_index = '\1'
     endif
 
+    " Get the next reference of the relevant type.
     let l:line = searchpos(l:search,'Wn')
     let l:endline = s:getEndLine(l:line,l:search)
+
+    " If type is 'right', there are some potential issues with the reference
+    " regex that need to be cleared up.
     if a:type == 'right'
         let l:prev = [line('.'),col('.')]
-        while s:isValidTag(l:line[0]) == 0
+        while !s:isValidTag(l:line[0])
             if l:line == [0,0]
                 break
             endif
@@ -953,79 +1117,97 @@ function! s:getNextReference(var,type,...)
                 break
             endif
 
-            call cursor(l:line[0],l:line[1])
+            call cursor(l:line)
             let l:line = searchpos(l:search,'Wn')
             let l:endline = s:getEndLine(l:line,l:search)
         endwhile
-        call cursor(l:prev[0],l:prev[1])
+        call cursor(l:prev)
     endif
 
+    " If the reference we found is valid, we isolate the relevant parts and
+    " return them; otherwise, we return a 'blank' value.
     if l:line[0] > line('.')
         let l:state = join(getline(l:line[0],l:endline[0]))
-        let l:loc = substitute(l:state,l:search,l:index,'')
+
+        let l:ref = substitute(l:state,l:search,l:ref_index,'')
+        let l:name = substitute(l:state,l:search,l:name_index,'')
+
         if a:type == 'left'
-            let l:loc = substitute(l:loc,'.*\<\(' . a:var . '\)\>.*','\1','')
+            let l:ref = substitute(l:ref,'.*\<\(' . a:var . '\)\>.*','\1','')
+            let l:name = l:ref
         endif
-        if a:0 > 0 && a:1 == 1
-            let l:name = substitute(l:state,l:search,l:alt_index,'')
-            if a:type == 'left'
-                let l:name = l:loc
-            endif
-            return [l:loc,l:line,l:name]
-        endif
-        return [l:loc,l:line]
+
+        return [l:ref, l:line, l:name]
     endif
         
-    return (a:0 > 0 && a:1 == 1) ? ['none',[0,0],'none'] : ['none',[0,0]]
+    return ['none', [0,0], 'none']
 endfunction
 
 " getNextUse {{{3
-function! s:getNextUse(var,...)
-    let l:right = s:getNextReference(a:var,'right',a:0)
-    let l:left = s:getNextReference(a:var,'left',a:0)
-    let l:cond = s:getNextReference(a:var,'cond',a:0)
-    let l:return = s:getNextReference(a:var,'return',a:0)
+"
+" Gets the next mention of a:var. Returns the reference point, the type of
+" reference, and the variable name.
+function! s:getNextUse(var)
 
-    let l:min = [l:right[0],copy(l:right[1]),'right']
-    let l:min_name = a:0 > 0 ? l:right[2] : ''
+    " Get the next reference of each type.
+    let l:right = s:getNextReference(a:var,'right')
+    let l:left = s:getNextReference(a:var,'left')
+    let l:cond = s:getNextReference(a:var,'cond')
+    let l:return = s:getNextReference(a:var,'return')
 
+    let l:min = [l:right[0], copy(l:right[1]), 'right', l:right[2]]
+
+    " Find which reference is nearest to the cursor, and return that. If there
+    " are no more references, the return value will be
+    " ['none',[0,0],'right','none'].
     let l:poss = [l:right,l:left,l:cond,l:return]
-    let l:idents = ['right','left','cond','return']
+    let l:idents = ['right', 'left', 'cond', 'return']
     for i in range(4)
         let temp = l:poss[i]
-        if temp[1] != [0,0] && (s:isBefore(temp[1],l:min[1]) == 1 || l:min[1] == [0,0])
-            let l:min = [temp[0],copy(temp[1]),l:idents[i]]
-            if a:0 > 0
-                let l:min_name = temp[2]
-            endif
+        if temp[1] != [0,0] && (s:isBefore(temp[1],l:min[1]) || l:min[1] == [0,0])
+            let l:min = [temp[0],copy(temp[1]),l:idents[i], temp[2]]
         endif
     endfor
-
-    if a:0 > 0
-        call add(l:min,l:min_name)
-    endif
 
     return l:min
 endfunction
 
 " File-Updating {{{2
 " updateUsingFile {{{3
+"
+" Updates the current file, renaming a:old_name to a:new_name. The only
+" instances to be renamed should be when a variable is of the proper struct
+" type, so we need a:type_name to differentiate.
+"
+" TODO: This function will eventually need to be modified to deal with things
+" like class methods and fields.
 function! s:updateUsingFile(type_name,old_name,new_name,paren) abort
     call cursor(1,1)
     let l:here = [line('.'),col('.')]
     let l:types = '\<\(' . a:type_name . '\)\>'
     let l:search = '\(\.\|->\)\<' . a:old_name . '\>' . a:paren
 
+    " Go through all uses of a:old_name, and rename them to a:new_name if it's
+    " a valid use of a:old_name.
     let l:next = searchpos(l:search,'Wn')
     while l:next != [0,0]
-        call cursor(l:next[0],l:next[1])
+        call cursor(l:next)
+
+        " Get the variable referring to the field a:old_name.
         let [l:var,l:dec,l:funcs] = s:getUsingVar()
+
+        " If the referring variable is just a variable, we can check to see
+        " if it's the proper type. Otherwise, the referring variable is
+        " actually a function (or chain of functions), so we need to follow
+        " the chain to see if the resulting return value is the proper type.
         if len(l:funcs) == 0
             let l:dec = join(l:dec,'|')
             if match(l:dec,l:types) >= 0
                 call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
                 execute 'silent s/\(\.\|->\)\<' . a:old_name . '\>' . a:paren . '/\1' . a:new_name . a:paren . '/e'
             endif
+        " Otherwise, the referring variable is a chain, so we need to follow
+        " the chain to see if the resulting value is the proper type.
         else
             let l:chain = '\(' . join([l:var] + l:funcs,'\(\.\|->\)') . '\(\.\|->\)\)' . '\<' . a:old_name . '\>' . a:paren
             if s:followChain(l:dec,l:funcs,a:new_name) == 1 && match(getline('.'),l:chain) >= 0
@@ -1033,7 +1215,7 @@ function! s:updateUsingFile(type_name,old_name,new_name,paren) abort
                 execute 'silent s/' . l:chain . '/\1' . a:new_name . a:paren . '/e'
             endif
         endif
-        call cursor(l:next[0],l:next[1])
+        call cursor(l:next)
         let l:next = searchpos(l:search,'Wn')
     endwhile
 
@@ -1041,6 +1223,10 @@ function! s:updateUsingFile(type_name,old_name,new_name,paren) abort
 endfunction
 
 " updateUsingFiles {{{3
+"
+" Updates all files in a:files, renaming the field a:old_name to a:new_name.
+" a:files contains all files in the downard hierarchy of the current file,
+" that have some reference to a:old_name.
 function! s:updateUsingFiles(files,type_name,old_name,new_name,paren) abort
     for file in a:files
         execute 'silent tabedit! ' . file
@@ -1051,6 +1237,8 @@ function! s:updateUsingFiles(files,type_name,old_name,new_name,paren) abort
 endfunction 
 
 " getArgs {{{3
+"
+" Returns the number of arguments to the current function.
 function! s:getArgs() abort
     let l:prev = [line('.'),col('.')]
     if matchstr(getline('.'), '\%' . col('.') . 'c.') != '('
@@ -1060,7 +1248,7 @@ function! s:getArgs() abort
     normal %
     let l:leftover = strpart(getline('.'),col('.'))
     let l:end = line('.')
-    call cursor(l:prev[0],l:prev[1])
+    call cursor(l:prev)
 
     let l:start = substitute(l:start,s:special_chars,'\\\1','g')
     let l:leftover = substitute(l:leftover,s:special_chars,'\\\1','g')
@@ -1096,23 +1284,33 @@ function! s:getArgs() abort
 endfunction
 
 " updateParamFile {{{3
-function! s:updateParamFile(method_name,commas,default,param_name,param_type) abort
+"
+" Updates a:method_name with a new parameter in the current file.
+function! s:updateParamFile(method_name,num_args,default,param_name,param_type) abort
     call cursor(1,1)
-    let l:search = a:method_name . '('
 
-    let l:next = searchpos(l:search,'Wn')
+    " Set the regex expression for replacing old method call with new method
+    " call.
     let [l:param_search,l:insert] = ['',a:default . ')']
-    let l:com = a:commas > 0 ? ', ' : ''
-    if a:commas > 0
+    let l:com = a:num_args > 0 ? ', ' : ''
+
+    " If there are any parameters in the old method call, we need to modify
+    " the insertion and regex to deal with that.
+    if a:num_args > 0
         let l:insert = ', ' . l:insert
-        let l:param_search = '\_[^;]\{-\}'
-        let l:param_search .= repeat(',' . '\_[^;]\{-\}',a:commas - 1)
+        let l:param_search = '\_[^;]\{-\}' . repeat(',' . '\_[^;]\{-\}',a:num_args - 1)
     endif
     let l:param_search = '\((' . l:param_search . '\))'
 
+    " For every call to the old method, replace the old call with the new
+    " call.
+    let l:search = a:method_name . '('
+    let l:next = searchpos(l:search,'Wn')
     while l:next != [0,0]
-        call cursor(l:next[0],l:next[1])
-        if s:getArgs() == a:commas
+        call cursor(l:next)
+        " If the method call we found doesn't have enough arguments, we add
+        " the default argument to it.
+        if s:getArgs() == a:num_args
             let l:func = s:cpp_type . '\_s*' . s:collection_identifier . '\<' . a:method_name . '\>\_s*('
             if match(getline('.'),l:func) >= 0
                 let l:end = searchpos(')','Wn')
@@ -1127,12 +1325,12 @@ function! s:updateParamFile(method_name,commas,default,param_name,param_type) ab
                 normal %
                 let l:end = line('.')
                 let l:leftover = strpart(getline('.'),col('.'))
-                call cursor(l:next[0],l:next[1])
+                call cursor(l:next)
                 execute 'silent ' . line('.') . ',' . l:end . 's/\<' .a:method_name . '\>' . l:param_search . '\(' . l:leftover . '\)/' . 
                             \ a:method_name . '\1' . l:insert . '\2/e'
             endif
 
-            call cursor(l:next[0],l:next[1])
+            call cursor(l:next)
         endif
         let l:next = searchpos(l:search,'Wn')
     endwhile
@@ -1141,6 +1339,10 @@ function! s:updateParamFile(method_name,commas,default,param_name,param_type) ab
 endfunction
 
 " updateFile {{{3
+"
+" Updates all references of a:new_name to a:old_name in the current file. If
+" a:is_method == 1, the function adds a parenthesis, and if a:local == 1, the
+" function only updates the current method.
 function! s:updateFile(old_name,new_name,is_method,is_local)
     let l:orig = [line('.'),col('.')]
 
@@ -1157,7 +1359,7 @@ function! s:updateFile(old_name,new_name,is_method,is_local)
             if l:next == [0,0]
                 break
             endif
-            call cursor(l:next[0],l:next[1])
+            call cursor(l:next)
             call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
             execute 'silent s/' . l:query . '/\1' . a:new_name . '/g'
 
@@ -1175,50 +1377,77 @@ function! s:updateFile(old_name,new_name,is_method,is_local)
         execute 'silent %s/\(^\|[^.]\)\<' . a:old_name . '\>' . l:paren . '/\1' . a:new_name . l:paren . '/ge'
     endif
 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     silent write!
 endfunction
 
 " Renaming {{{2
 " renameArg {{{3
-function! s:renameArg(new_name,...) abort
+"
+" Renames the argument of a method to a:new_name.
+function! s:renameArg(new_name) abort
     let l:var = expand('<cword>')
     let g:factorus_history['old'] = l:var
     call s:updateFile(l:var,a:new_name,0,1)
 
-    if !factorus#isRollback(a:000)
-        redraw
-        echo 'Re-named ' . l:var . ' to ' . a:new_name
-    endif
+    "if !factorus#isRollback(a:000)
+    redraw
+    echo 'Re-named ' . l:var . ' to ' . a:new_name
+    "endif
     return [l:var,[]]
 endfunction
 
 " renameField {{{3
-function! s:renameField(new_name,...) abort
-    let l:search = '^\s*' . s:modifier_query . '\(' . s:cpp_type . s:collection_identifier . '\)\=\s*\(' . s:cpp_identifier . '\)\s*[;=].*'
+"
+" Renames the field under cursor to a:new_name. If the field is defined within
+" a function, we just rename all instances in that function; otherwise, we
+" attempt to find all references to that field, and rename them. 
+function! s:renameField(new_name) abort
 
     let l:line = getline('.')
+
+    " Find out if the field is static, or if it's defined in some type.
     let l:is_static = match(l:line,'\<static\>') >= 0 ? 1 : 0
     let l:is_local = !s:isInType()
-    let l:type = substitute(l:line,l:search,'\4','')
-    let l:var = s:trim(substitute(l:line,l:search,'\7',''))
+
+    " Get the type and name of the variable.
+    let l:search = '^\s*\(enum[^{]*{\)\=\s*' . s:modifier_query . '\(' . s:cpp_type . s:collection_identifier . '\)\=\s*\(' . s:cpp_identifier . '\)\s*[,;=].*'
+
+    let l:enum = substitute(l:line,l:search,'\1','')
+    let l:type = substitute(l:line,l:search,'\5','')
+    let l:var = s:trim(substitute(l:line,l:search,'\8',''))
+
+    " If the name or type didn't match, we're renaming an enum field.
+    " TODO: Currently, renaming an enum just seems to be a global
+    " find-and-replace, which is likely to be inaccurate.
     if l:var == '' || l:type == '' || match(l:var,'[^' . s:search_chars . ']') >= 0
-        if l:is_local == 1 || match(getline(s:getAdjacentTag('b')),'\<enum\>') < 0
+        " That said, if we're not actually renaming an enum field, something's
+        " gone wrong.
+        if l:is_local && l:enum == ''
             throw 'Factorus:Invalid'
         endif
+
+        " Rename the definition of the field, and save the change to the quickfix
+        " list.
         let l:var = expand('<cword>')
+        let g:factorus_history['old'] = l:var
+
         call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
         execute 'silent s/\<' . l:var . '\>/' . a:new_name . '/e'
         silent write!
 
         let l:temp_file = '.FactorusEnum'
         
+        " Find all files that have l:var in them, and do a global
+        " find-and-replace to a:new_name. 
         echo 'Updating enum...'
         call s:findTags(l:temp_file,'\<' . l:var . '\>','no')
         call s:updateQuickFix(l:temp_file,'\<' . l:var . '\>')
         call system('cat ' . l:temp_file . ' | xargs sed -i "s/\<' . l:var . '\>/' . a:new_name . '/g"')
         call system('rm -rf ' . l:temp_file)
 
+        " Get the instances of l:var that were unchanged, and return the old
+        " field and unchanged instances.
         let l:unchanged = s:getUnchanged('\<' . l:var . '\>')
         redraw
         echo 'Renamed enum field ' . l:var . ' to ' . a:new_name . '.'
@@ -1226,29 +1455,29 @@ function! s:renameField(new_name,...) abort
     elseif l:var == a:new_name
         throw 'Factorus:Duplicate'
     endif
-    let g:factorus_history['old'] = l:var
 
+    " If we're not renaming an enum field, we have to be more careful about
+    " renaming.
+    let g:factorus_history['old'] = l:var
     let l:unchanged = []
+
+    " If the field is local, we just rename it within its method. Otherwise,
+    " we're renaming a field within a struct/union. 
     if l:is_local == 1
-        call s:updateFile(l:var,a:new_name,0,l:is_local)
+        call s:updateFile(l:var,a:new_name,0,1)
     else
+        " Replace field under the cursor and add it to the quickfix list.
         call add(g:factorus_qf,{'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : s:trim(getline('.'))})
         execute 'silent s/\<' . l:var . '\>/' . a:new_name . '/e'
 
+        "redraw
+        "echo 'Updating references...'
+
         call s:gotoTag()
 
-        let l:search = '^\s*\(\<typedef\>\)\=\_s*\<\(struct\|union\)\>\_s*\(' . s:cpp_identifier . '\)\=\_s*{\=.*'
-        let l:type_type = substitute(getline('.'),l:search,'\2','')
-        if l:type_type == ''
-            throw 'Factorus:Invalid'
-        endif
-
+        " If the struct is typedefd to a different name, we need to also
+        " recognize that name in files.
         let l:type_defs = []
-        let l:type_name = ''
-        if substitute(getline('.'),l:search,'\3','') != ''
-            let l:type_name = substitute(getline('.'),l:search,'\3','')
-        endif
-
         if match(getline('.'),'\<typedef\>') >= 0
             let l:prev = [line('.'),col('.')]
             call search('{')
@@ -1256,34 +1485,38 @@ function! s:renameField(new_name,...) abort
             if match(getline('.'),'\<\(' . s:cpp_identifier . '\)\>') >= 0
                 call add(l:type_defs,substitute(getline('.'),'.*\<\(' . s:cpp_identifier . '\)\>.*','\1',''))
             endif
-            call cursor(l:prev[0],l:prev[1])
+            call cursor(l:prev)
         endif
 
-        let l:includes = s:getAllIncluded()
+        " Get the name of the group, as well as whether it's a struct or a
+        " union.
+        let l:search = '^\s*\(\<typedef\>\)\=\_s*\<\(struct\|union\)\>\_s*\(' . s:cpp_identifier . '\)\=\_s*{\=.*'
 
-        try
-            execute 'silent lvimgrep /\<' . l:method_name . '\>(/j ' . join(l:includes)
-            execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
-            call setloclist(0,[])
-            let l:swap = 1
-        catch /.*/
-            let l:swap = 0
-        endtry
+        let l:type_name = ''
+        if substitute(getline('.'),l:search,'\3','') != ''
+            let l:type_name = substitute(getline('.'),l:search,'\3','')
+        endif
 
-        redraw
-        echo 'Updating references...'
+        let l:struct_or_union = substitute(getline('.'),l:search,'\2','')
+        if l:struct_or_union == ''
+            throw 'Factorus:Invalid'
+        endif
 
+        " Get all files that include this one, and find any more typedefs that
+        " we need to recognize when replacing.
         let l:temp_file = '.FactorusInc'
         call s:getInclusions(l:temp_file,l:is_static)
         call s:narrowTags(l:temp_file,'\(\.\|->\)' . l:var)
 
         let l:files = readfile(l:temp_file) + [expand('%:p')]
         if l:type_name != ''
-            let l:type_defs += s:getTypeDefs(l:type_name,l:type_type)
-            let l:find_name = l:type_type . '\_s*' . l:type_name
+            let l:type_defs += s:getTypeDefs(l:type_name,l:struct_or_union)
+            let l:find_name = l:struct_or_union . '\_s*' . l:type_name
             call add(l:type_defs,l:find_name)
         endif
 
+        " Update all files in the hierarchy that might reference this field,
+        " and set our list of unchanged instances.
         let l:def_find = join(l:type_defs,'\|')
         call s:updateUsingFiles(l:files,l:def_find,l:var,a:new_name,'')
         call system('rm -rf ' . l:temp_file)
@@ -1296,14 +1529,20 @@ function! s:renameField(new_name,...) abort
 endfunction
 
 " renameMacro {{{3
-function! s:renameMacro(new_name,...) abort
-    let l:search = '^#define \<\(' . s:cpp_identifier . '\)\>.*'
+"
+" Renames the macro under cursor to a:new_name.
+function! s:renameMacro(new_name) abort
+    " Check to see the line under the cursor actually defines a macro, and
+    " throw an exception if it doesn't.
+    let l:search = '^#define\s\+\<\(' . s:cpp_identifier . '\)\>.*'
     let l:macro = substitute(getline('.'),l:search,'\1','')
     if l:macro == '' || l:macro == getline('.')
         throw 'Factorus:Invalid'
     endif
-    call s:updateFile(l:macro,a:new_name,0,0)
 
+    " Get the downward hierarchy of the current file, and do a global
+    " find-replace of the old macro name to the new one, then update quickfix
+    " and get unchanged..
     let l:temp_file = '.FactorusMacro'
     call s:getInclusions(l:temp_file,0)
     call s:updateQuickFix(l:temp_file,'\<' . l:macro . '\>')
@@ -1320,10 +1559,13 @@ function! s:renameMacro(new_name,...) abort
 endfunction
 
 " renameMethod {{{3
-function! s:renameMethod(new_name,...) abort
+"
+" Renames the current method to a:new_name.
+function! s:renameMethod(new_name) abort
     call s:gotoTag()
 
-    let l:unchanged = []
+    " Get the name of the current method, and make sure we aren't renaming to
+    " the same name.
     let l:method_name = matchstr(getline('.'),'\<' . s:cpp_identifier . '\>\s*(')
     let l:method_name = matchstr(l:method_name,'[^[:space:](]\+')
     if l:method_name == a:new_name
@@ -1333,7 +1575,12 @@ function! s:renameMethod(new_name,...) abort
 
     let l:is_static = match(getline('.'),'\<static\>[^)]\+(') >= 0 ? 1 : 0
 
-    let l:includes = s:getAllIncluded()
+    " Get the upward hierarchy of the current file, and edit the highest-level
+    " file that mentions this function (probably where it's defined, then). If
+    " we're already at the highest-level file, we don't need to change files.
+    echo 'Getting file hierarchy...'
+    let l:includes = s:getAllIncluded(expand('%:p'))
+
     try
         execute 'silent lvimgrep /\<' . l:method_name . '\>(/j ' . join(l:includes)
         execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
@@ -1343,6 +1590,7 @@ function! s:renameMethod(new_name,...) abort
         let l:swap = 0
     endtry
 
+    " Update the file where the method is defined.
     call s:updateFile(l:method_name,a:new_name,1,0)
 
     redraw
@@ -1350,6 +1598,10 @@ function! s:renameMethod(new_name,...) abort
     let l:search = '\([^.]\)\<' . l:method_name . '\>('
     let l:temp_file = '.FactorusInc'
 
+    " Get the downard hierarchy of the top-level file, and update all
+    " instances of the old name to the new name.
+    " TODO: A global find-and-replace works okay for C, since there are no
+    " class methods, but this needs to be improved for C++.
     call s:getInclusions(l:temp_file,l:is_static)
     call s:updateQuickFix(l:temp_file,l:search)
 
@@ -1357,10 +1609,13 @@ function! s:renameMethod(new_name,...) abort
     call system('rm -rf ' . l:temp_file)
     let l:unchanged = s:getUnchanged('\<' . l:method_name . '\>')
 
+    " If we had to change files during execution, make sure we end up back in
+    " the original file.
+    silent edit!
     if l:swap == 1
         call s:safeClose()
+        silent edit!
     endif
-    silent edit!
 
     redraw
     let l:keyword = l:is_static == 1 ? ' static' : ''
@@ -1370,22 +1625,32 @@ function! s:renameMethod(new_name,...) abort
 endfunction
 
 " renameType {{{3
-function! s:renameType(new_name,...) abort
+"
+" Renames the current enum, struct, or union to a:new_name.
+function! s:renameType(new_name) abort
     call s:gotoTag()
 
-    let l:unchanged = []
+    " Check to make sure the thing we're in is actually valid for renaming.
     let l:search = '^.*\<\(enum\|struct\|union\)\>\s*\(\<' . s:cpp_identifier . '\>\)\s*\({\|\<' . s:cpp_identifier . '\>\_s*;\).*'
     if match(getline('.'),l:search) < 0
         throw 'Factorus:Invalid'
     endif
 
+    " Get all the relevant information from the object (name, type, etc.)
+    " TODO: In C the struct/union keyword is required, but it's optional in
+    " C++.
     let [l:type,l:type_name] = split(substitute(getline('.'),l:search,'\1|\2',''),'|')
     let l:is_static = match(getline('.'),'\<static\>[^)]\+(') >= 0 ? 1 : 0
     let l:rep = '\<' . l:type . '\>\_s*\<' . l:type_name . '\>'
     let l:new_rep = l:type . ' ' . a:new_name
     let g:factorus_history['old'] = l:type . ' ' . l:type_name
 
-    let l:includes = s:getAllIncluded()
+    " Get the upward hierarchy of the current file, and edit the highest-level
+    " file that mentions this function (probably where it's defined, then). If
+    " we're already at the highest-level file, we don't need to change files.
+    echo 'Getting file hierarchy...'
+    let l:includes = s:getAllIncluded(expand('%:p'))
+
     try
         execute 'silent lvimgrep /' . l:rep . '/j ' . join(l:includes)
         execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
@@ -1395,11 +1660,14 @@ function! s:renameType(new_name,...) abort
         let l:swap = 0
     endtry
 
+    " Update the file where the method is defined.
     call s:updateFile(l:rep,l:new_rep,0,0)
 
     redraw
     echo 'Updating references...'
 
+    " Get the downard hierarchy of the top-level file, and update all
+    " instances of the old name to the new name.
     let l:search = '\<' . l:type . '\>[[:space:]]*\<' . l:type_name . '\>'
     let l:temp_file = '.FactorusInc'
 
@@ -1410,16 +1678,20 @@ function! s:renameType(new_name,...) abort
     call system('rm -rf ' . l:temp_file)
     let l:unchanged = s:getUnchanged(l:search)
 
+    " If we had to change files during execution, make sure we end up back in
+    " the original file.
+    silent edit!
     if l:swap == 1
         call s:safeClose()
+        silent edit!
     endif
-    silent edit!
 
-    if !factorus#isRollback(a:000)
-        redraw
-        let l:keyword = l:is_static == 1 ? ' static' : ''
-        echo 'Re-named' . l:keyword . ' ' . l:type . ' ' . l:type_name . ' to ' . a:new_name
-    endif
+    "if !factorus#isRollback(a:000)
+    redraw
+    let l:keyword = l:is_static == 1 ? ' static' : ''
+    echo 'Re-named' . l:keyword . ' ' . l:type . ' ' . l:type_name . ' to ' . a:new_name
+    "endif
+    
     return [l:type . ' ' . l:type_name,l:unchanged]
 endfunction
 
@@ -1439,47 +1711,70 @@ function! s:getContainingBlock(line,ranges,exclude)
 endfunction
 
 " getAllBlocks {{{3
+"
+" Gets all 'blocks' of code within the current method. A block is a segment of
+" code that is its own unit (an if statement, for loop, etc.)
 function! s:getAllBlocks(close)
+
+    " Remember current location, jump to method declaration, and define the
+    " entire method as the first block.
+    let l:orig = [line('.'),col('.')]
+    call s:gotoTag()
+    let l:blocks = [[line('.'),a:close[0]]]
+
+    " Define all the regex patterns for the different blocks (if, for, while,
+    " do, switch).
     let l:if = '\<if\>\_s*(\_[^{;]*)\_s*{\='
     let l:for = '\<for\>\_s*(\_[^{;]*;\_[^{;]*;\_[^{;]*)\_s*{\='
     let l:while = '\<while\>\_s*(\_[^{;]*)'
     let l:do = '\<do\>\_s*{'
     let l:switch = '\<switch\>\_s*(\_[^{]*)\_s*{'
+
+    " While there's another block within the method, parse that block and get
+    " the next one.
     let l:search = '\(' . l:if . '\|' . l:for . '\|' . l:while . '\|' . l:do . '\|' . l:switch . '\)'
-
-    let l:orig = [line('.'),col('.')]
-    call s:gotoTag()
-    let l:blocks = [[line('.'),a:close[0]]]
-
     let l:open = searchpos('{','Wn')
     let l:next = searchpos(l:search,'Wn')
-    while l:next[0] <= a:close[0]
-        if l:next == [0,0]
-            break
-        endif
-        call cursor(l:next[0],l:next[1])
+    while l:next[0] <= a:close[0] && l:next != [0,0]
+        call cursor(l:next)
 
+        " Searching may end up revealing the end of an if block or a
+        " do...while loop, so ignore those.
         if match(getline('.'),'\<else\>') >= 0 || match(getline('.'),'}\s*\<while\>') >= 0
             let l:next = searchpos(l:search,'Wn')
             continue
         endif
 
+        " If the block is an if, for, or while, we parse it by just jumping to
+        " the end of the block (or dealing with else/elseifs). We separately
+        " deal with switch blocks because these can be single-line 
+        " without brackets.
         if match(getline('.'),'\<\(if\|for\|while\)\>') >= 0
+            " Jump past the conditionals in the block.
             let l:open = [line('.'),col('.')]
             call search('(')
             normal %
 
             let l:ret =  searchpos('{','Wn')
             let l:semi = searchpos(';','Wn')
-
             let l:o = line('.')
-            if s:isBefore(l:semi,l:ret) == 1
-                call cursor(l:semi[0],l:semi[1])
+
+            "If we find a semi-colon before a bracket, the block doesn't have
+            "any brackets, so we just add the lines between the beginning and
+            "the semi-colon.
+            if s:isBefore(l:semi,l:ret)
+                call cursor(l:semi)
                 call add(l:blocks,[l:open[0],line('.')])
+            " Otherwise, if we're in an 'if' block, deal with that.
             elseif match(getline('.'),'\<if\>') >= 0
-                call cursor(l:ret[0],l:ret[1])
+                call cursor(l:ret)
                 normal %
 
+                " Get any else/elseif parts of the if statement and add them
+                " to the list of blocks.
+                " TODO: Re-examine how this works. Currently, pieces of an
+                " if/else/elseif statement are added as blocks, but not sure
+                " if that makes sense.
                 let l:continue = '}\_s*else\_s*\(\<if\>\_[^{]*)\)\={'
                 let l:next = searchpos(l:continue,'Wnc')
                 while l:next == [line('.'),col('.')]
@@ -1498,15 +1793,20 @@ function! s:getAllBlocks(close)
                 if l:o != l:open[0]
                     call add(l:blocks,[l:open[0],line('.')])
                 endif
+            " Get the rest of the loop if we're looking at a for/while.
             else
                 call search('{','W')
                 let l:prev = [line('.'),col('.')]
                 normal %
                 call add(l:blocks,[l:next[0],line('.')])
-                call cursor(l:prev[0],l:prev[1])
+                call cursor(l:prev)
             endif
 
-            call cursor(l:open[0],l:open[1])
+            call cursor(l:open)
+        " We deal with switch blocks separately, since they have required
+        " brackets.
+        " TODO: It looks like we assume the switch block doesn't contain for
+        " or while loops, and just jump to the end. This is problematic.
         elseif match(getline('.'),'\<switch\>') >= 0
             let l:open = [line('.'),col('.')]
             call searchpos('{','W')
@@ -1518,33 +1818,41 @@ function! s:getAllBlocks(close)
             let l:continue = '\<\(case\|default\)\>[^:]*:'
             let l:next = searchpos(l:continue,'Wn')
 
-            while s:isBefore(l:next,l:sclose) == 1 && l:next != [0,0]
-                call cursor(l:next[0],l:next[1])
+            " Jump to each case and add it to the list of blocks.
+            while s:isBefore(l:next,l:sclose) && l:next != [0,0]
+                call cursor(l:next)
                 let l:next = searchpos(l:continue,'Wn')
-                if s:isBefore(a:close,l:next) == 1 || l:next == [0,0]
+                if s:isBefore(a:close,l:next) || l:next == [0,0]
                     call add(l:blocks,[line('.'),a:close[0]])
                     break
                 endif
                 call add(l:blocks,[line('.'),l:next[0]-1])
             endwhile
             call add(l:blocks,[l:open[0],l:sclose[0]])
+        " We also deal with do...while blocks separately.
         else
             call search('{','W')
             let l:prev = [line('.'),col('.')]
             normal %
             call add(l:blocks,[l:next[0],line('.')])
-            call cursor(l:prev[0],l:prev[1])
+            call cursor(l:prev)
         endif
 
+        " Get the next block declaration.
         let l:next = searchpos(l:search,'Wn')
     endwhile
 
-    call cursor(l:orig[0],l:orig[1])
+    " Return the sorted list of blocks.
+    call cursor(l:orig)
     return uniq(sort(l:blocks,'s:compare'))
 endfunction
 
 " getAllRelevantLines {{{3
+"
+" For all variables in a:vars, gets the lines in the method that reference
+" that variable.
 function! s:getAllRelevantLines(vars,names,close)
+
     let l:orig = [line('.'),col('.')]
     let l:begin = s:getAdjacentTag('b')
 
@@ -1569,7 +1877,7 @@ function! s:getAllRelevantLines(vars,names,close)
         endif
         let l:local_close = var[2] == l:begin ? s:getClosingBracket(1) : s:getClosingBracket(0)
         let l:closes[var[0]] = copy(l:local_close)
-        call cursor(l:orig[0],l:orig[1])
+        call cursor(l:orig)
         if index(keys(l:lines),var[0]) < 0
             let l:lines[var[0]] = {var[2] : l:start_lines}
         else
@@ -1579,7 +1887,7 @@ function! s:getAllRelevantLines(vars,names,close)
     endfor
 
     let l:search = join(a:names,'\|')
-    let l:next = s:getNextUse(l:search,1)
+    let l:next = s:getNextUse(l:search)
 
     while s:isBefore(l:next[1],a:close) == 1
         if l:next[1] == [0,0]
@@ -1594,7 +1902,7 @@ function! s:getAllRelevantLines(vars,names,close)
             let l:ldec = s:getLatestDec(l:lines,l:name,l:next[1])
 
             let l:quoted = s:isQuoted('\<' . l:name . '\>',s:getStatement(l:next[1][0]))
-            if s:isBefore(l:next[1],l:closes[l:name]) == 1 && l:quoted == 0 && l:ldec > 0
+            if s:isBefore(l:next[1],l:closes[l:name]) && l:quoted == 0 && l:ldec > 0
                 if index(l:lines[l:name][l:ldec],l:next[1][0]) < 0
                     call add(l:lines[l:name][l:ldec],l:next[1][0])
                 endif
@@ -1607,15 +1915,15 @@ function! s:getAllRelevantLines(vars,names,close)
             let l:new_search = substitute(l:new_search,'\\|\<' . l:name . '\>','','')
             let l:new_search = substitute(l:new_search,'\<' . l:name . '\>\\|','','')
 
-            let l:next = s:getNextUse(l:new_search,1)
+            let l:next = s:getNextUse(l:new_search)
         endwhile
         let l:next = copy(l:pause)
 
-        call cursor(l:next[1][0],l:next[1][1])
-        let l:next = s:getNextUse(l:search,1)
+        call cursor(l:next[1])
+        let l:next = s:getNextUse(l:search)
     endwhile
     
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return [l:lines,l:isos]
 endfunction
 
@@ -1630,12 +1938,12 @@ function! s:isIsolatedBlock(block,var,rels,close)
     let l:search = join(keys(a:rels),'\|')
     let l:search = substitute(l:search,'\\|\<' . a:var[0] . '\>','','')
     let l:search = substitute(l:search,'\<' . a:var[0] . '\>\\|','','')
-    let l:ref = s:getNextReference(l:search,'left',1)
+    let l:ref = s:getNextReference(l:search,'left')
     let l:return = search('\<\(return\)\>','Wn')
     let l:continue = search('\<\(continue\|break\)\>','Wn')
 
     let l:res = 1
-    if s:contains(a:block,l:return) == 1
+    if s:contains(a:block,l:return)
         let l:res = 0
     elseif s:contains(a:block,l:continue)
         call cursor(l:continue,1)
@@ -1646,16 +1954,16 @@ function! s:isIsolatedBlock(block,var,rels,close)
     else
         while l:ref[1] != [0,0] && s:isBefore(l:ref[1],[a:block[1]+1,1]) == 1
             let l:i = s:getLatestDec(a:rels,l:ref[2],l:ref[1])
-            if s:contains(a:block,l:i) == 0
+            if s:contains(a:block,l:i)
                 let l:res = 0
                 break
             endif
-            call cursor(l:ref[1][0],l:ref[1][1])
-            let l:ref = s:getNextReference(l:search,'left',1)
+            call cursor(l:ref[1])
+            let l:ref = s:getNextReference(l:search,'left')
         endwhile
     endif
 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return l:res
 endfunction
 
@@ -1674,7 +1982,7 @@ function! s:getIsolatedLines(var,compact,rels,blocks,close)
     let l:wraps = []
     if match(getline(a:var[2]),'\<for\>') >= 0
         let l:for = s:getContainingBlock(a:var[2],a:blocks,a:blocks[0])
-        if s:isIsolatedBlock(l:for,a:var,a:rels,a:close) == 0
+        if !s:isIsolatedBlock(l:for,a:var,a:rels,a:close)
             return []
         endif
     endif
@@ -1690,7 +1998,7 @@ function! s:getIsolatedLines(var,compact,rels,blocks,close)
         let l:temp = []
 
         let l:next_use = s:getNextReference(a:var[0],'right')
-        call cursor(l:next_use[1][0],l:next_use[1][1])
+        call cursor(l:next_use[1])
 
         let l:block = [0,0]
         for j in range(i,len(l:refs)-1)
@@ -1700,7 +2008,7 @@ function! s:getIsolatedLines(var,compact,rels,blocks,close)
                 if index(l:names,l:next_use[0]) >= 0
                     break
                 endif
-                call cursor(l:next_use[1][0],l:next_use[1][1])
+                call cursor(l:next_use[1])
                 let l:next_use = s:getNextReference(a:var[0],'right')
             endif
             if line >= l:block[0] && line <= l:block[1]
@@ -1712,7 +2020,7 @@ function! s:getIsolatedLines(var,compact,rels,blocks,close)
                 break
             endif
 
-            if s:isIsolatedBlock(l:block,a:var,a:rels,a:close) == 0 
+            if !s:isIsolatedBlock(l:block,a:var,a:rels,a:close)
                 break
             endif
 
@@ -1736,7 +2044,7 @@ function! s:getIsolatedLines(var,compact,rels,blocks,close)
             let l:usable = copy(l:temp)
         endif
 
-        call cursor(l:orig[0],l:orig[1])
+        call cursor(l:orig)
     endfor
 
     return l:usable
@@ -1817,7 +2125,7 @@ function! s:wrapDecs(var,lines,vars,rels,isos,args,close)
                 let l:wrap = 0    
                 break
             endif
-            call cursor(l:next[1][0],l:next[1][1])
+            call cursor(l:next[1])
             let l:next = s:getNextUse(l:name)
         endwhile
 
@@ -1852,10 +2160,10 @@ function! s:wrapDecs(var,lines,vars,rels,isos,args,close)
                 endif
             endfor
         endif
-        call cursor(l:orig[0],l:orig[1])
+        call cursor(l:orig)
     endfor
 
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
     return [l:fin,l:fin_args]
 endfunction
 
@@ -1922,7 +2230,7 @@ function! s:buildNewMethod(lines,args,ranges,vars,rels,tab,close,...)
         if index(a:lines,var[2]) >= 0
 
             let l:outside = s:getNextUse(var[0])    
-            if l:outside[1] != [0,0] && s:isBefore(l:outside[1],a:close) == 1 && s:getLatestDec(a:rels,var[0],l:outside[1]) == var[2]
+            if l:outside[1] != [0,0] && s:isBefore(l:outside[1],a:close) && s:getLatestDec(a:rels,var[0],l:outside[1]) == var[2]
 
                 let l:contain = s:getContainingBlock(var[2],a:ranges,a:ranges[0])
                 if l:contain[0] <= l:outer[0] || l:contain[1] >= l:outer[1]
@@ -2117,8 +2425,69 @@ function! s:rollbackExtraction()
 endfunction
 
 " Global Functions {{{1
+" manualExtract {{{2
+"
+" Manually extracts a block of code to a new function.
+function! s:manualExtract(args)
+    " If we're rolling back a command, undo the changes and let the user know.
+    if factorus#isRollback(a:args)
+        call s:rollbackExtraction()
+        return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
+    endif
+
+    " If new function name is given, use that; otherwise, use the default
+    " method name.
+    let l:name = len(a:args) <= 2 ? g:factorus_method_name : a:args[2]
+
+    echo 'Extracting new method...'
+
+    " Go to the beginning of the method, get its open and close lines, how
+    " many spaces it's indented, and the method name.
+    call s:gotoTag()
+    let [l:open,l:close] = [line('.'),s:getClosingBracket(1)]
+    let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
+    let l:method_name = substitute(getline('.'),'.*\s\+\(' . s:cpp_identifier . '\)\s*(.*','\1','')
+
+    " Get the lines we want to extract, and remember the original function.
+    let l:extract_lines = range(a:args[0],a:args[1])
+    let l:old_lines = getline(l:open,l:close[0])
+
+    " Get all local declarations within the method, as well as the blocks of
+    " code.
+    let l:vars = s:getLocalDecs(l:close)
+    let l:names = map(deepcopy(l:vars),{n,var -> var[0]})
+    let l:decs = map(deepcopy(l:vars),{n,var -> var[2]})
+    let l:blocks = s:getAllBlocks(l:close)
+
+    let [l:all,l:isos] = s:getAllRelevantLines(l:vars,l:names,l:close)
+
+    let l:new_args = s:getNewArgs(l:extract_lines,l:vars,l:all)
+    let [l:final,l:rep] = s:buildNewMethod(l:extract_lines,l:new_args,l:blocks,l:vars,l:all,l:tab,l:close,l:name)
+
+    call append(l:close[0],l:final)
+    call append(l:extract_lines[-1],l:rep)
+
+    let l:i = len(l:extract_lines) - 1
+    while l:i >= 0
+        call cursor(l:extract_lines[l:i],1)
+        d 
+        let l:i -= 1
+    endwhile
+
+    call search('\<' . l:name . '\>(\_[^;]*{')
+    silent write!
+    redraw
+    echo 'Extracted ' . len(l:extract_lines) . ' lines from ' . l:method_name
+
+    return [l:name,l:old_lines]
+endfunction
+
 " addParam {{{2
+"
+" Adds a new parameter of type a:param_type and name a:param_name to the
+" current function.
 function! cpp#factorus#addParam(param_name,param_type,...) abort
+    " If we're just rolling back, undo the changes that were made.
     if factorus#isRollback(a:000)
         call s:rollbackAddParam()
         let g:factorus_qf = []
@@ -2130,6 +2499,7 @@ function! cpp#factorus#addParam(param_name,param_type,...) abort
     let [l:orig,l:prev_dir,l:curr_buf] = s:setEnvironment()
 
     try
+        " Go to the beginning of the method,and find the last parameter.
         call s:gotoTag()
         let l:tag = line('.')
         let l:next = searchpos(')','Wn')
@@ -2138,7 +2508,9 @@ function! cpp#factorus#addParam(param_name,param_type,...) abort
         let [l:type,l:name] = [s:trim(l:type),s:trim(l:name)]
         let g:factorus_history['old'] = [l:name,a:param_name]
 
-        let l:includes = s:getAllIncluded()
+        " Get the top-level file that defines this method, so we can work from
+        " there.
+        let l:includes = s:getAllIncluded(expand('%:p'))
         try
             execute 'silent lvimgrep /\<' . l:name . '\>(/j ' . join(l:includes)
             execute 'silent tabedit! ' . getbufinfo(getloclist(0)[0]['bufnr'])[0]['name']
@@ -2150,6 +2522,7 @@ function! cpp#factorus#addParam(param_name,param_type,...) abort
             let l:swap = 0
         endtry
 
+        " Add the new parameter to the end of the method definition.
         let l:count = len(split(l:params,','))
         let l:com = l:count > 0 ? ', ' : ''
 
@@ -2161,12 +2534,16 @@ function! cpp#factorus#addParam(param_name,param_type,...) abort
         call append(l:next[0] - 1,l:line)
         silent write!
 
+        " If we are adding a default parameter, update all calls to the new
+        " method.
         if g:factorus_add_default == 1
             redraw
             echo 'Updating references...'
 
             let l:default = a:0 > 0 ? a:1 : 'null'
 
+            " For every file that includes this one and references this
+            " method, update the method with the default parameter.
             let l:temp_file = '.FactorusParam'
             call s:getInclusions(l:temp_file,l:is_static)
             call s:narrowTags(l:temp_file,l:name)
@@ -2215,7 +2592,7 @@ function! cpp#factorus#addParam(param_name,param_type,...) abort
 
     silent write!
     silent edit!
-    call cursor(l:orig[0],l:orig[1])
+    call cursor(l:orig)
 
     echo 'Added parameter ' . a:param_name . ' to method'
     return a:param_name
@@ -2234,10 +2611,10 @@ function! cpp#factorus#renameSomething(new_name,type,...)
         else
             let g:factorus_qf = []
             let Rename = function('s:rename' . a:type)
-            let [l:res,l:un] = Rename(a:new_name)
+            let [l:res,l:unchanged] = Rename(a:new_name)
 
             if g:factorus_show_changes > 0
-                call s:setChanges(l:res,l:un,'rename',a:type)
+                call s:setChanges(l:res,l:unchanged,'rename',a:type)
             endif
         endif
         call s:resetEnvironment(l:orig,l:prev_dir,l:curr_buf,a:type)
@@ -2351,48 +2728,4 @@ function! cpp#factorus#extractMethod(...)
     return [l:method_name,l:old_lines]
 endfunction
 
-" manualExtract {{{2
-function! s;manualExtract(args)
-    if factorus#isRollback(a:args)
-        call s:rollbackExtraction()
-        return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
-    endif
 
-    let l:name = len(a:args) <= 2 ? g:factorus_method_name : a:args[2]
-
-    echo 'Extracting new method...'
-    call s:gotoTag()
-    let [l:open,l:close] = [line('.'),s:getClosingBracket(1)]
-    let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
-    let l:method_name = substitute(getline('.'),'.*\s\+\(' . s:cpp_identifier . '\)\s*(.*','\1','')
-
-    let l:extract_lines = range(a:args[0],a:args[1])
-    let l:old_lines = getline(l:open,l:close[0])
-
-    let l:vars = s:getLocalDecs(l:close)
-    let l:names = map(deepcopy(l:vars),{n,var -> var[0]})
-    let l:decs = map(deepcopy(l:vars),{n,var -> var[2]})
-    let l:blocks = s:getAllBlocks(l:close)
-
-    let [l:all,l:isos] = s:getAllRelevantLines(l:vars,l:names,l:close)
-
-    let l:new_args = s:getNewArgs(l:extract_lines,l:vars,l:all)
-    let [l:final,l:rep] = s:buildNewMethod(l:extract_lines,l:new_args,l:blocks,l:vars,l:all,l:tab,l:close,l:name)
-
-    call append(l:close[0],l:final)
-    call append(l:extract_lines[-1],l:rep)
-
-    let l:i = len(l:extract_lines) - 1
-    while l:i >= 0
-        call cursor(l:extract_lines[l:i],1)
-        d 
-        let l:i -= 1
-    endwhile
-
-    call search('\<' . l:name . '\>(\_[^;]*{')
-    silent write!
-    redraw
-    echo 'Extracted ' . len(l:extract_lines) . ' lines from ' . l:method_name
-
-    return [l:name,l:old_lines]
-endfunction

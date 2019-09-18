@@ -198,7 +198,7 @@ function! factorus#command(func,...)
     let l:file = expand('%:p')
     let l:pos = [line('.'),col('.')]
 
-    " Get the file's type; if it's a header file, check to see if it's c or
+    " Get the file's type; if it's a header file, check to see if it's C or
     " C++.
     let l:ext = &filetype
     if expand('%:e') == 'h'
