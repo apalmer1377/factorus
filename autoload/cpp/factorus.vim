@@ -1390,10 +1390,8 @@ function! s:renameArg(new_name) abort
     let g:factorus_history['old'] = l:var
     call s:updateFile(l:var,a:new_name,0,1)
 
-    "if !factorus#isRollback(a:000)
     redraw
     echo 'Re-named ' . l:var . ' to ' . a:new_name
-    "endif
     return [l:var,[]]
 endfunction
 

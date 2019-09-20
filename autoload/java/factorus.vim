@@ -27,7 +27,7 @@ let s:collection_identifier = '\(\[\]\|<[<>?,.[:space:]' . s:search_chars . ']*>
 
 let s:struct = s:class . '\_s\+' . s:java_identifier . '[^;{]\_[^;{]\{-\}' . s:sub_class . '\=\_[^{]\{-\}{'
 let s:common = s:java_identifier . s:collection_identifier . '\=\_s\+' . s:java_identifier . '\_s*('
-let s:reflect = s:collection_identifier . '\_s\+' . s:java_identifier . '\_s\+' . s:java_identifier . '\_s*('
+let s:reflect = s:collection_identifier . '\_s\+' . s:java_identifier .  s:collection_identifier . '\=\_s\+' . s:java_identifier . '\_s*('
 
 let s:tag_query = '^\s*' . s:access_query . '\(' . s:struct . '\|' . s:common . '\|' . s:reflect . '\)'
 
@@ -399,13 +399,13 @@ endfunction
 
 " getClassTag {{{3
 "
-" Gets the start and end of the class.
+" Gets the start and end of the current class.
 function! s:getClassTag()
-    let [l:line,l:col] = [line('.'),col('.')]
+    let l:orig = [line('.'),col('.')]
     call cursor(1,1)
     let l:class_tag = search(s:tag_query,'cn')
     let l:tag_end = search(s:tag_query,'ne')
-    call cursor(l:line,l:col)
+    call cursor(l:orig)
     return [l:class_tag,l:tag_end]
 endfunction
 
@@ -1495,12 +1495,11 @@ function! s:updateParamReferences(classes,name,commas,default,is_static)
 endfunction
 
 " Renaming {{{2
-
 " renameArg {{{3
 
-" Renames the argument of a function to `new_name`. The argument has to be
+" Renames the argument of a function to a:new_name. The argument has to be
 " under the cursor.
-function! s:renameArg(new_name,...) abort
+function! s:renameArg(new_name) abort
     let l:var = expand('<cword>')
     let g:factorus_history['old'] = l:var
     call s:updateFile(l:var,a:new_name,0,1,0)
@@ -1512,8 +1511,13 @@ endfunction
 
 " renameClass {{{3
 
-" Renames the class of the current file to `new_name`.
+" Renames the class of the current file to a:new_name. This ends up deleting
+" the current file and creating a new one, since Java classes have to share
+" their classname and filename.
+" TODO: This doesn't consider the existence of inner classes.
 function! s:renameClass(new_name) abort
+    " Get the name of the class (using the current file), and make sure we
+    " aren't renaming to the same name.
     let l:class_name = expand('%:t:r')
     let g:factorus_history['old'] = l:class_name
     let l:class_tag = s:getClassTag()
@@ -1526,6 +1530,8 @@ function! s:renameClass(new_name) abort
     let l:new_file = expand('%:p:h') . '/' . a:new_name . '.java'
     call add(g:factorus_qf,{'filename' : l:new_file, 'lnum' : l:class_tag[0], 'text' : s:trim(join(getline(l:class_tag[0],l:class_tag[1])))})
 
+    " Get all the files in the same package, and files that include this
+    " package.
     let l:package_name = s:getPackage(l:old_file)
     let l:temp_file = '.Factorus' . l:class_name
     call s:getPackageFiles(l:temp_file)
@@ -1535,6 +1541,9 @@ function! s:renameClass(new_name) abort
         call s:narrowTags(l:temp_file,'\<' . l:class_name . '\>')
     endif
 
+    " Do a global find-replace from l:class_name to a:new_name for all files
+    " in or including the current file's package. Then, delete the old file
+    " and jump into the new one.
     call s:updateQuickFix(l:temp_file,'\<' . l:class_name . '\>')
 
     call system('cat ' . l:temp_file . ' | xargs sed -i "s/\<' . l:class_name . '\>/' . a:new_name . '/g"') 
@@ -2525,10 +2534,65 @@ function! s:rollbackExtraction()
 endfunction
 
 " Global Functions {{{1
+" manualExtract {{{2
+
+" Manually extracts the code selected by the cursor.
+function! s:manualExtract(args)
+    " If we're just rolling back an extraction, roll it back and let the user
+    " know.
+    if factorus#isRollback(a:args)
+        call s:rollbackExtraction()
+        return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
+    endif
+
+    " Get the lines the user extracted and the name they want for the new
+    " function (if any), and find the level of spacing that would make the new
+    " method 'fit' with the current method. Also store the old method's lines,
+    " in case we have to roll it back.
+    let l:name = len(a:args) <= 2 ? g:factorus_method_name : a:args[2]
+
+    echo 'Extracting new method...'
+    call s:gotoTag(0)
+    let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
+    let l:method_name = substitute(getline('.'),'.*\s\+\(' . s:java_identifier . '\)\s*(.*','\1','')
+
+    let l:extract_lines = range(a:args[0],a:args[1])
+    let l:old_lines = getline(l:open,l:close[0])
+
+    " Get the structure of the current method--the name,
+    " the variable declarations, the blocks, etc.
+    let [l:orig, l:tab, l:method_name, l:open, l:close, l:old_lines, l:vars, l:compact, l:blocks, l:all, l:isos] = s:initExtraction()
+
+    " Then, we wrap any necessary annotations around the new method, get all
+    " the arguments needed for that function, and build the new method line by
+    " line.
+    let l:new_args = s:getNewArgs(l:extract_lines,l:vars,l:all)
+    let [l:final,l:rep] = s:buildNewMethod(l:extract_lines,l:new_args,l:blocks,l:vars,l:all,l:tab,l:close,l:name)
+
+    " Once the method has been built, we add it to the file just after the
+    " current method, and jump to it.
+    call append(l:close[0],l:final)
+    call append(l:extract_lines[-1],l:rep)
+
+    let l:i = len(l:extract_lines) - 1
+    while l:i >= 0
+        call cursor(l:extract_lines[l:i],1)
+        d 
+        let l:i -= 1
+    endwhile
+
+    call search('public.*\<' . l:name . '\>(')
+    silent write!
+    redraw
+    echo 'Extracted ' . len(l:extract_lines) . ' lines from ' . l:method_name
+
+    return [l:name,l:old_lines]
+endfunction
 
 " encapsulateField {{{2
 
-" Encapsulates the field on the current line.
+" Encapsulates the field on the current line, creating a getter and a setter
+" function.
 function! java#factorus#encapsulateField(...) abort
 
     " Check if we're rolling back something, and if so run the rollback
@@ -2592,6 +2656,9 @@ function! java#factorus#encapsulateField(...) abort
 endfunction
 
 " addParam {{{2
+"
+" Adss a new parameter with name a:param_name and type a:param_type to the
+" current method, at the end of the current list of arguments.
 function! java#factorus#addParam(param_name,param_type,...) abort
     if factorus#isRollback(a:000)
         call s:rollbackAddParam()
@@ -2726,13 +2793,20 @@ function! java#factorus#extractMethod(...)
 
     echo 'Extracting new method...'
 
+    " Get the structure of the current method--the name,
+    " the variable declarations, the blocks, etc.
     let [l:orig, l:tab, l:method_name, l:open, l:close, l:old_lines, l:vars, l:compact, l:blocks, l:all, l:isos] = s:initExtraction()
 
     redraw
     echo 'Finding best lines...'
 
+    " Once we've gotten the method's structure, we find the 'best' variable to
+    " extract, depending on the desired heuristic.
     let [l:best_var, l:best_lines] = s:getBestVar()
 
+    " After finding the variable to extract, we wrap all the variables we can
+    " into our new method. This means variables that are only defined to be
+    " used in the definition of this variable, and nowhere else.
     let l:new_args = s:getNewArgs(l:best_lines,l:vars,l:all,l:best_var)
     let [l:wrapped,l:wrapped_args] = s:wrapDecs(l:best_var,l:best_lines,l:vars,l:all,l:isos,l:new_args,l:close)
     while l:wrapped != l:best_lines
@@ -2744,11 +2818,18 @@ function! java#factorus#extractMethod(...)
         call add(l:new_args,l:best_var)
     endif
 
+    " Then, we wrap any necessary annotations around the new method, get all
+    " the arguments needed for that function, and build the new method line by
+    " line.
     let l:best_lines = s:wrapAnnotations(l:best_lines)
 
     let l:new_args = s:getNewArgs(l:best_lines,l:vars,l:all,l:best_var)
     let [l:final,l:rep] = s:buildNewMethod(l:best_lines,l:new_args,l:blocks,l:vars,l:all,l:tab,l:close)
 
+    " Once the method has been built, we add it to the file just after the
+    " current method, and jump to it. The user doesn't name this new method,
+    " because they don't know what it's going to be (they can give a name if
+    " they use manualExtract).
     call append(l:close[0],l:final)
     call append(l:best_lines[-1],l:rep)
 
@@ -2766,44 +2847,3 @@ function! java#factorus#extractMethod(...)
     return [l:method_name,l:old_lines]
 endfunction
 
-" manualExtract {{{2
-
-" Manually extracts the code selected by cursor.
-function! s:manualExtract(args)
-    if factorus#isRollback(a:args)
-        call s:rollbackExtraction()
-        return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
-    endif
-
-    let l:name = len(a:args) <= 2 ? g:factorus_method_name : a:args[2]
-
-    echo 'Extracting new method...'
-    call s:gotoTag(0)
-    let l:tab = substitute(getline('.'),'\(\s*\).*','\1','')
-    let l:method_name = substitute(getline('.'),'.*\s\+\(' . s:java_identifier . '\)\s*(.*','\1','')
-
-    let l:extract_lines = range(a:args[0],a:args[1])
-    let l:old_lines = getline(l:open,l:close[0])
-
-    let [l:orig, l:tab, l:method_name, l:open, l:close, l:old_lines, l:vars, l:compact, l:blocks, l:all, l:isos] = s:initExtraction()
-
-    let l:new_args = s:getNewArgs(l:extract_lines,l:vars,l:all)
-    let [l:final,l:rep] = s:buildNewMethod(l:extract_lines,l:new_args,l:blocks,l:vars,l:all,l:tab,l:close,l:name)
-
-    call append(l:close[0],l:final)
-    call append(l:extract_lines[-1],l:rep)
-
-    let l:i = len(l:extract_lines) - 1
-    while l:i >= 0
-        call cursor(l:extract_lines[l:i],1)
-        d 
-        let l:i -= 1
-    endwhile
-
-    call search('public.*\<' . l:name . '\>(')
-    silent write!
-    redraw
-    echo 'Extracted ' . len(l:extract_lines) . ' lines from ' . l:method_name
-
-    return [l:name,l:old_lines]
-endfunction
