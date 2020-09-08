@@ -537,8 +537,8 @@ endfunction
 
 " Declarations {{{2
 " getNextArg {{{3
-function! s:getNextArg(...)
-    let l:get_variable = '^[^/*].*(.*\<\(' . a:1 . '\)\>' . s:collection_identifier . '\=\s\+\(\<' . a:2 . '\).*).*'
+function! s:getNextArg(class_name, old_name)
+    let l:get_variable = '^[^/*].*(.*\<\(' . a:class_name . '\)\>' . s:collection_identifier . '\=\s\+\(\<' . a:old_name . '\).*).*'
     let l:index = '\3'
 
     let l:line = line('.')
@@ -1589,11 +1589,12 @@ function! s:renameField(new_name) abort
         call system('rm -rf ' . l:temp_file)
 
         redraw
-        echo 'Renamed enum ' . l:var . ' to ' . a:new_name . '.'
+        echo 'Renamed enum field ' . l:var . ' to ' . a:new_name . '.'
         return l:var
     elseif l:var == a:new_name
         throw 'Factorus:Duplicate'
     endif
+
     let g:factorus_history['old'] = l:var
 
     let l:file_name = expand('%:p')
@@ -2440,33 +2441,33 @@ endfunction
 
 " rollbackEncapsulation {{{3
 function! s:rollbackEncapsulation()
-        let l:orig = [line('.'),col('.')]
-        let [l:var,l:type,l:is_pub] = g:factorus_history['old']
-        let l:cap = substitute(l:var,'\(.\)\(.*\)','\U\1\E\2','')
+    let l:orig = [line('.'),col('.')]
+    let [l:var,l:type,l:is_pub] = g:factorus_history['old']
+    let l:cap = substitute(l:var,'\(.\)\(.*\)','\U\1\E\2','')
 
-        if l:is_pub == 1
-            execute 'silent s/\<private\>/public/e'
-        endif
-       
-        let l:open = search('public ' . l:type . ' get' . l:cap . '() {','n')
-        if match(getline(l:open-1),'^\s*$') >= 0
-            let l:open -= 1
-        endif
+    if l:is_pub == 1
+        execute 'silent s/\<private\>/public/e'
+    endif
+   
+    let l:open = search('public ' . l:type . ' get' . l:cap . '() {','n')
+    if match(getline(l:open-1),'^\s*$') >= 0
+        let l:open -= 1
+    endif
 
-        let l:close = s:getClosingBracket(1,[l:open,1])[0]
-        if match(getline(l:close+1),'^\s*$') >= 0
-            let l:close += 1
-        endif
-        execute 'silent ' . l:open . ',' . l:close . 'delete'
+    let l:close = s:getClosingBracket(1,[l:open,1])[0]
+    if match(getline(l:close+1),'^\s*$') >= 0
+        let l:close += 1
+    endif
+    execute 'silent ' . l:open . ',' . l:close . 'delete'
 
-        let l:open = search('public void set' . l:cap . '(','n')
-        let l:close = s:getClosingBracket(1,[l:open,1])[0]
-        if match(getline(l:close+1),'^\s*$') >= 0
-            let l:close += 1
-        endif
-        execute 'silent ' . l:open . ',' . l:close . 'delete'
-        call cursor(l:orig)
-        silent write!
+    let l:open = search('public void set' . l:cap . '(','n')
+    let l:close = s:getClosingBracket(1,[l:open,1])[0]
+    if match(getline(l:close+1),'^\s*$') >= 0
+        let l:close += 1
+    endif
+    execute 'silent ' . l:open . ',' . l:close . 'delete'
+    call cursor(l:orig)
+    silent write!
 endfunction
 
 " rollbackRename {{{3

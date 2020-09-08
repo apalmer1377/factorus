@@ -4,8 +4,10 @@ scriptencoding utf-8
 
 " Initialization {{{1
 
-if exists(':Factorus') == 0
-    runtime plugin/factorus.vim
+runtime plugin/factorus.vim
+
+if exists('g:loaded_factorus')
+    finish
 endif
 let g:loaded_factorus = 1
 
@@ -42,16 +44,12 @@ let s:build_files = {
             \       'rake'      : 'Rakefile'
             \}
 
-" Misc Functions {{{1
 
-" Helper function to check if a command is a rollback command or not.
-function! factorus#isRollback(a)
-    return (len(a:a) > 0 && a:a[-1] == 'factorusRollback')
-endfunction
+" Misc Functions {{{1
 
 " Handle any error that may come up when running a command (factorus exception
 " or unexpected exception).
-function! s:handleError(func,ext,error,opt)
+function! s:handle_error(func,ext,error,opt)
     let [l:exception,l:throwpoint] = a:error
 
     for buf in getbufinfo()
@@ -66,7 +64,7 @@ function! s:handleError(func,ext,error,opt)
     if match(l:exception,'Unknown function') >= 0
         if match(l:exception,'\(\<' . a:func . '\>\|\(s:\|factorus#\)rename\)') >= 0
             let l:lang = index(keys(s:langs),a:ext) >= 0 ? s:langs[a:ext] : 'this language'
-            let l:name = a:func == 'renameSomething' ? 'rename' . a:opt[-1] : a:func
+            let l:name = a:func == 'rename_something' ? 'rename' . a:opt[-1] : a:func
             let l:err = 'Factorus: ' . l:name . ' is not available for ' . l:lang . '.'
             let l:roll = 0
         else
@@ -80,13 +78,13 @@ function! s:handleError(func,ext,error,opt)
     endif
 
     " If we can, roll back all the stuff that was changed.
-    if l:roll == 1 && a:func == 'renameSomething' && !factorus#isRollback(a:opt)
+    if l:roll == 1 && a:func == 'rename_something' && !factorus#util#is_rollback(a:opt)
         call factorus#rollback()
     endif
 
     redraw
-    echom l:err
 endfunction
+
 
 " Commands {{{1
 
@@ -97,10 +95,10 @@ function! factorus#version()
     echo 'Factorus: version ' . g:factorus_version
 endfunction
 
-" factorus#projectDir {{{2
+" factorus#project_dir {{{2
 
 " Returns the current project directory.
-function! factorus#projectDir()
+function! factorus#project_dir()
     let l:dir = g:factorus_project_dir == '' ? substitute(system('git rev-parse --show-toplevel'),'\n\+$','','') : g:factorus_project_dir
     if empty(glob(l:dir))
         let l:dir = getcwd()
@@ -108,11 +106,11 @@ function! factorus#projectDir()
     return l:dir
 endfunction
 
-" factorus#setProjectDir {{{2
+" factorus#set_project_dir {{{2
 
 " Sets the current project directory; essentially just a quicker way of typing
 " `let g:factorus_project_dir = dir`.
-function! factorus#setProjectDir(dir)
+function! factorus#set_project_dir(dir)
     let g:factorus_project_dir = a:dir
 endfunction
 
@@ -127,7 +125,7 @@ function! factorus#rebuild(...)
 
     let l:strip_dir = '\(.*\/\)\=\(.*\)'
     let l:prev_dir = getcwd()
-    let l:project_dir = factorus#projectDir()
+    let l:project_dir = factorus#project_dir()
     execute 'cd ' . l:project_dir
 
     let l:file_find = g:factorus_build_file == '' ? s:build_files[g:factorus_build_program] : g:factorus_build_file
@@ -148,7 +146,7 @@ function! factorus#rebuild(...)
         endif
     catch /.*/
         execute 'cd ' . l:prev_dir
-        echom 'Factorus: build file not found'
+        echo 'Factorus: build file not found'
         return
     endtry
 
@@ -207,18 +205,17 @@ function! factorus#command(func,...)
 
     " If we're not rolling something back, set the history so we can use it to
     " roll back.
-    if !factorus#isRollback(a:000)
+    if !factorus#util#is_rollback(a:000)
         let g:factorus_history = {'file' : l:file, 'function' : a:func, 'pos' : copy(l:pos), 'args' : a:000}
     endif
 
     try
 
         " Create and run the function based on the command. If the extension is 
-        " py and the func is renameSomething, for example, the function that
-        " ends up getting called is py#factorus#renameSomething.
-        let Func = function(l:ext . '#factorus#' . a:func,a:000)
+        " py and the func is rename_something, for example, the function that
+        " ends up getting called is py#factorus#rename_something.
+        let Func = function('factorus#' . l:ext . '#' . a:func,a:000)
         let l:res = Func()
-
 
         " Update all other files the user has; otherwise, it looks like no
         " changes have been made when they have been made.
@@ -236,8 +233,8 @@ function! factorus#command(func,...)
         " function, encapsulating, etc.) don't really have
         " instance-by-instance changes, so it doesn't make sense to display
         " them.
-        if !factorus#isRollback(a:000)
-            if g:factorus_show_changes > 0 && (a:func == 'renameSomething' || a:func == 'addParam')
+        if !factorus#util#is_rollback(a:000)
+            if g:factorus_show_changes > 0 && (a:func == 'rename_something' || a:func == 'add_param')
                 copen
             endif
 
@@ -250,9 +247,10 @@ function! factorus#command(func,...)
 
     catch /.*/
         " If there was an issue, handle it.
+        echom v:exception . ' at ' v:throwpoint
         let l:res = ''
         let l:error = [v:exception,v:throwpoint]
-        call s:handleError(a:func,l:ext,l:error,a:000)
+        call s:handle_error(a:func,l:ext,l:error,a:000)
     endtry
 
 
@@ -295,17 +293,17 @@ function! factorus#rollback()
     " Essentially, just run the command in reverse. If the command changed X
     " items when it ran, running it in reverse should only change those X
     " things. 
-    if l:func == 'addParam'
-        let l:echo = factorus#command('addParam',l:old[1],l:old[1],'factorusRollback')
-    elseif l:func == 'renameSomething'
-        let l:echo = factorus#command('renameSomething',l:old,g:factorus_history['args'][-1],'factorusRollback')
+    if l:func == 'add_param'
+        let l:echo = factorus#command('add_param',l:old[1],l:old[1],'factorus_rollback')
+    elseif l:func == 'rename_something'
+        let l:echo = factorus#command('rename_something',l:old,g:factorus_history['args'][-1],'factorus_rollback')
     else
-        let l:echo = factorus#command(l:func,'factorusRollback')
+        let l:echo = factorus#command(l:func,'factorus_rollback')
     endif
     let g:factorus_history['old'] = ''
 
     " If we opened up a file to edit, get rid of it.
-    if l:curr != g:factorus_history['file'] && (l:func != 'renameSomething' || g:factorus_history['args'][-2] != 'Class')
+    if l:curr != g:factorus_history['file'] && (l:func != 'rename_something' || g:factorus_history['args'][-2] != 'Class')
         if winnr("$") == 1 && tabpagenr("$") > 1 && tabpagenr() > 1 && tabpagenr() < tabpagenr("$")
           tabclose | tabprev
         else

@@ -66,7 +66,7 @@ endfunction
 
 " Initialization {{{1
 
-if &cp || exists('g:loaded_factorus')
+if &cp || exists(':Factorus')
     finish
 endif
 
@@ -82,21 +82,21 @@ call s:init_vars()
 " Commands {{{1
 
 command! -nargs=0           Factorus            call factorus#version()
-command! -nargs=0           FProjectDir         echo factorus#projectDir()
-command! -nargs=1           FSetProjectDir      call factorus#setProjectDir()
+command! -nargs=0           FProjectDir         echo factorus#project_dir()
+command! -nargs=1           FSetProjectDir      call factorus#set_project_dir()
 
-command! -nargs=? -range=%  FExtractMethod      call factorus#command('extractMethod', <line1>, <line2>, <f-args>)
+command! -nargs=? -range=%  FExtractMethod      call factorus#command('extract_method', <line1>, <line2>, <f-args>)
 
-command! -nargs=1           FRenameArg          call factorus#command('renameSomething', <f-args>, 'Arg')
-command! -nargs=1           FRenameClass        call factorus#command('renameSomething', <f-args>, 'Class')
-command! -nargs=1           FRenameField        call factorus#command('renameSomething', <f-args>, 'Field') 
-command! -nargs=1           FRenameMethod       call factorus#command('renameSomething', <f-args>, 'Method')
+command! -nargs=1           FRenameArg          call factorus#command('rename_something', <f-args>, 'Arg')
+command! -nargs=1           FRenameClass        call factorus#command('rename_something', <f-args>, 'Class')
+command! -nargs=1           FRenameField        call factorus#command('rename_something', <f-args>, 'Field') 
+command! -nargs=1           FRenameMethod       call factorus#command('rename_something', <f-args>, 'Method')
 
-command! -nargs=1           FRenameMacro        call factorus#command('renameSomething', <f-args>, 'Macro')
-command! -nargs=1           FRenameType         call factorus#command('renameSomething', <f-args>, 'Type')
+command! -nargs=1           FRenameMacro        call factorus#command('rename_something', <f-args>, 'Macro')
+command! -nargs=1           FRenameType         call factorus#command('rename_something', <f-args>, 'Type')
 
-command! -nargs=?           FEncapsulate        call factorus#command('encapsulateField',<f-args>)
-command! -nargs=+           FAddParam           call factorus#command('addParam', <f-args>)  
+command! -nargs=?           FEncapsulate        call factorus#command('encapsulate_field',<f-args>)
+command! -nargs=+           FAddParam           call factorus#command('add_param', <f-args>)  
 
 command! -nargs=0           FRollback           call factorus#rollback()
 command! -nargs=?           FRebuild            call factorus#rebuild(<f-args>)
