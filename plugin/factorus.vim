@@ -70,7 +70,7 @@ if &cp || exists('g:loaded_factorus')
     finish
 endif
 
-if v:version < 700
+if v:version < 700 || !has('patch-7.4.2204')
     echohl WarningMsg
     echom 'Factorus: Vim version is too old, please upgrade to 7.0 or later.'
     echohl None
