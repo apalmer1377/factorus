@@ -87,13 +87,13 @@ command! -nargs=1           FSetProjectDir      call factorus#set_project_dir()
 
 command! -nargs=? -range=%  FExtractMethod      call factorus#command('extract_method', <line1>, <line2>, <f-args>)
 
-command! -nargs=1           FRenameArg          call factorus#command('rename_something', <f-args>, 'Arg')
-command! -nargs=1           FRenameClass        call factorus#command('rename_something', <f-args>, 'Class')
-command! -nargs=1           FRenameField        call factorus#command('rename_something', <f-args>, 'Field') 
-command! -nargs=1           FRenameMethod       call factorus#command('rename_something', <f-args>, 'Method')
+command! -nargs=1           FRenameArg          call factorus#command('rename_something', <f-args>, 'arg')
+command! -nargs=1           FRenameClass        call factorus#command('rename_something', <f-args>, 'class')
+command! -nargs=1           FRenameField        call factorus#command('rename_something', <f-args>, 'field') 
+command! -nargs=1           FRenameMethod       call factorus#command('rename_something', <f-args>, 'method')
 
-command! -nargs=1           FRenameMacro        call factorus#command('rename_something', <f-args>, 'Macro')
-command! -nargs=1           FRenameType         call factorus#command('rename_something', <f-args>, 'Type')
+command! -nargs=1           FRenameMacro        call factorus#command('rename_something', <f-args>, 'macro')
+command! -nargs=1           FRenameType         call factorus#command('rename_something', <f-args>, 'type')
 
 command! -nargs=?           FEncapsulate        call factorus#command('encapsulate_field',<f-args>)
 command! -nargs=+           FAddParam           call factorus#command('add_param', <f-args>)  

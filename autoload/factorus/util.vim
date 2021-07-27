@@ -2,6 +2,8 @@
 
 scriptencoding utf-8
 
+" General {{{1 
+
 function! factorus#util#is_before(x, y)
     if a:x[0] < a:y[0] || (a:x[0] == a:y[0] && a:x[1] < a:y[1])
         return 1
@@ -9,10 +11,19 @@ function! factorus#util#is_before(x, y)
     return 0
 endfunction
 
-function! factorus#util#contains(range, line)
-    if a:line >= a:range[0] && a:line <= a:range[1]
-        return 1
+function! factorus#util#contains(outer, inner)
+    if a:outer[0] <= a:inner[0]
+        if len(a:inner) == 1
+            let end = a:inner
+        else
+            let end = a:inner[1]
+        endif
+
+        if a:outer[1] >= end
+            return 1
+        endif
     endif
+
     return 0
 endfunction
 
@@ -70,6 +81,8 @@ function! factorus#util#compare_blocks(x, y)
     endif
 endfunction
 
+" File Navigation {{{1
+
 function! factorus#util#is_alone(...)
     let l:file = a:0 > 0 ? a:1 : expand('%:p')
     let l:count = 0
@@ -84,7 +97,6 @@ function! factorus#util#is_alone(...)
     return 1
 endfunction
 
-" Closes current window safely.
 function! factorus#util#safe_close(...)
     let l:prev = 0
     let l:file = a:0 > 0 ? a:1 : expand('%:p')
@@ -121,6 +133,7 @@ endfunction
 " search_string.
 function! factorus#util#update_quick_fix(temp_file, search_string)
     let l:res = split(system('cat ' . a:temp_file . ' | xargs grep -n -H "' . a:search_string . '"'), '\n')
+    call filter(l:res, 'v:val[0:4] != "grep:"')
     call map(l:res, {n, val -> split(val, ':')})
     call map(l:res, {n, val -> {'filename' : val[0], 'lnum' : val[1], 'text' : factorus#util#trim(join(val[2:], ':'))}})
     let g:factorus_qf += l:res
@@ -137,8 +150,8 @@ function! factorus#util#set_quick_fix(type, qf)
         let l:title .= 'AllFiles'
     endif
 
-    call setqflist(a:qf)
-    call setqflist(a:qf, 'r', {'title' : l:title})
+    call setqflist([], 'r', {'title' : l:title})
+    call setqflist(a:qf, 'a')
 endfunction
 
 " Gets the instances that were changed by the command, in case user wants to
@@ -154,9 +167,9 @@ function! factorus#util#set_changes(res, func, ...)
     let l:un_i = l:un_l == 1 ? ' instance ' : ' instances '
 
     let l:first_line = l:ch . l:ch_i . 'modified'
-    let l:first_line .= (l:type == 'Arg' || a:func == 'addParam') ? '.' : ', ' . l:un_l . l:un_i . 'left unmodified.'
+    let l:first_line .= (l:type == 'arg' || a:func == 'addParam') ? '.' : ', ' . l:un_l . l:un_i . 'left unmodified.'
 
-    if g:factorus_show_changes > 1 && a:func != 'addParam' && l:type != 'Arg'
+    if g:factorus_show_changes > 1 && a:func != 'addParam' && l:type != 'arg'
         let l:un = [{'pattern' : 'Unmodified'}] + l:un
         if g:factorus_show_changes == 2
             let l:qf = []
@@ -224,12 +237,35 @@ function! factorus#util#reset_environment(orig, prev_dir, curr_buf, type)
     let l:buf_setting = &switchbuf
     call system('rm -rf .Factorus*')
     execute 'silent cd ' a:prev_dir
-    if a:type != 'Class'
+    if a:type != 'class'
         let &switchbuf = 'useopen, usetab'
         execute 'silent sbuffer ' . a:curr_buf
         let &switchbuf = l:buf_setting
     endif
     call cursor(a:orig)
+endfunction
+
+" Gets all lines in the changelog that were marked 'Modified' and returns them
+" as a dictionary.
+function! factorus#util#get_modified_lines()
+    let l:files = {}
+
+    for line in g:factorus_qf
+        if index(keys(line), 'filename') < 0
+            if line['pattern'] == 'Unmodified'
+                break
+            endif
+            continue
+        endif
+
+        if index(keys(l:files), line['filename']) < 0
+            let l:files[line['filename']] = [line['lnum']]
+        else
+            call add(l:files[line['filename']],line['lnum'])
+        endif
+    endfor
+
+    return l:files
 endfunction
 
 " Helper function to check if a command is a rollback command or not.

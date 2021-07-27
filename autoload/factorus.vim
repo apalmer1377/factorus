@@ -303,7 +303,7 @@ function! factorus#rollback()
     let g:factorus_history['old'] = ''
 
     " If we opened up a file to edit, get rid of it.
-    if l:curr != g:factorus_history['file'] && (l:func != 'rename_something' || g:factorus_history['args'][-2] != 'Class')
+    if l:curr != g:factorus_history['file'] && (l:func != 'rename_something' || g:factorus_history['args'][-2] != 'class')
         if winnr("$") == 1 && tabpagenr("$") > 1 && tabpagenr() > 1 && tabpagenr() < tabpagenr("$")
           tabclose | tabprev
         else
