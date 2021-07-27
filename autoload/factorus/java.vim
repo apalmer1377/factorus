@@ -53,6 +53,8 @@ function! s:get_closing_bracket(stack, ...)
 endfunction
 
 " is_quoted {{{3
+
+" Checks if a:pattern is quoted within a:statement.
 function! s:is_quoted(pattern, statement)
     let l:temp = a:statement
     let l:match = match(l:temp, a:pattern)
@@ -118,8 +120,22 @@ function! s:get_endline(start, search)
 endfunction
 
 " get_statement {{{3
-function! s:get_statement()
 
+" Returns the full statement starting at a:line, up to the ending semicolon.
+function! s:get_statement(line)
+    let l:line = a:line
+    let l:state = ''
+
+    while stridx(l:state, ';') < 0
+        let l:state .= ' ' . getline(l:line)
+        let l:line += 1
+
+        if l:line > line('$')
+            return getline(a:line)
+        endif
+    endwhile
+
+    return l:state
 endfunction
 
 " File Navigation {{{2
@@ -1011,15 +1027,15 @@ function! s:get_object_attributes(type)
 
     " Get the definition of the object, its name, whether or not it's local or
     " static, etc.
-    if a:type == 'Arg'
+    if a:type == 'arg'
         let l:object['old_name'] = expand('<cword>')
         let l:object['is_local'] = 1
-    elseif a:type == 'Class'
+    elseif a:type == 'class'
         let l:object['old_name'] = expand('%:t:r')
         let l:object['old_file'] = expand('%:p')
         let l:object['dir'] = expand('%:p:h')
         let l:object['package'] = s:get_package(l:object['old_file'])
-    elseif a:type == 'Field'
+    elseif a:type == 'field'
         let l:search = '^\s*' . s:access_query . '\(' . s:java_identifier . s:collection_identifier . '\=\)\=\s*\(' . s:java_identifier . '\)\s*[;=].*'
         let l:line = getline('.')
 
@@ -1039,7 +1055,7 @@ function! s:get_object_attributes(type)
             let l:object['old_name'] = l:name
             let l:object['type'] = l:type
         endif
-    elseif a:type == 'Method'
+    elseif a:type == 'method'
         call s:go_to_tag(0)
 
         let l:next = searchpos(')', 'Wn')
@@ -1079,12 +1095,12 @@ endfunction
 function! s:get_referring_files(object, type)
 
     " If we're renaming an argument, we only need to modify the current file.
-    if a:type == 'Arg'
+    if a:type == 'arg'
         let a:object['files'] = [expand('%:p')]
     " If we're renaming a class, we need to update any files that may
     " reference the class, which would be all files in the same package and
     " all files that import that package.
-    elseif a:type == 'Class'
+    elseif a:type == 'class'
         let l:temp_file = '.Factorus' . a:object['old_name']
         call s:get_package_files(l:temp_file)
 
@@ -1100,7 +1116,7 @@ function! s:get_referring_files(object, type)
     " to get subclass files and referencing files.
     " TODO: Currently, subclass files and referencing files are considered two
     " distinct entities when updating, but that may not be necessary.
-    elseif a:type == 'Field' || a:type == 'Method'
+    elseif a:type == 'field' || a:type == 'method'
         " If we're renaming an enum field, we just need files referencing that
         " enum.
         " TODO: This may not be the best way to do things.
@@ -1115,7 +1131,7 @@ function! s:get_referring_files(object, type)
         elseif !a:object['is_local']
             " Get the upwards hierarchy, and jump into the highest-level file
             " that defines this function (maybe an interface, for example).
-            let [l:paren, l:end_search] = (a:type == 'Method') ? ['(', '('] : ['', '[;=]']
+            let [l:paren, l:end_search] = (a:type == 'method') ? ['(', '('] : ['', '[;=]']
             let l:def_search = s:no_comment . s:access_query . s:java_identifier . s:collection_identifier . '\=\_s\+\<' . a:object['old_name'] . '\>\_s*' . l:end_search
             let l:inherited = s:get_declaration_file(l:def_search)
 
@@ -1209,7 +1225,7 @@ endfunction
 function! s:update_referring_files(object, type, new_name)
 
     " If we're just renaming a method-local object, we do that.
-    if a:type == 'Arg' || a:object['is_local']
+    if a:type == 'arg' || a:object['is_local']
         call s:update_file(a:object, a:new_name)
         return
     endif
@@ -1217,10 +1233,21 @@ function! s:update_referring_files(object, type, new_name)
     " If we're renaming a class, static object, or enum field, part of that
     " will involve a global find-replace; renaming a class also involves
     " creating a new file and deleting the old one.
-    if a:type == 'Class' || has_key(a:object, 'enum') || a:object['is_static'] == 1 
-        if a:type == 'Class'
+    if a:type == 'class' || has_key(a:object, 'enum') || a:object['is_static'] == 1 
+        if a:type == 'class'
             let l:search = '\<' . a:object['old_name'] . '\>'
             let l:replace = a:new_name
+
+            let l:bufnr = bufnr('%')
+            let l:new_file = a:object['dir'] . '/' . a:new_name . '.java'
+
+            call system('mv ' . a:object['old_file'] . ' ' . l:new_file)
+            call system('echo "' . l:new_file . '" >> ' . a:object['temp_file'])
+
+            call add(g:factorus_qf, {'lnum' : line('.'), 'filename' : l:new_file, 'text' : 'Changed class ' . a:object['old_name'] . ' to ' . a:new_name})
+
+            execute 'silent edit! ' . l:new_file
+            execute 'silent! bwipeout ' . l:bufnr
         elseif has_key(a:object, 'enum')
             call add(g:factorus_qf, {'lnum' : line('.'), 'filename' : expand('%:p'), 'text' : factorus#util#trim(getline('.'))})
             execute 'silent s/\<' . a:object['old_name'] . '\>/' . a:new_name . '/e'
@@ -1229,7 +1256,7 @@ function! s:update_referring_files(object, type, new_name)
             let l:search = a:object['enum'] . '\.' . a:object['old_name']
             let l:replace = a:object['enum'] . '\.' . a:new_name
         else
-            let l:paren = (a:type == 'Method') ? '(' : ''
+            let l:paren = (a:type == 'method') ? '(' : ''
             let l:search = '\<\(' . join(a:object['sub_classes'],'\|') . '\)\>\.\<' . a:object['old_name'] . '\>' . l:paren
             let l:replace = '\1\.' . a:new_name . l:paren
         endif
@@ -1237,21 +1264,11 @@ function! s:update_referring_files(object, type, new_name)
         call factorus#util#update_quick_fix(a:object['temp_file'], l:search)
         call system('cat ' . a:object['temp_file'] . ' | xargs sed -i "s/' . l:search . '/' . l:replace . '/g"')  
 
-        if a:type == 'Class'
-            let l:bufnr = bufnr('%')
-            let l:new_file = a:object['dir'] . '/' . a:new_name . '.java'
-
-            call system('mv ' . a:object['old_file'] . ' ' . l:new_file)
-            call system('rm -rf ' . a:object['temp_file'])
-
-            execute 'silent edit! ' . l:new_file
-            execute 'silent! bwipeout ' . l:bufnr
-        endif
     endif
 
     " If we're renaming a method or non-enum field, we first need to update
     " the hierarchy (where it's defined), then update any uses of object.
-    if a:type == 'Method' || (a:type == 'Field' && !has_key(a:object, 'enum'))
+    if a:type == 'method' || (a:type == 'field' && !has_key(a:object, 'enum'))
         redraw
         echo 'Updating hierarchy...'
         call s:update_hierarchy(a:object, a:new_name)
@@ -1275,7 +1292,7 @@ endfunction
 
 " Returns all parameters of the current function.
 function! s:get_params() abort
-    let l:prev = [line('.'),col('.')]
+    let l:orig = [line('.'),col('.')]
     call s:go_to_tag(0)
     let l:oparen = search('(','Wn')
     let l:cparen = search(')','Wn')
@@ -1291,7 +1308,7 @@ function! s:get_params() abort
     let l:car = 0
     let l:args = []
     let l:i = 0
-    let l:prev = 0
+    let l:prev_dec = 0
 
     " Because declarations can contain commas, can't just split by commas; so,
     " need to go character by character.
@@ -1299,8 +1316,8 @@ function! s:get_params() abort
     while l:i < len(l:dec)
         let char = l:dec[l:i]
         if char == ',' && l:car == 0
-            call add(l:args, strpart(l:dec, l:prev, (l:i - l:prev)))
-            let l:prev = l:i + 1
+            call add(l:args, strpart(l:dec, l:prev_dec, (l:i - l:prev_dec)))
+            let l:prev_dec = l:i + 1
         elseif char == '>'
             let l:car -= 1
         elseif char == '<'
@@ -1308,10 +1325,12 @@ function! s:get_params() abort
         endif
         let l:i += 1
     endwhile
-    call add(l:args, strpart(l:dec, l:prev,len(l:dec) - l:prev))
-    call map(l:args, {n, arg -> [split(arg)[-1], join(split(arg)[:-2]), line('.')]})
+    call add(l:args, strpart(l:dec, l:prev_dec,len(l:dec) - l:prev_dec))
+    "call map(l:args, {n, arg -> [split(arg)[-1], join(split(arg)[:-2]), line('.')]})
+    call map(l:args, {n, arg -> {'name': split(arg)[-1], 'type': join(split(arg)[:-2]), 'line': line('.')}})
 
-    call cursor(l:prev)
+    call cursor(l:orig)
+
     return l:args
 endfunction
 
@@ -1330,9 +1349,9 @@ function! s:get_next_dec()
 
     let [l:line,l:col] = [line('.'), col('.')]
 
-    " Find the first match that isn't a return statement.
+    " Find the first match that isn't a return statement or an error.
     let l:match = searchpos(l:get_variable, 'Wn')
-    while l:match != [0,0] && match(getline(l:match[0]), '\<return\>') >= 0
+    while l:match != [0,0] && match(getline(l:match[0]), '\<\(return\|throw\)\>') >= 0
         call cursor(l:match)
         let l:match = searchpos(l:get_variable, 'Wn')
     endwhile
@@ -1348,18 +1367,32 @@ function! s:get_next_dec()
             let l:var = substitute(getline(l:match[0]), l:alt_get, '\4', '')
             let l:fline = split(substitute(getline(l:match[0]), l:alt_get, '\6', ''), ',')
         endif
-        call map(l:fline, {n, var -> s:trim(var)})
+        call map(l:fline, {n, var -> factorus#util#trim(var)})
         call map(l:fline, {n, var -> substitute(var, '^\<\(' . s:java_identifier . '\)\>.*', '\1', '')})
 
-        return [l:var, l:fline, l:match]
+        return {'type': l:var, 'names': l:fline, 'pos': l:match}
     endif
 
-    return ['none', [], [0, 0]]
+    return {'name': 'null', 'type': [], 'pos': [0,0]}
+endfunction
+
+" get_latest_dec {{{3
+
+" Get the latest declaration of the variable
+" with name a:name in a method, up to a:loc.
+function! s:get_latest_dec(rels, name, loc)
+    let l:latest = 0
+    for dec in keys(a:rels[a:name])
+        if l:latest <= dec && dec <= a:loc[0]
+            let l:latest = dec
+        endif
+    endfor
+    return l:latest
 endfunction
 
 " get_local_decs {{{3
 
-" Returns all declarations until close, including function arguments,
+" Returns all declarations until a:close, including function arguments,
 " variables declared within functions, and variables declared within for loops
 " within function.
 function! s:get_local_decs(close)
@@ -1370,17 +1403,19 @@ function! s:get_local_decs(close)
 
     " As long as the next declaration is before a:close, add the next
     " declaration to l:vars.
-    while factorus#util#is_before(l:next[2], a:close)
-        if l:next[2] == [0,0]
+    while factorus#util#is_before(l:next['pos'], a:close)
+        if l:next['pos'] == [0,0]
             break
         endif
         
-        let l:type = l:next[0]
-        for name in l:next[1]
-            call add(l:vars, [name, l:type, l:next[2][0]])
+        " Multiple variables of the same type can be declared on a line, so
+        " add each declaration separately.
+        let l:type = l:next['type']
+        for name in l:next['names']
+            call add(l:vars, {'name': name, 'type': l:type, 'line': l:next['pos'][0]})
         endfor
 
-        call cursor(l:next[2])
+        call cursor(l:next['pos'])
         let l:next = s:get_next_dec()
     endwhile
     call cursor(l:orig)
@@ -1518,109 +1553,135 @@ function! s:get_all_blocks(close)
 endfunction
 
 " get_next_reference {{{3
-function! s:get_next_reference(var, type, ...)
+"
+" Gets the next reference to a:var of type a:type. There are four 'types' of
+" references:
+"   right: a:var is used as an argument or as the right-hand side of an
+"   assignment.
+"   left: a:var is being assigned to, or is applying a variable-specific
+"   method.
+"   cond: a:var is part of a condition, loop, or other block statement.
+"   return: a:var is part of a return statement.
+function! s:get_next_reference(var, type)
+    " l:var_index refers to a:var. However, a:var could be a search for
+    " multiple variable names, so l:var_index specifies the exact variable.
+    " The meaning of l:ref_index depends on what type of reference we're searching
+    " for.
     if a:type == 'right'
+        " For a right reference, l:ref_index refers to the variable on the
+        " left-hand side.
         let l:search = s:no_comment . s:access_query . '\s*\(' . s:java_identifier . s:collection_identifier . 
                     \ '\=\s\)\=\s*\(' . s:java_identifier . '\)\s*[(.=]\_[^{;]*\<\(' . a:var . '\)\>\_.\{-\};'
-        let l:index = '\6'
-        let l:alt_index = '\7'
+        let l:ref_index = '\6'
+        let l:var_index = '\7'
     elseif a:type == 'left'
-        let l:search = s:no_comment . '\(.\{-\}\[[^]]\{-\}\<\(' . a:var . '\)\>.\{-\}]\|\<\(' . a:var . '\)\>\)\s*\(++\_s*;\|--\_s*;\|[-\^|&~+*/]\=[.=][^=]\).*'
-        let l:index = '\1'
-        let l:alt_index = '\1'
+        " For a left reference, l:ref_index is unncessary.
+        let l:search = s:no_comment . '\(++\|--\)\=\s*\(.\{-\}\[[^]]\{-\}\<\(' . a:var . '\)\>.\{-\}]\|\<\(' . 
+                    \ a:var . '\)\>\)\_s*\(++\_s*;\|--\_s*;\|[-\^|&~+*/]\=[.=][^=]\|;\).*'
+        let l:ref_index = '\2'
+        let l:var_index = '\2'
     elseif a:type == 'cond'
+        " For a cond reference, l:ref_index refers to the block itself.
         let l:search = s:no_comment . '\<\(\(switch\|while\|if\|else\s\+if\)\>\_s*(\_[^{;]*\<\(' . a:var . '\)\>\_[^{;]*).*\|' .
                     \ '\<\(for\)\>\_s*(\_[^{]*\<\(' . a:var . '\)\>\_[^{]*).*\)'
-        let l:index = '\2'
-        let l:alt_index = '\3'
+        let l:ref_index = '\2'
+        let l:var_index = '\3'
     elseif a:type == 'return'
+        " For a return reference, l:ref_index is unncessary.
         let l:search = s:no_comment . '\s*\<return\>\_[^;]*\<\(' . a:var . '\)\>.*'
-        let l:index = '\1'
-        let l:alt_index = '\1'
+        let l:ref_index = '\1'
+        let l:var_index = '\1'
     endif
 
-    let l:line = searchpos(l:search, 'Wn')
-    let l:endline = s:get_endline(l:line, l:search)
+    " Get the next line that matches the relevant search, as well as the
+    " endline for that search.
+    let l:pos = searchpos(l:search, 'Wn')
+    let l:endline = s:get_endline(l:pos, l:search)
+
+    " If we're looking for a right reference, we need to make sure it is
+    " a valid one.
     if a:type == 'right'
-        let l:prev = [line('.'), col('.')]
-        while !s:is_valid_tag(l:line[0])
-            if l:line == [0, 0]
+        let l:orig = [line('.'), col('.')]
+
+        " Keep looking for right references until we have a valid one.
+        while !s:is_valid_tag(l:pos[0])
+            if l:pos == [0, 0]
                 break
             endif
 
-            if match(getline(l:line[0]), '\<\(new\|true\|false\)\>') >= 0 
+            if match(getline(l:pos[0]), '\<\(new\|true\|false\)\>') >= 0 
                 break
             endif
 
-            call cursor(l:line)
-            let l:line = searchpos(l:search, 'Wn')
-            let l:endline = s:get_endline(l:line, l:search)
+            call cursor(l:pos)
+            let l:pos = searchpos(l:search, 'Wn')
+            let l:endline = s:get_endline(l:pos, l:search)
         endwhile
-        call cursor(l:prev)
+        call cursor(l:orig)
     endif
 
-    if l:line[0] > line('.')
-        let l:state = join(getline(l:line[0], l:endline[0]))
+    " If we actually have a valid reference, isolate the variable name and
+    " type, as well as the frerence line.
+    let l:res = {'ref': 'null', 'var': 'null', 'type': a:type, 'pos': [0,0]}
+    if l:pos[0] > line('.')
+        let l:res['pos'] = l:pos
+        let l:state = join(getline(l:pos[0], l:endline[0]))
+
+        " If we're looking for a cond-type reference, we may need to
+        " adjust exactly which part of the regular expression to extract.
         if a:type == 'cond'
             let l:for = match(l:state, '\<for\>')
             let l:c = match(l:state, '\<\(switch\|while\|if\|else\s\+if\)\>')
             if l:c == -1 || (l:for != -1 && l:for < l:c)
-                let l:index = '\4'
-                let l:alt_index = '\5'
+                let l:ref_index = '\4'
+                let l:var_index = '\5'
             endif
         endif
-        let l:loc = substitute(l:state, l:search, l:index, '')
+
+        " If searching for a left reference, we have to further isolate the
+        " variable.
+        let l:res['ref'] = substitute(l:state, l:search, l:ref_index, '')
         if a:type == 'left'
-            let l:loc = substitute(l:loc, '.*\<\(' . a:var . '\)\>.*', '\1', '')
+            let l:res['ref'] = substitute(l:res['ref'], '.*\<\(' . a:var . '\)\>.*', '\1', '')
         endif
-        if a:0 > 0 && a:1 == 1
-            let l:name = substitute(l:state, l:search, l:alt_index, '')
-            if a:type == 'left'
-                let l:name = l:loc
-            endif
-            return [l:loc, l:line, l:name]
+
+        let l:res['var'] = substitute(l:state, l:search, l:var_index, '') 
+        if a:type == 'left'
+            let l:res['var'] = l:res['ref']
         endif
-        return [l:loc, l:line]
     endif
         
-    return (a:0 > 0 && a:1 == 1) ? ['none', [0, 0], 'none'] : ['none', [0, 0]]
+    return l:res
 endfunction
 
 
 " get_next_use {{{3
-function! s:get_next_use(var, ...)
-    let l:right = s:get_next_reference(a:var, 'right', a:0)
-    let l:left = s:get_next_reference(a:var, 'left', a:0)
-    let l:cond = s:get_next_reference(a:var, 'cond', a:0)
-    let l:return = s:get_next_reference(a:var, 'return', a:0)
+"
+" Gets the next use of a:var in the current method.
+function! s:get_next_use(var)
+    " Get the next right, left, cond, and return reference to a:var.
+    let l:right = s:get_next_reference(a:var, 'right')
+    let l:left = s:get_next_reference(a:var, 'left')
+    let l:cond = s:get_next_reference(a:var, 'cond')
+    let l:return = s:get_next_reference(a:var, 'return')
 
-    let l:min = [l:right[0], copy(l:right[1]), 'right']
-    let l:min_name = a:0 > 0 ? l:right[2] : ''
+    let l:first = l:right
 
-    let l:poss = [l:right, l:left, l:cond, l:return]
-    let l:idents = ['right', 'left', 'cond', 'return']
-    for i in range(4)
-        let temp = l:poss[i]
-        if temp[1] != [0, 0] && (factorus#util#is_before(temp[1], l:min[1]) == 1 || l:min[1] == [0, 0])
-            let l:min = [temp[0], copy(temp[1]), l:idents[i]]
-            if a:0 > 0
-                let l:min_name = temp[2]
-            endif
+    " Check each reference to see which one is earliest, and return the
+    " earliest of all four references.
+    for temp in [l:left, l:cond, l:return]
+        if temp['pos'] != [0, 0] && (factorus#util#is_before(temp['pos'], l:first['pos']) || l:first['pos'] == [0, 0])
+            let l:first = temp
         endif
     endfor
 
-    if a:0 > 0
-        call add(l:min, l:min_name)
-    endif
-
-    return l:min
+    return l:first
 endfunction
 
 " get_all_relevant_lines {{{3
 
 " Gets all relevant lines for each var in vars.
 function! s:get_all_relevant_lines(vars, names, close)
-
     " Get original position and previous tag.
     let l:orig = [line('.'), col('.')]
     let l:begin = s:get_adjacent_tag('b')
@@ -1632,57 +1693,64 @@ function! s:get_all_relevant_lines(vars, names, close)
     " For each variable, we get the line it's defined on and add that to its
     " relevant lines.
     for var in a:vars
-        call cursor(var[2], 1)
+        call cursor(var['line'], 1)
         " If var is defined in a for loop, we need to add all the lines of the
         " for loop.
         if match(getline('.'), '\<for\>') >= 0
             call search('(')
             normal %
             if factorus#util#is_before(searchpos(';', 'Wn'), searchpos('{', 'Wn'))
-                let l:start_lines = range(var[2], search(';', 'Wn'))
+                let l:start_lines = range(var['line'], search(';', 'Wn'))
             else
                 call search('{')
                 normal %
-                let l:start_lines = range(var[2], line('.'))
+                let l:start_lines = range(var['line'], line('.'))
             endif
-            call cursor(var[2], 1)
+            call cursor(var['line'], 1)
         " Otherwise, we just add the defining line.
         else
-            let l:start_lines = [var[2]]
+            let l:start_lines = [var['line']]
         endif
         " We add the various definition lines of var to l:lines, and add the
         " closing part of its block to l:closes.
-        let l:local_close = var[2] == l:begin ? s:get_closing_bracket(1) : s:get_closing_bracket(0)
-        let l:closes[var[0]] = copy(l:local_close)
+        let l:local_close = var['line'] == l:begin ? s:get_closing_bracket(1) : s:get_closing_bracket(0)
+        let l:closes[var['name']] = copy(l:local_close)
         call cursor(l:orig)
-        if index(keys(l:lines), var[0]) < 0
-            let l:lines[var[0]] = {var[2] : l:start_lines}
+
+        " A variable could be defined twice in the same method (loop
+        " variables, for example), so we might need to have multiple
+        " entries.
+        if index(keys(l:lines), var['name']) < 0
+            let l:lines[var['name']] = {var['line'] : l:start_lines}
         else
-            let l:lines[var[0]][var[2]] = l:start_lines
+            let l:lines[var['name']][var['line']] = l:start_lines
         endif
-        let l:isos[var[0]] = {}
+        let l:isos[var['name']] = {}
     endfor
 
     let l:search = join(a:names, '\|')
-    let l:next = s:get_next_use(l:search, 1)
+    let l:next = s:get_next_use(l:search)
 
-    " For each use of a variable, we need to add it to l:lines.
-    while factorus#util#is_before(l:next[1], a:close) == 1
-        if l:next[1] == [0, 0]
+    " For each use of var, we need to add it to l:lines.
+    while factorus#util#is_before(l:next['pos'], a:close)
+        if l:next['pos'] == [0, 0]
             break
         endif
 
         let l:pause = copy(l:next)
         let l:new_search = l:search
-        while l:pause[1] == l:next[1]
-            let l:name = l:next[3]
+        while l:pause['pos'] == l:next['pos']
+            let l:name = l:next['var']
 
-            let l:ldec = s:get_latest_dec(l:lines, l:name, l:next[1])
+            " Get the most recent declaration of variable l:name.
+            let l:ldec = s:get_latest_dec(l:lines, l:name, l:next['pos'])
 
-            let l:quoted = s:is_quoted('\<' . l:name . '\>', s:get_statement(l:next[1][0]))
-            if factorus#util#is_before(l:next[1], l:closes[l:name])1 && !l:quoted && l:ldec > 0
-                if index(l:lines[l:name][l:ldec], l:next[1][0]) < 0
-                    call add(l:lines[l:name][l:ldec], l:next[1][0])
+            " If the next reference is not quoted and occurs before the end of
+            " the method, add it to the relevant lines for that variable.
+            let l:quoted = s:is_quoted('\<' . l:name . '\>', s:get_statement(l:next['pos'][0]))
+            if !l:quoted && l:ldec > 0 && factorus#util#is_before(l:next['pos'], l:closes[l:name]) 
+                if index(l:lines[l:name][l:ldec], l:next['pos'][0]) < 0
+                    call add(l:lines[l:name][l:ldec], l:next['pos'][0])
                 endif
             endif
 
@@ -1690,15 +1758,17 @@ function! s:get_all_relevant_lines(vars, names, close)
                 break
             endif
 
+            " Remove the variable we just checked the reference for, so we can
+            " check for references to other variables.
             let l:new_search = substitute(l:new_search, '\\|\<' . l:name . '\>', '', '')
             let l:new_search = substitute(l:new_search, '\<' . l:name . '\>\\|', '', '')
 
-            let l:next = s:get_next_use(l:new_search, 1)
+            let l:next = s:get_next_use(l:new_search)
         endwhile
         let l:next = copy(l:pause)
 
-        call cursor(l:next[1])
-        let l:next = s:get_next_use(l:search, 1)
+        call cursor(l:next['pos'])
+        let l:next = s:get_next_use(l:search)
     endwhile
     
     call cursor(l:orig)
@@ -1707,7 +1777,7 @@ endfunction
 
 " init_extraction {{{3
 
-" Gets all necessary variables for extractMethod.
+" Gets all necessary variables for extract_method.
 "
 " Return values:
 "   orig: Original position of cursor.
@@ -1738,13 +1808,14 @@ function! s:init_extraction()
 
     " Get all variables defined in method, not referenced.
     let l:vars = s:get_local_decs(l:close)
-    let l:names = map(deepcopy(l:vars), {n, var -> var[0]})
-    let l:decs = map(deepcopy(l:vars), {n, var -> var[2]})
+    let l:names = map(deepcopy(l:vars), {n, var -> var['name']})
+    let l:decs = map(deepcopy(l:vars), {n, var -> var['line']})
     let l:compact = [l:names, l:decs]
 
     " Get all blocks of code (if statements, loops, etc.)
     let l:blocks = s:get_all_blocks(l:close)
 
+    " Get all lines relevant to each variable in the method.
     let [l:all, l:isos] = s:get_all_relevant_lines(l:vars, l:names, l:close)
 
     return [l:orig, l:tab, l:method_name, l:open, l:close, l:old_lines, l:vars, l:compact, l:blocks, l:all, l:isos]
@@ -1765,6 +1836,10 @@ function! s:get_containing_block(line, ranges, exclude)
 endfunction
 
 " is_isolated_block {{{3
+
+" Checks if a:block is 'isolated' from the rest of the
+" method, and could be removed without breaking a loop
+" or use of a variable other than a:var.
 function! s:is_isolated_block(block, var, rels, close)
     let l:orig = [line('.'), col('.')]
     call cursor(a:block[0], 1)
@@ -1773,30 +1848,35 @@ function! s:is_isolated_block(block, var, rels, close)
     endif
 
     let l:search = join(keys(a:rels), '\|')
-    let l:search = substitute(l:search, '\\|\<' . a:var[0] . '\>', '', '')
-    let l:search = substitute(l:search, '\<' . a:var[0] . '\>\\|', '', '')
-    let l:ref = s:get_next_reference(l:search, 'left', 1)
+    let l:search = substitute(l:search, '\\|\<' . a:var['name'] . '\>', '', '')
+    let l:search = substitute(l:search, '\<' . a:var['name'] . '\>\\|', '', '')
+    let l:ref = s:get_next_reference(l:search, 'left')
     let l:return = search('\<\(return\)\>', 'Wn')
     let l:continue = search('\<\(continue\|break\)\>', 'Wn')
 
     let l:res = 1
-    if factorus#util#contains(a:block, l:return) == 1
+
+    " Check if a:block contains a return statement.
+    if factorus#util#contains(a:block, l:return)
         let l:res = 0
-    elseif s:contains(a:block, l:continue)
+    " Check if a:block can interrupt a containing loop in some way.
+    elseif factorus#util#contains(a:block, l:continue)
         call cursor(l:continue, 1)
         let l:loop = searchpair('\<\(for\|while\)\>', '', '}', 'Wbn')
         if l:loop != 0 && l:loop < a:block[0]
             let l:res = 0
         endif
+    " Finally, check if a:block modifies a variable (other than a:var) which
+    " can escape the block.
     else
-        while l:ref[1] != [0, 0] && factorus#util#is_before(l:ref[1], [a:block[1]+1, 1]) == 1
-            let l:i = s:get_latest_dec(a:rels, l:ref[2], l:ref[1])
-            if s:contains(a:block, l:i) == 0
+        while l:ref['pos'] != [0, 0] && factorus#util#is_before(l:ref['pos'], [a:block[1]+1, 1])
+            let l:i = s:get_latest_dec(a:rels, l:ref['var'], l:ref['pos'])
+            if !factorus#util#contains(a:block, l:i)
                 let l:res = 0
                 break
             endif
-            call cursor(l:ref[1])
-            let l:ref = s:get_next_reference(l:search, 'left', 1)
+            call cursor(l:ref['pos'])
+            let l:ref = s:get_next_reference(l:search, 'left')
         endwhile
     endif
 
@@ -1805,26 +1885,35 @@ function! s:is_isolated_block(block, var, rels, close)
 endfunction
 
 " get_isolated_lines {{{3
-function! s:get_isolated_lines(var, compact, rels, blocks, close)
-    let l:refs = a:rels[a:var[0]][a:var[2]]
-    let [l:names, l:decs] = a:compact
 
+" Get all lines with a reference to a:var, that can be isolated from the
+" original method.
+function! s:get_isolated_lines(var, compact, rels, blocks, close)
+    " Get all references to a:var.
+    let l:refs = a:rels[a:var['name']][a:var['line']]
     if len(l:refs) == 1
         return []
     endif
 
     let l:orig = [line('.'), col('.')]
-    let [l:name, l:type, l:dec] = a:var
 
-    let l:wraps = []
-    if match(getline(a:var[2]), '\<for\>') >= 0
-        let l:for = s:get_containing_block(a:var[2], a:blocks, a:blocks[0])
-        if s:is_isolated_block(l:for, a:var, a:rels, a:close) == 0
+    let [l:names, l:decs] = a:compact
+
+    " If the variable is defined as part of a for loop, and that loop is not
+    " isolated, there are no lines that can be extracted.
+    if match(getline(a:var['line']), '\<for\>') >= 0
+        let l:for = s:get_containing_block(a:var['line'], a:blocks, a:blocks[0])
+        if !s:is_isolated_block(l:for, a:var, a:rels, a:close)
             return []
         endif
     endif
-    let l:dec_block = s:get_containing_block(a:var[2], a:blocks, a:blocks[0])
-    if l:dec_block[1] - l:dec_block[0] == 0
+
+    " If the block a:var is declared in is a single line, we need to add the
+    " block for the entire method. In either case, we need to add the block
+    " containing the first reference to a:var.
+    let l:wraps = []
+    let l:dec_block = s:get_containing_block(a:var['line'], a:blocks, a:blocks[0])
+    if l:dec_block[0] == l:dec_block[1]
         call add(l:wraps, copy(a:blocks[0]))
     endif
     call add(l:wraps, s:get_containing_block(l:refs[1], a:blocks, a:blocks[0]))
@@ -1834,33 +1923,48 @@ function! s:get_isolated_lines(var, compact, rels, blocks, close)
         let twrap = l:wraps[i]
         let l:temp = []
 
-        let l:next_use = s:get_next_reference(a:var[0], 'right')
-        call cursor(l:next_use[1])
+        " Get the next right-hand reference to a:var (i.e. a reference that
+        " uses a:var as an argument or right-hand side of an assignment).
+        let l:next_ref = s:get_next_reference(a:var['name'], 'right')
+        call cursor(l:next_ref['pos'])
 
+        " Go through each reference to a:var, until we either find one that
+        " cannot be isolated, or find a right-reference to a:var.
         let l:block = [0, 0]
         for j in range(i, len(l:refs)-1)
             let line = l:refs[j]
 
-            if line == l:next_use[1][0]
-                if index(l:names, l:next_use[0]) >= 0
+            " If the reference is a right-reference, we don't know how
+            " impacted the rest of the method will be, so we assume it
+            " cannot be isolated and break.
+            if line == l:next_ref['pos'][0]
+                if index(l:names, l:next_ref['ref']) >= 0
                     break
                 endif
-                call cursor(l:next_use[1])
-                let l:next_use = s:get_next_reference(a:var[0], 'right')
+                call cursor(l:next_ref['pos'])
+                let l:next_ref = s:get_next_reference(a:var['name'], 'right')
             endif
-            if line >= l:block[0] && line <= l:block[1]
+
+            " Get the block containing line, assuming line doesn't fall
+            " within the previous block we already found, and the block
+            " doesn't fall outside the range we're searching in.
+            if factorus#util#contains(l:block, line)
                 continue
             endif
 
             let l:block = s:get_containing_block(line, a:blocks, twrap)
-            if l:block[0] < twrap[0] || l:block[1] > twrap[1]
+            if !factorus#util#contains(twrap, l:block)
                 break
             endif
 
-            if s:is_isolated_block(l:block, a:var, a:rels, a:close) == 0 
+            " If this block cannot be isolated, we finish our search and
+            " just use the isolated lines we've already found.
+            if !s:is_isolated_block(l:block, a:var, a:rels, a:close)
                 break
             endif
 
+            " If the containing block is a single declaration, make sure we
+            " add all lines in that declaration.
             if l:block[1] - l:block[0] == 0 && match(getline(l:block[0]), '\<\(try\|for\|if\|while\)\>') < 0
                 let l:stop = l:block[0]
                 while match(getline(l:stop), ';') < 0
@@ -1868,6 +1972,9 @@ function! s:get_isolated_lines(var, compact, rels, blocks, close)
                 endwhile
                 let l:block[1] = l:stop
             endif
+
+            " Add all lines in the containing block to
+            " l:temp.
             let l:i = l:block[0]
             while l:i <= l:block[1]
                 if index(l:temp, l:i) < 0
@@ -1884,6 +1991,7 @@ function! s:get_isolated_lines(var, compact, rels, blocks, close)
         call cursor(l:orig)
     endfor
 
+    call cursor(l:orig)
     return l:usable
 endfunction
 
@@ -1894,16 +2002,19 @@ endfunction
 function! s:get_best_var(vars, compact, isos, all, blocks, open, close)
     let l:best_var = ['', '', 0]
     let l:best_lines = []
-    let l:method_length = (a:close - line('.')) * 1.0
+    let l:method_length = (a:close[0] - line('.')) * 1.0
 
     " Go through all declared variables and try to extract 'isolated' lines.
     " Isolated means lines that can be extracted from the function without
     " breaking the rest of the function.
     for var in a:vars
         let l:iso = s:get_isolated_lines(var, a:compact, a:all, a:blocks, a:close)
-        let a:isos[var[0]][var[2]] = copy(l:iso)
-
+        let a:isos[var['name']][var['line']] = copy(l:iso)
         let l:ratio = (len(l:iso) / l:method_length)
+
+        " If using the 'longest' heuristic, look at all possible variables and
+        " extract the one with the largest set of extractable lines.
+        " Otherwise, extract the one that first meets the threshold.
         if g:factorus_extract_heuristic == 'longest'
             if len(l:iso) > len(l:best_lines) && index(l:iso, a:open) < 0 "&& l:ratio < g:factorus_method_threshold
                 let l:best_var = var
@@ -1917,14 +2028,18 @@ function! s:get_best_var(vars, compact, isos, all, blocks, open, close)
         endif
     endfor
 
+    " If we couldn't find any variable to extract properly,
+    " exit with the relevant error code.
     if len(l:best_lines) < g:factorus_min_extracted_lines
         throw 'Factorus:NoLines' 
     endif
 
     redraw
     echo 'Almost done...'
-    if index(l:best_lines, l:best_var[2]) < 0 && l:best_var[2] != a:open
-        let l:stop = l:best_var[2]
+
+    " If the variable declaration is multi-line, wrap up that declaration.
+    if index(l:best_lines, l:best_var['line']) < 0 && l:best_var['line'] != a:open
+        let l:stop = l:best_var['line']
         let l:dec_lines = [l:stop]
         while match(getline(l:stop), ';') < 0
             let l:stop += 1
@@ -1937,78 +2052,12 @@ function! s:get_best_var(vars, compact, isos, all, blocks, open, close)
     return [l:best_var, l:best_lines]
 endfunction
 
-" manual_extract {{{3
-
-" Manually extracts the code selected by the cursor.
-function! s:manual_extract(args)
-    " If we're just rolling back an extraction, roll it back and let the user
-    " know.
-    if factorus#util#is_rollback(a:args)
-        call s:rollback_extraction()
-        return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
-    endif
-
-    " Get the lines the user extracted and the name they want for the new
-    " function (if any), and find the level of spacing that would make the new
-    " method 'fit' with the current method. Also store the old method's lines,
-    " in case we have to roll it back.
-    let l:name = len(a:args) <= 2 ? g:factorus_method_name : a:args[2]
-
-    echo 'Extracting new method...'
-    call s:go_to_tag(0)
-    let l:tab = substitute(getline('.'), '\(\s*\).*', '\1', '')
-    let l:method_name = substitute(getline('.'), '.*\s\+\(' . s:java_identifier . '\)\s*(.*', '\1', '')
-
-    let l:extract_lines = range(a:args[0], a:args[1])
-    let l:old_lines = getline(l:open, l:close[0])
-
-    " Get the structure of the current method--the name,
-    " the variable declarations, the blocks, etc.
-    let [l:orig, l:tab, l:method_name, l:open, l:close, l:old_lines, l:vars, l:compact, l:blocks, l:all, l:isos] = s:init_extraction()
-
-    " Then, we wrap any necessary annotations around the new method, get all
-    " the arguments needed for that function, and build the new method line by
-    " line.
-    let l:new_args = s:get_new_args(l:extract_lines, l:vars, l:all)
-    let [l:final, l:rep] = s:build_new_method(l:extract_lines, l:new_args, l:blocks, l:vars, l:all, l:tab, l:close, l:name)
-
-    " Once the method has been built, we add it to the file just after the
-    " current method, and jump to it.
-    call append(l:close[0], l:final)
-    call append(l:extract_lines[-1], l:rep)
-
-    let l:i = len(l:extract_lines) - 1
-    while l:i >= 0
-        call cursor(l:extract_lines[l:i], 1)
-        d 
-        let l:i -= 1
-    endwhile
-
-    call search('public.*\<' . l:name . '\>(')
-    silent write!
-    redraw
-    echo 'Extracted ' . len(l:extract_lines) . ' lines from ' . l:method_name
-
-    return [l:name, l:old_lines]   
-endfunction
-
 " Method-Building {{{2
-" get_latest_dec {{{3
-function! s:get_latest_dec(rels, name, loc)
-    let l:min = 0
-    for dec in keys(a:rels[a:name])
-        if l:min <= dec && dec <= a:loc[0]
-            let l:min = dec
-        endif
-    endfor
-    return l:min
-endfunction
-
 " find_var {{{3
 function! s:find_var(vars, names, name, dec)
     let l:i = index(a:names, a:name)
     let l:var = a:vars[l:i]
-    while l:var[2] != a:dec
+    while l:var['line'] != a:dec
         let l:i = index(a:names, a:name, l:i + 1)
         let l:var = a:vars[l:i]
     endwhile
@@ -2017,7 +2066,7 @@ endfunction
 
 " get_new_args {{{3
 function! s:get_new_args(lines, vars, rels, ...)
-    let l:names = map(deepcopy(a:vars), {n, var -> var[0]})
+    let l:names = map(deepcopy(a:vars), {n, var -> var['name']})
     let l:search = '[^.]\<\(' . join(l:names, '\|') . '\)\>'
     let l:search = s:no_comment . '.\{-\}' . l:search . '.*'
     let l:args = []
@@ -2035,7 +2084,7 @@ function! s:get_new_args(lines, vars, rels, ...)
             endif
             let l:next_var = s:find_var(a:vars, l:names, l:new, l:spot)
 
-            if index(l:args, l:next_var) < 0 && index(a:lines, l:spot) < 0 && (a:0 == 0 || l:next_var[0] != a:1[0] || l:next_var[2] == a:1[2]) 
+            if index(l:args, l:next_var) < 0 && index(a:lines, l:spot) < 0 && (a:0 == 0 || l:next_var['name'] != a:1['name'] || l:next_var['line'] == a:1['line']) 
                 call add(l:args, l:next_var)
             endif
             let l:this = substitute(l:this, '\<' . l:new . '\>', '', 'g')
@@ -2046,39 +2095,45 @@ function! s:get_new_args(lines, vars, rels, ...)
 endfunction
 
 " wrap_decs {{{3
+
+" Some arguments to the new method can be 'wrapped' into the new method, if
+" those arguments are only used within that method.
 function! s:wrap_decs(var, lines, vars, rels, isos, args, close)
     let l:head = s:get_adjacent_tag('b')
     let l:orig = [line('.'), col('.')]
     let l:fin = copy(a:lines)
     let l:fin_args = deepcopy(a:args)
+
+    " For each argument, check to see if it can be wrapped into the new
+    " method, and if so add all relevant lines to the method.
     for arg in a:args
 
-        if arg[2] == l:head
+        if arg['line'] == l:head
             continue
         endif
 
         let l:wrap = 1
-        let l:name = arg[0]
+        let l:name = arg['name']
         let l:next = s:get_next_use(l:name)
 
-        while l:next[1] != [0, 0] && factorus#util#is_before(l:next[1], a:close) == 1
-            if l:next[2] != 'left' && l:next[2] != 'return' && index(a:lines, l:next[1][0]) < 0
+        while l:next['pos'] != [0, 0] && factorus#util#is_before(l:next['pos'], a:close)
+            if l:next['type'] != 'left' && l:next['type'] != 'return' && index(a:lines, l:next['pos'][0]) < 0
                 let l:wrap = 0    
                 break
             endif
-            call cursor(l:next[1])
+            call cursor(l:next['pos'])
             let l:next = s:get_next_use(l:name)
         endwhile
 
         if l:wrap == 1
-            let l:relevant = a:rels[arg[0]][arg[2]]
-            let l:stop = arg[2]
+            let l:relevant = a:rels[arg['name']][arg['line']]
+            let l:stop = arg['line']
             let l:dec = [l:stop]
             while match(getline(l:stop), ';') < 0
                 let l:stop += 1
                 call add(l:dec, l:stop)
             endwhile
-            let l:iso = l:dec + a:isos[arg[0]][arg[2]]
+            let l:iso = l:dec + a:isos[arg['name']][arg['line']]
 
             let l:con = 1
             for rel in l:relevant
@@ -2092,11 +2147,11 @@ function! s:wrap_decs(var, lines, vars, rels, isos, args, close)
             endif
 
             let l:next_args = s:get_new_args(l:iso, a:vars, a:rels, arg)
-            let l:fin = uniq(s:merge(l:fin, l:iso))
+            let l:fin = uniq(factorus#util#merge(l:fin, l:iso))
 
             call remove(l:fin_args, index(l:fin_args, arg))
             for narg in l:next_args
-                if index(l:fin_args, narg) < 0 && narg[0] != a:var[0]
+                if index(l:fin_args, narg) < 0 && narg['name'] != a:var['name']
                     call add(l:fin_args, narg)
                 endif
             endfor
@@ -2122,16 +2177,19 @@ endfunction
 " build_args {{{3
 function! s:build_args(args,is_call)
     if a:is_call == 0
-        let l:defs = map(deepcopy(a:args),{n,arg -> arg[1] . ' ' . arg[0]})
+        let l:defs = map(deepcopy(a:args),{n,arg -> arg['type'] . ' ' . arg['name']})
         let l:sep = '| '
     else
-        let l:defs = map(deepcopy(a:args),{n,arg -> arg[0]})
+        let l:defs = map(deepcopy(a:args),{n,arg -> arg['name']})
         let l:sep = ', '
     endif
     return join(l:defs,l:sep)
 endfunction
 
 " format_method {{{3
+
+" Format a newly-built method to comply as much as possible with the current
+" file's format.
 function! s:format_method(def,body,spaces)
     let l:paren = stridx(a:def[0],'(')
     let l:def_space = repeat(' ',l:paren+1)
@@ -2140,15 +2198,34 @@ function! s:format_method(def,body,spaces)
     let l:dspaces = repeat(a:spaces,2)
     let l:i = 0
 
+    let l:depth = 2
+    let l:sdepth = [0]
+
+    " We need to adjust the indentation for each line, depending on how
+    " nested it is.
     call map(a:body,{n,line -> substitute(line,'\s*\(.*\)','\1','')})
     while l:i < len(a:body)
-        if match(a:body[l:i],'}') >= 0
-            let l:dspaces = strpart(l:dspaces,len(a:spaces))
+        " If we reach a closing bracket, decrease the depth of indentation.
+        " We have to take special care regarding switch/case blocks, though,
+        " since it's harder to check.
+        if match(a:body[l:i],'}') >= 0 || match(a:body[l:i],'\(case\|default\).*:') >= 0
+            let l:depth -= 1
+            if match(a:body[l:i], '}') >= 0 && l:depth == l:sdepth[-1]
+                let l:depth -= 1
+                call remove(l:sdepth, -1)
+            endif  
         endif
-        let a:body[l:i] = l:dspaces . a:body[l:i]
 
-        if match(a:body[l:i],'{') >= 0
-            let l:dspaces .= a:spaces
+        let a:body[l:i] = repeat(a:spaces, l:depth) . a:body[l:i]
+
+        " If we reach an open bracket (or a case/default statement), increase
+        " the indentation depth for future lines.
+        if match(a:body[l:i],'{') >= 0 || match(a:body[l:i],'\(case\|default\).*:') >= 0
+            let l:depth += 1
+            if match(a:body[l:i], 'switch.*{') >= 0
+                call add(l:sdepth, l:depth)
+                let l:depth += 1
+            endif
         endif
 
         let l:i += 1
@@ -2156,32 +2233,39 @@ function! s:format_method(def,body,spaces)
 endfunction
 
 " build_new_method {{{3
+
+" Given all necessary information for a new method, build that method line 
+" by line so it can be added to the file.
 function! s:build_new_method(lines,args,ranges,vars,rels,tab,close,...)
     let l:body = map(copy(a:lines),{n,line -> getline(line)})
 
+    " We build the new method in reverse, so start at the last line.
     call cursor(a:lines[-1],1)
     let l:type = 'void'
     let l:return = ['}'] 
     let l:call = ''
 
+    " Check to see if the method needs to generate a return value.
     let l:outer = s:get_containing_block(a:lines[0],a:ranges,a:ranges[0])
     let l:include_dec = 1
     for var in a:vars
-        if index(a:lines,var[2]) >= 0
+        if index(a:lines,var['line']) >= 0
 
-            let l:outside = s:get_next_use(var[0])    
-            if l:outside[1] != [0,0] && factorus#util#is_before(l:outside[1],a:close) == 1 && s:get_latest_dec(a:rels,var[0],l:outside[1]) == var[2]
+            let l:outside = s:get_next_use(var['name'])
+            if l:outside['pos'] != [0,0] && factorus#util#is_before(l:outside['pos'],a:close) && s:get_latest_dec(a:rels,var['name'],l:outside['pos']) == var['line']
 
-                let l:contain = s:get_containing_block(var[2],a:ranges,a:ranges[0])
+                " If a reference to var exists outside the lines of the
+                " new method, we need to return var so it can be used.
+                let l:contain = s:get_containing_block(var['line'],a:ranges,a:ranges[0])
                 if l:contain[0] <= l:outer[0] || l:contain[1] >= l:outer[1]
-                    let l:type = var[1]
-                    let l:return = ['return ' . var[0] . ';','}']
-                    let l:call = l:type . ' ' . var[0] . ' = '
+                    let l:type = var['type']
+                    let l:return = ['return ' . var['name'] . ';','}']
+                    let l:call = l:type . ' ' . var['name'] . ' = '
 
                     let i = 0
                     while i < len(a:lines)
                         let line = getline(a:lines[i])
-                        if match(line,';') >= 0 && match(line,'[^.]\<' . var[0] . '\>[^.]') >= 0
+                        if match(line,';') >= 0 && match(line,'[^.]\<' . var['name'] . '\>[^.]') >= 0
                             break
                         endif
                         let i += 1
@@ -2191,11 +2275,14 @@ function! s:build_new_method(lines,args,ranges,vars,rels,tab,close,...)
                         break
                     endif
 
+                    " If we hit an if-then statement, we may need to roll back
+                    " the new method a bit, since we currently can't deal with
+                    " conditional return statements.
                     let l:inner = s:get_containing_block(a:lines[i+1],a:ranges,l:outer)
                     if l:inner[1] - l:inner[0] > 0 && match(getline(l:inner[0]),'\<\(if\|else\)\>') >= 0
                         let l:removes = []
                         for j in range(i+1)
-                            if match(getline(a:lines[j]),'[^.]\<' . var[0] . '\>[^.][^=]*=') >= 0
+                            if match(getline(a:lines[j]),'[^.]\<' . var['name'] . '\>[^.][^=]*=') >= 0
                                 call add(l:removes,j)
                                 let k = j
                                 while match(getline(a:lines[k]),';') < 0
@@ -2207,23 +2294,25 @@ function! s:build_new_method(lines,args,ranges,vars,rels,tab,close,...)
                         for rem in reverse(l:removes)
                             call remove(a:lines,rem)
                         endfor
-                        let l:call = var[0] . ' = '
+                        let l:call = var['name'] . ' = '
                         let l:include_dec = 0
                     endif
                     break
                 endif
-                 
             endif
-
         endif
     endfor
 
+    " Build the arguments and method definition, based on the variables used
+    " in the new method.
     let l:build = s:build_args(a:args,0)
     let l:name = a:0 == 0 ? g:factorus_method_name : a:1
     let l:build_string = 'public ' . l:type . ' ' . l:name  . '(' . l:build . ') {'
     let l:temp = join(reverse(split(l:build_string, '.\zs')), '')
     let l:def = []
 
+    " If config is set to split lines, then break the method definition (with
+    " arguments) across multiple lines.
     if g:factorus_split_lines == 1
         while len(l:temp) >= g:factorus_line_length
             let i = stridx(l:temp,'|',len(l:temp) - g:factorus_line_length)
@@ -2238,15 +2327,18 @@ function! s:build_new_method(lines,args,ranges,vars,rels,tab,close,...)
         endwhile
     endif
 
+    " Combine all the definition lines into a single list.
     let l:temp = join(reverse(split(l:temp, '.\zs')), '')
     let l:temp = substitute(l:temp,'|',',','g')
     call add(l:def,l:temp)
     call reverse(l:def)
 
+    " Format the new method to try to fit within the file's formatting.
     let l:body += l:return
     call s:format_method(l:def,l:body,a:tab)
     let l:final = [''] + l:def + l:body + ['']
 
+    " Finally, build the call to the new method from the old method.
     let l:arg_string = s:build_args(a:args,1)
     let l:call_space = substitute(getline(a:lines[-1]),'\(\s*\).*','\1','')
     let l:rep = [l:call_space . l:call . l:name . '(' . l:arg_string . ');']
@@ -2262,23 +2354,7 @@ function! s:rollback_add_param()
     " Get the original state of the file.
     let [l:method_name, l:param_name, l:count] = g:factorus_history['old']
 
-    " For each line in the changelog that was marked 'Modified', get the
-    " change and add it to l:files.
-    let l:files = {}
-    for line in g:factorus_qf
-        if index(keys(line), 'filename') < 0
-            if line['pattern'] == 'Unmodified'
-                break
-            endif
-            continue
-        endif
-
-        if index(keys(l:files), line['filename']) < 0
-            let l:files[line['filename']] = [line['lnum']]
-        else
-            call add(l:files[line['filename']],line['lnum'])
-        endif
-    endfor
+    let l:files = factorus#util#get_modified_lines()
 
     " For every file in l:files, make all the necessary changes.
     for file in keys(l:files)
@@ -2390,28 +2466,12 @@ function! s:rollback_rename(new_name, type)
 
     " If the last command renamed a class, we can just do it again.
     " TODO: This doesn't work if you're in a different file.
-    if a:type == 'Class'
+    if a:type == 'class'
         call factorus#java#rename_something(a:new_name, a:type)
     " Otherwise, go through every line changed, and change the line back to
     " the old instance.
     else
-        let l:files = {}
-        " For each line in the changelog that was marked 'Modified', get the
-        " change and add it to l:files.
-        for line in g:factorus_qf
-            if index(keys(line),'filename') < 0
-                if line['pattern'] == 'Unmodified'
-                    break
-                endif
-                continue
-            endif
-
-            if index(keys(l:files),line['filename']) < 0
-                let l:files[line['filename']] = [line['lnum']]
-            else
-                call add(l:files[line['filename']],line['lnum'])
-            endif
-        endfor
+        let l:files = factorus#util#get_modified_lines()
 
         " For every file in l:files, make all the necessary changes.
         for file in keys(l:files)
@@ -2453,8 +2513,8 @@ function! factorus#java#add_param(param_name, param_type, ...) abort
         " static.
         
         call s:go_to_tag(0)
-        let l:object = s:get_object_attributes('Method')
-        call s:get_referring_files(l:object, 'Method')
+        let l:object = s:get_object_attributes('method')
+        call s:get_referring_files(l:object, 'method')
         if has_key(l:object, 'def_file')
             execute 'silent edit! ' . l:object['def_file']
             call cursor(l:object['def_line'], 1)
@@ -2497,14 +2557,14 @@ function! factorus#java#add_param(param_name, param_type, ...) abort
         endif
 
         if g:factorus_show_changes > 0
-            call factorus#util#set_changes(l:object['old_name'], 'addParam')
+            call factorus#util#set_changes(l:object['old_name'], 'add_param')
         endif
 
-        call factorus#util#reset_environment(l:orig, l:prev_dir, l:curr_buf, 'addParam')
+        call factorus#util#reset_environment(l:orig, l:prev_dir, l:curr_buf, 'add_param')
 
         return [l:object['old_name'], a:param_name, l:object['num_params'] + 1]
     catch /.*/
-        call factorus#util#reset_environment(l:orig, l:prev_dir, l:curr_buf, 'addParam')
+        call factorus#util#reset_environment(l:orig, l:prev_dir, l:curr_buf, 'add_param')
         let l:err = match(v:exception, '^Factorus:') >= 0 ? v:exception : 'Factorus:' . v:exception
         throw l:err . ', at ' . v:throwpoint
     endtry
@@ -2575,12 +2635,68 @@ function! factorus#java#encapsulate_field(...) abort
 
 endfunction
 
+" manual_extract {{{2
+
+" Manually extracts the code selected by the cursor.
+function! factorus#java#manual_extract(args)
+    " If we're just rolling back an extraction, roll it back and let the user
+    " know.
+    if factorus#util#is_rollback(a:args)
+        call s:rollback_extraction()
+        return 'Rolled back extraction for method ' . g:factorus_history['old'][0]
+    endif
+
+    " Get the lines the user extracted and the name they want for the new
+    " function (if any), and find the level of spacing that would make the new
+    " method 'fit' with the current method. Also store the old method's lines,
+    " in case we have to roll it back.
+    let l:name = len(a:args) <= 2 ? g:factorus_method_name : a:args[2]
+
+    echo 'Extracting new method...'
+    call s:go_to_tag(0)
+    let l:tab = substitute(getline('.'), '\(\s*\).*', '\1', '')
+    let l:method_name = substitute(getline('.'), '.*\s\+\(' . s:java_identifier . '\)\s*(.*', '\1', '')
+
+    let l:extract_lines = range(a:args[0], a:args[1])
+    let l:old_lines = getline(l:open, l:close[0])
+
+    " Get the structure of the current method--the name,
+    " the variable declarations, the blocks, etc.
+    let [l:orig, l:tab, l:method_name, l:open, l:close, l:old_lines, l:vars, l:compact, l:blocks, l:all, l:isos] = s:init_extraction()
+
+    " Then, we wrap any necessary annotations around the new method, get all
+    " the arguments needed for that function, and build the new method line by
+    " line.
+    let l:new_args = s:get_new_args(l:extract_lines, l:vars, l:all)
+    let [l:final, l:rep] = s:build_new_method(l:extract_lines, l:new_args, l:blocks, l:vars, l:all, l:tab, l:close, l:name)
+
+    " Once the method has been built, we add it to the file just after the
+    " current method, and jump to it.
+    call append(l:close[0], l:final)
+    call append(l:extract_lines[-1], l:rep)
+
+    let l:i = len(l:extract_lines) - 1
+    while l:i >= 0
+        call cursor(l:extract_lines[l:i], 1)
+        d 
+        let l:i -= 1
+    endwhile
+
+    call search('public.*\<' . l:name . '\>(')
+    silent write!
+    redraw
+    echo 'Extracted ' . len(l:extract_lines) . ' lines from ' . l:method_name
+
+    return [l:name, l:old_lines]   
+endfunction
+
+
 " extract_method {{{2
 
 " Extracts sub-method from current method by finding 'blocks' of code that are
 " isolated from the rest of the method. Not guaranteed to be useful, but can
 " sometimes speed up the refactoring process.
-function! factorus#java#extract_method()
+function! factorus#java#extract_method(...)
 
     " If the command is to roll back previous extraction, do so.
     if factorus#util#is_rollback(a:000)
@@ -2590,7 +2706,7 @@ function! factorus#java#extract_method()
 
     " If the user selected a range of lines, use manual_extract instead.
     if a:1 != 1 || a:2 != line('$')
-        return s:manual_extract(a:000)
+        return factorus#java#manual_extract(a:000)
     endif
 
     echo 'Extracting new method...'
@@ -2616,7 +2732,7 @@ function! factorus#java#extract_method()
         let [l:wrapped, l:wrapped_args] = s:wrap_decs(l:best_var, l:best_lines, l:vars, l:all, l:isos, l:new_args, l:close)
     endwhile
 
-    if l:best_var[2] == l:open && index(l:new_args, l:best_var) < 0
+    if l:best_var['line'] == l:open && index(l:new_args, l:best_var) < 0
         call add(l:new_args, l:best_var)
     endif
 
@@ -2631,10 +2747,12 @@ function! factorus#java#extract_method()
     " Once the method has been built, we add it to the file just after the
     " current method, and jump to it. The user doesn't name this new method,
     " because they don't know what it's going to be (they can give a name if
-    " they use manualExtract).
+    " they use manual_extract).
     call append(l:close[0], l:final)
     call append(l:best_lines[-1], l:rep)
 
+    " Delete all the old lines from the original method, starting from the
+    " last and moving backwards.
     let l:i = len(l:best_lines) - 1
     while l:i >= 0
         call cursor(l:best_lines[l:i], 1)
@@ -2642,6 +2760,7 @@ function! factorus#java#extract_method()
         let l:i -= 1
     endwhile
 
+    " Jump to the definition of the new method.
     call search('public.*\<' . g:factorus_method_name . '\>(')
     silent write!
     redraw
@@ -2693,5 +2812,3 @@ function! factorus#java#rename_something(new_name, type, ...)
         throw l:err . ', at ' . v:throwpoint
     endtry
 endfunction
-
-
